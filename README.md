@@ -1,19 +1,26 @@
 # Edge VMS Course
 
-Course material for building a video management system twice: first as a cloud service, then as an appliance you ship, install and update in the field.
+Course material for building a video management system, shipping it as an appliance, and operating a fleet of them.
 
-The two halves answer different questions. **М8** asks *how do you build a VMS?* — cameras, pipelines, an archive, a timeline you can click. **М9** asks *how do you ship one?* — atomic OS updates, rollback that works unattended, and running a fleet of boxes you cannot physically reach.
+Three questions, in order. **Build it:** cameras, pipelines, an archive, a timeline you can click. **Ship it:** atomic OS updates and rollback that works with nobody on site. **Operate it:** state, secrets, observability and a control plane spanning boxes you cannot physically reach.
 
 ---
 
-## Contents
+## The arc
 
-| Folder | What it is | State |
+A shipped edge VMS is seven layers deep. One module per layer, each ending with something that runs.
+
+| Module | Layer it builds | State |
 |---|---|---|
-| [`М8_KVS_VMS`](./М8_KVS_VMS) | The Cloud VMS course — 15 lessons across 7 modules, the project specification, and a verified reference frontend | Complete |
-| [`М9_EdgeVMS`](./М9_EdgeVMS) | The Edge VMS module — design and decision records | Designed; lessons not yet written |
+| [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 15 lessons |
+| [**М9** — Edge VMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback<br>2 · Nomad + Podman — workload plane | **Designed** · 9 lessons (16–24) |
+| М10 — State | 3 · Postgres — domain config & state | Planned · ~4 |
+| М11 — Domain controller | 4 · Cameras, archives, detectors | Planned · ~6 |
+| М12 — Secrets & PKI | 5 · OpenBao — secrets, certificates | Planned · ~4 |
+| М13 — Observability | 6 · Prometheus + logs | Planned · ~4 |
+| М14 — Device management | 7 · Enrollment, inventory, versions | Planned · ~5 |
 
-**[COURSE-PLAN.md](./COURSE-PLAN.md)** maps the whole arc: seven architectural layers, the modules that build each, and the two structural decisions (a licensing concentration and a secrets-ordering tension) worth taking before М10.
+**[COURSE-PLAN.md](./COURSE-PLAN.md)** carries the full reasoning: why the modules run in this order, what each contains, and two structural decisions worth taking before М10 — a licensing concentration (Nomad, Consul and Vault are all BUSL under IBM) and the fact that secrets appear three modules before the module that manages them.
 
 ---
 
@@ -30,7 +37,7 @@ Fifteen lessons take a student who knows Python but has never built a web applic
 
 ## М9 — Edge VMS
 
-Nine planned lessons (16–24) turning that cloud VMS into an appliance. Its spine is that a real edge product has **two independent update planes**: RAUC replaces the operating system underneath, while a scheduler manages the workload on top. Conflate them and you get systems where a config change requires an OS flash, or where an OS update destroys the recordings.
+Nine lessons turning that cloud VMS into an appliance. Its spine is that a real edge product has **two independent update planes**: RAUC replaces the operating system underneath, while a scheduler manages the workload on top. Conflate them and you get systems where a config change requires an OS flash, or where an OS update destroys the recordings.
 
 Part A builds a single appliance — A/B partitions, signed update bundles, rollback proven by shipping a deliberately broken update, then Podman and Quadlet. Part B goes to many servers and many sites with Nomad.
 
@@ -39,6 +46,10 @@ Part A builds a single appliance — A/B partitions, signed update bundles, roll
 - [RAUC alternatives](./М9_EdgeVMS/rauc-alternatives.md) — SWUpdate, Mender, bootc, systemd-sysupdate, and where each wins
 
 Both decision records reach the same shape of conclusion: the tool that teaches best is not always the tool that ships best, and the documents say which is which.
+
+## М10–М14 — not yet started
+
+Postgres for the state the appliance owns; a domain controller that reconciles desired cameras against running pipelines; OpenBao for secrets and per-device certificates; metrics and logs sized for a thin uplink; and finally enrollment, inventory and version skew across a fleet. Scope and sequencing in the [course plan](./COURSE-PLAN.md).
 
 ---
 
