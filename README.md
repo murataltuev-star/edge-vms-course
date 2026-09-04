@@ -13,6 +13,8 @@ The two halves answer different questions. **М8** asks *how do you build a VMS?
 | [`М8_KVS_VMS`](./М8_KVS_VMS) | The Cloud VMS course — 15 lessons across 7 modules, the project specification, and a verified reference frontend | Complete |
 | [`М9_EdgeVMS`](./М9_EdgeVMS) | The Edge VMS module — design and decision records | Designed; lessons not yet written |
 
+**[COURSE-PLAN.md](./COURSE-PLAN.md)** maps the whole arc: seven architectural layers, the modules that build each, and the two structural decisions (a licensing concentration and a secrets-ordering tension) worth taking before М10.
+
 ---
 
 ## М8 — Cloud VMS
