@@ -1,6 +1,6 @@
 # Module: Building the Cloud VMS Project
 
-This is the on-ramp for the course's final project: a simple Video Management System (VMS) — a simulated camera streaming to Amazon Kinesis Video Streams, with a web interface for browsing and replaying archived footage. The full brief lives in [`kvs-vms-mvp.md`](module8-design.md) — worth skimming once now for orientation, and returning to properly once this module is done.
+This is the on-ramp for the course's final project: a simple Video Management System (VMS) — a simulated camera streaming to Amazon Kinesis Video Streams, with a web interface for browsing and replaying archived footage. The full brief lives in [`module-design.md`](module-design.md) — worth skimming once now for orientation, and returning to properly once this module is done.
 
 That project has three moving parts: an **edge** component (feeds video in, and must survive crashes and shut down cleanly), a **web/backend** component (FastAPI + Pydantic + Uvicorn — the credential boundary between the browser and AWS), and a **frontend** (plain HTML/JS + hls.js). This course builds the skill for each piece separately before wiring them together — starting with the web layer, since it's the one every other piece talks through, then the edge layer, since it's the one with the most operational subtlety — and finishes by assembling all of it into one running system.
 
