@@ -2,7 +2,27 @@
 
 Course material for building a video management system, shipping it as an appliance, and operating a fleet of them.
 
-Three questions, in order. **Build it:** cameras, pipelines, an archive, a timeline you can click. **Ship it:** atomic OS updates and rollback that works with nobody on site. **Operate it:** state, secrets, observability and a control plane spanning boxes you cannot physically reach.
+---
+
+## Edge → Node → Domain
+
+The module names are not decoration. They mark one idea getting harder three times, and the course is arranged around it: **where the truth about the system lives, and how many things are able to disagree about it.**
+
+| | The box knows | Truth lives | What can disagree | The new hard problem |
+|---|---|---|---|---|
+| **М9 · EdgeVMS** | what it *is* | in the image that booted | nothing — a box is whatever was flashed onto it | replacing the OS underneath a running product without destroying the recordings |
+| **М10 · NodeVMS** | what it *should be* | in a database on the box | desired state and actual state, inside one process | closing the gap — and never persisting the half that must be re-derived |
+| **М11 · DomainVMS** | what *everyone* should be | in a database that several nodes act on | nodes, with each other | agreeing who owns what, when dead and merely-unreachable look identical |
+
+[**М8**](./М8_KVS_VMS) comes before the progression starts: it builds the product itself with no local truth at all, because Kinesis holds the configuration and the archive both. Everything after it is the consequence of the box having to hold its own.
+
+**EdgeVMS has no desired state.** You flash an image and containers run; actual state is the only state there is. М9's whole job is making that replaceable safely — which is why it is about atomic updates, rollback and signatures rather than about cameras.
+
+**NodeVMS introduces the wish.** A row saying a camera should be recording is not a camera recording, and something has to close the gap. The rule this turns on runs through everything above it: *desired state is persisted, actual state is derived.* Persist the second and you have built a cache that lies.
+
+**DomainVMS keeps that loop and takes away the shared address space.** Conceptually nothing changes; practically everything does, because two nodes can now hold different opinions, and a paused process is indistinguishable from a dead one. That is why М11 is the only module where a mistake corrupts customer footage instead of stopping a service.
+
+The last three modules ask the questions that follow once truth is distributed: who is allowed to assert it (**М12** — identity and secrets), whether you can see it (**М13** — observability), and what is true of the fleet itself (**М14** — inventory and version skew).
 
 ---
 
@@ -13,9 +33,9 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | Module | Layer it builds | State |
 |---|---|---|
 | [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 15 lessons |
-| [**М9** — Edge VMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback<br>2 · Nomad + Podman — workload plane | **Designed** · 9 lessons (16–24) |
-| [**М10** — Node VMS](./М10_NodeVMS) | 3 · Postgres — domain state<br>4 · AppHost — the loop that acts on it | **Designed** · 5 lessons (25–29) |
-| [**М11** — Domain controller](./М11_DomainController) | 4 · Placement, leases, the API | **Designed** · 5 lessons (30–34) |
+| [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback<br>2 · Nomad + Podman — workload plane | **Designed** · 9 lessons (16–24) |
+| [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — domain state<br>4 · AppHost — the loop that acts on it | **Designed** · 5 lessons (25–29) |
+| [**М11** — DomainVMS](./М11_DomainVMS) | 4 · Placement, leases, the API | **Designed** · 5 lessons (30–34) |
 | М12 — Secrets & PKI | 5 · OpenBao — secrets, certificates | Planned · ~4 |
 | М13 — Observability | 6 · Prometheus + logs | Planned · ~4 |
 | М14 — Device management | 7 · Enrollment, inventory, versions | Planned · ~5 |
@@ -35,7 +55,7 @@ Fifteen lessons take a student who knows Python but has never built a web applic
 - [KVS capability map](./М8_KVS_VMS/kvs-capability-map.md) — every Kinesis Video Streams feature a VMS can use, tiered by distance from the MVP
 - [`reference/web`](./М8_KVS_VMS/reference) — the finished frontend, for comparison rather than copying
 
-## М9 — Edge VMS
+## М9 — EdgeVMS
 
 Nine lessons turning that cloud VMS into an appliance. Its spine is that a real edge product has **two independent update planes**: RAUC replaces the operating system underneath, while a scheduler manages the workload on top. Conflate them and you get systems where a config change requires an OS flash, or where an OS update destroys the recordings.
 
@@ -48,7 +68,7 @@ Part A builds a single appliance — A/B partitions, signed update bundles, roll
 
 All three decision records reach the same shape of conclusion: the tool that teaches best is not always the tool that ships best, and the documents say which is which.
 
-## М10 — Node VMS
+## М10 — NodeVMS
 
 Five lessons in which the box starts owning its own truth. `INSERT INTO cameras` causes a camera to start recording; `DELETE` stops it; killing the AppHost loses nothing but the open segment. Between the row and the pipeline there is only a loop the student wrote.
 
@@ -56,7 +76,7 @@ Its organising rule is that **desired state is persisted and actual state is der
 
 - [Module design](./М10_NodeVMS/module-design.md) — lesson plan, the Python shard model, and what the operator is never asked to decide
 
-## М11 — Domain controller
+## М11 — DomainVMS
 
 Five lessons on what only exists once there is a second node: the controller and a worker can disagree about who owns a camera, and a worker can be alive, unreachable and still writing. This is the only module where a mistake corrupts customer footage rather than stopping a service.
 
@@ -64,7 +84,7 @@ It is built backwards from one demo. Two hundred cameras across four workers; `k
 
 The answer is that fencing belongs at the archive rather than at the controller: the lease epoch is part of the segment path, so a stale writer cannot name the files it would otherwise corrupt. You cannot stop a zombie from writing — you can only make its writes harmless.
 
-- [Module design](./М11_DomainController/module-design.md) — the two-scheduler contract, placement stability, fencing, shadow mode, and what the API refuses
+- [Module design](./М11_DomainVMS/module-design.md) — the two-scheduler contract, placement stability, fencing, shadow mode, and what the API refuses
 
 ## М12–М14 — not yet started
 
