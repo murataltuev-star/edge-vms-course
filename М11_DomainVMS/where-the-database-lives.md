@@ -1,8 +1,8 @@
-# Where the Database Lives
+# Where the Databases Live
 
-**A decision record for М10_NodeVMS and М11_DomainVMS.** Companion to [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) and [`consul-and-openbao.md`](../М12_FederatedVMS/consul-and-openbao.md), written in answer to *"a domain exists when its Postgres exists — so is Postgres installed on every host, and how do they sync?"*
+**A decision record for М10_NodeVMS and М11_DomainVMS.** Companion to [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) and [`consul-and-openbao.md`](../М12_FederatedVMS/consul-and-openbao.md), written in answer to *"a domain exists when its Postgres exists — so is Postgres installed on every host, and how do they sync?"*, and then revised in answer to a second question that corrected it: *if the host needs an event store and an index anyway, why not Postgres locally too?*
 
-It exposed a genuine hole. М10 places Postgres on a single box and says exactly where. М11 then talks throughout about "desired state in Postgres" across many nodes and **never says where it lives.** This is that answer.
+The first question exposed a hole. М10 places Postgres on a single box and says exactly where; М11 then talks throughout about "desired state in Postgres" across many nodes and **never says where it lives.** The second question exposed a wrong answer in the first draft of this record, which is corrected below and left visible rather than quietly edited out.
 
 ---
 
@@ -10,8 +10,8 @@ It exposed a genuine hole. М10 places Postgres on a single box and says exactly
 
 Four things, of which the third is the one that would have caused real damage.
 
-1. **One authoritative Postgres per domain.** Not one per host.
-2. **Hosts cache; they do not replicate.** There is exactly one writer, so the synchronisation problem the question implies does not exist.
+1. **Two databases, one engine.** A *domain database*, one per domain, and a *host database*, one per host. Both Postgres; almost nothing else about them is alike.
+2. **Hosts cache; they do not replicate.** There is exactly one writer of domain state, so the synchronisation problem the question implies does not exist.
 3. **A stale cache may keep recording forever, and must never delete anything.** Destructive operations expire; recording does not.
 4. **A domain is the largest set of nodes sharing a reliable network.** That is what decides where domain boundaries fall, and it makes the whole Edge → Node → Domain → Federation progression physical rather than arbitrary.
 
@@ -46,16 +46,40 @@ The distinction is the whole answer, and it is easy to miss because both words d
 
 ### What a host actually holds
 
-Small, and specific:
+Three things, and only the first is small:
 
-- its current assignment — which cameras it owns
-- the opaque config for those cameras
-- its lease and epoch
-- its own local archive index (see below)
+- **The desired-state cache** — its assignment, the opaque config for those cameras, its lease and epoch. Arrives on the watch stream from М11 Lesson 30
+- **The archive index** — which segment covers which camera over which time range. Written constantly
+- **Events** — motion, camera offline, analytics hits, operator actions. High volume, mostly never read
 
-The first three arrive on the watch stream from М11 Lesson 30 and are persisted locally — SQLite or a file is plenty — so that a host which reboots while the controller is unreachable comes back up recording rather than idle.
+> This does not contradict М10's rule that *desired state is persisted and actual state is derived*. The cached copy is not a second source of truth; it is a cache with an expiry, and a later section is about that expiry.
 
-> This does not contradict М10's rule that *desired state is persisted and actual state is derived*. The local copy is not a second source of truth; it is a cache with an expiry, and the next section is about that expiry.
+### One engine, two databases
+
+An earlier draft of this record said SQLite was plenty for the cache. That was answering a narrower question than the one the host actually poses: **the index and the events need a real database regardless**, so the host is running Postgres either way, and a second engine for a small cache buys nothing.
+
+| | Domain database | Host database |
+|---|---|---|
+| Instances | one per domain | one per host |
+| Written by | the controller — one writer | this host only |
+| Holds | desired state, placement, people, retention policy, archive **rollup** | desired-state **cache**, archive **index**, events |
+| Size | small | large and always growing |
+| Write rate | rare — an operator changed something | ~100 rows/sec at a thousand cameras, plus events |
+| Backup | small, careful, essential | reconstructible by rescanning segments |
+| Losing it costs | configuration | a rescan |
+
+**Why Postgres locally rather than SQLite**, once index and events are in the picture:
+
+- **Concurrency.** SQLite permits one writer at a time; WAL lets readers run alongside a writer but does not change that. Twenty media workers writing index rows, an event stream, and the AppHost reading is real contention
+- **Partitioning is the decisive feature.** Index and events are both rolling time windows. `DROP PARTITION` against `DELETE FROM` on a table taking a hundred rows a second is not a close comparison, and it makes М10 Lesson 28's retention loop instant instead of a vacuum problem
+- **Types that match the work.** `tstzrange` with a GiST index answers *what footage covers this window* directly — which is М8's timeline query — and JSONB carries event payloads that differ per detector
+- **One engine, one skillset.** The same `psql`, `pg_dump`, monitoring and client library. Students learn one thing; whoever operates the appliance operates one thing
+
+### The one thing that stays outside the database
+
+Putting the cache in Postgres puts Postgres in the boot path for recording. A few seconds of `After=postgresql.service` is fine. A data directory corrupted by power loss is not — the host would be unable to record at all, where a flat file would have carried on.
+
+So keep exactly one thing outside: a **last-known-assignment file**, a few hundred bytes, rewritten whenever the assignment changes. Not a database — a crash-recovery hint, so a worker can start recording while Postgres is still coming up or is broken. Everything queryable lives in Postgres; only the boot-path fallback does not.
 
 ---
 
@@ -63,11 +87,10 @@ The first three arrive on the watch stream from М11 Lesson 30 and are persisted
 
 The course had already made this decision twice without naming it as one principle:
 
-| Layer | May be unavailable to | What the layer below does |
-|---|---|---|
-| Controller (М11) | Workers | keep recording from cached assignments |
-| Federation (М12) | Domains | keep operating on cached identity and entitlement |
-| Domain database (here) | Hosts | keep recording from cached desired state |
+| Layer                  | May be unavailable to | What the layer below does                         |
+| ---------------------- | --------------------- | ------------------------------------------------- |
+| Controller (М11)       | Workers               | keep recording from cached assignments            |
+| Federation (М12)       | Domains               | keep operating on cached identity and entitlement |
 
 > **Every layer is allowed to be unavailable to the layer beneath it, and the layer beneath caches what it needs to carry on.**
 
@@ -125,21 +148,37 @@ On a four-box deployment bought to record cameras, spending one on a database wi
 
 ---
 
-## The archive index
+## Detail is local, summary is domain
 
-This answers М11's third open question, and the answer follows from everything above.
+This answers М11's third open question, and then turns out to answer more than that.
 
-If the archive index lives in the domain database, then during a database outage recording continues but **the footage becomes unfindable** — the worst kind of failure, because it is silent and it looks like data loss to the customer.
+If the archive index lives in the domain database, then during a database outage recording continues but **the footage becomes unfindable** — the worst kind of failure, because it is silent and to a customer it is indistinguishable from data loss.
 
 So split it by who wrote it:
 
-- **The host that recorded the footage owns its index**, locally. It never needs the network to write it
+- **The host that recorded the footage owns its index**, locally. Writing it never needs the network
 - **The domain database holds a rollup only** — *"host 3 has camera 7 for these time ranges"*
 - **Playback asks the domain *where*, then the host *what***
 
 Which extends the rule М9 Lesson 21 already teaches — *do not put video bulk on replicated storage; replicate metadata and let footage be local* — one level up: **replicate the summary, not the index.**
 
-It also gives the two stores the very different treatment they deserve. Configuration is small, changes rarely, and must be backed up carefully. The archive index is large, is written constantly, and is reconstructible by walking the segments on disk.
+### The same shape, three times
+
+| Data | Local | Forwarded to the domain |
+|---|---|---|
+| Footage | every segment | nothing |
+| Archive index | every segment's time range | which host holds which camera, when |
+| Events | every event | alarms needing acknowledgement, and counts |
+
+> **Detail is local; summary is domain.** Three data types, one rule — worth naming once rather than rediscovering per data type, because the fourth one will arrive eventually.
+
+### Events, which the design was missing
+
+Events — motion, camera offline, analytics hits, operator actions — were not in the plan at all and belong here. They also need distinguishing sharply from М13's material, because they look alike:
+
+> **Events are product data: an operator searches them. Metrics are operational data: an engineer alarms on them.** Different consumers, different retention, different modules.
+
+Most events are never read. A filtered subset — alarms an operator must acknowledge — forwards to the domain so the console can show them without querying every host. The rest ages out of a partitioned table locally.
 
 ---
 
@@ -147,16 +186,17 @@ It also gives the two stores the very different treatment they deserve. Configur
 
 | Criterion | Answer |
 |---|---|
-| Postgres per host? | **No.** One per domain |
-| How do hosts sync? | They do not. They cache a slice, read-only, from the one writer |
-| What survives a database outage? | Recording, playback from the host holding the footage, and every existing assignment |
+| Postgres per host? | **Yes — but a different database.** One domain database per domain, one host database per host |
+| Why not SQLite for the cache? | Because index and events need a real database anyway, so a second engine is pure cost |
+| How do hosts sync? | They do not. They cache a slice of domain state, read-only, from the one writer |
+| What survives a domain-database outage? | Recording, playback from the host holding the footage, and every existing assignment |
 | What stops? | Configuration changes, reassignment, and all deletion |
 | Where does the domain end? | At the first network you would not bet recording on |
 | HA? | Optional, witness- or monitor-based, never consensus-store-based |
 
-**Course changes.** М10 gains a forward reference at its database-placement decision. М11 gains the cache-versus-replica distinction in Lesson 30, the stale-cache rule in Lesson 32, and closes three open questions. Neither module grows a lesson — this is a set of rules, not new material.
+**Course changes.** М10 Lesson 25 builds **both** databases from the first lesson — on one box they share an instance, so М11 moves one rather than splitting one, and no schema changes when it does. Splitting a database in a later module would teach exactly the wrong instinct. Lesson 25 also gains the event schema and time partitioning; Lesson 28's retention becomes `DROP PARTITION`. М11 gains the cache-versus-replica distinction in Lesson 30, the stale-cache rule in Lesson 32, the event-forwarding rule in Lesson 34, and closes three open questions. **No module grows a lesson.**
 
-**Product recommendation: single Postgres per domain, hosts cache, retention never runs from a stale cache.** The third is the one to write into the acceptance tests, because it is the only one whose absence is invisible until a customer asks where their footage went.
+**Product recommendation: two databases on one engine, detail local and summary forwarded, and retention that never runs from a stale cache.** The last is the one to write into the acceptance tests, because it is the only one whose absence stays invisible until a customer asks where their footage went.
 
 ---
 

@@ -48,7 +48,9 @@ If a lesson does not move that demo forward, it does not belong in this module.
 | Change notification | **Poll on a timer, `LISTEN/NOTIFY` for latency** | NOTIFY is not durable — a listener that was disconnected misses it forever. Notify for speed, poll for correctness. Teaching only NOTIFY produces a system that silently stops converging. |
 | Node visibility | **Derived, never operator-set** | See below. The `cameras` table has no node column an operator can write. |
 | Language | **Python for the course; Go + C++ for the product** | Python teaches the loop and makes the language boundary visible. The product splits it — Go for the controller, C++ for the media worker — and Lesson 29 says why that split costs almost nothing. |
-| Database placement | **On the data partition, as a Quadlet unit** | М9's three-way boundary with consequences: `PGDATA` in a rootfs slot is destroyed by the next OS update. **One database per domain, not per host** — М11 adds nodes but no more databases; see [`where-the-database-lives.md`](../М11_DomainVMS/where-the-database-lives.md). |
+| Databases | **Two, from the first lesson: a domain database and a host database** | On one box they share an instance, so М11 *moves* one rather than splitting one — and nothing in the schema changes when it does. See [`where-the-database-lives.md`](../М11_DomainVMS/where-the-database-lives.md). |
+| Database placement | **On the data partition, as a Quadlet unit** | М9's three-way boundary with consequences: `PGDATA` in a rootfs slot is destroyed by the next OS update. |
+| Local storage engine | **Postgres, not SQLite** | The archive index and the event stream need a real database regardless, so a second engine for a small cache is pure cost. Partitioning is the deciding feature. |
 | DB credentials | **Hand-provisioned, marked temporary** | Follows the course's existing discipline. М12 replaces this, and the replacement is the lesson — but the temporariness is stated here, not discovered there. |
 
 ---
@@ -156,10 +158,14 @@ So: invisible in configuration, visible in diagnostics and capacity. The same re
 
 ## Lessons
 
-### Lesson 25 — The database the cloud VMS didn't need
+### Lesson 25 — The two databases the cloud VMS didn't need
 
 - Why М8's spec forbade a database, and why the answer flips on-prem: in the cloud KVS held the configuration; on a box, the box holds it
-- Schema for cameras, streams, sites and retention policies
+- **Two databases, one instance.** The *domain database* holds what an operator asked for; the *host database* holds what this box knows — its cached assignment, its archive index, and its events. On one box they share a Postgres instance, and М11 moves one of them to its own. Building one database now and splitting it in М11 would teach the wrong instinct
+- Domain schema: cameras, streams, sites and retention policies
+- **Host schema:** the archive index (which segment covers which camera over which range, as a `tstzrange` with a GiST index — М8's timeline query, answered directly) and the event stream (motion, camera offline, operator actions, with a JSONB payload because detectors differ)
+- **Time partitioning from day one.** Both index and events are rolling windows taking on the order of a hundred rows a second at scale. Retention is `DROP PARTITION`, not `DELETE FROM` — Lesson 28 collects on this
+- **Events are not metrics.** An operator searches events; an engineer alarms on metrics. They look alike and belong in different modules — М13 has the second kind
 - **Operator-owned columns versus controller-owned columns.** `enabled`, `rtsp_url`, `retention_days`, `site_id` are written by people; `revision`, `assigned_worker`, `observed_revision`, `phase` are written by machines and never appear as form fields
 - `revision` as a monotonic, controller-assigned integer per object — not a hash, not a timestamp
 - Migrations as a shipped artifact, and the appliance constraint: they run at boot on a box nobody visits, so they must be idempotent and must never be able to leave it unbootable
@@ -205,7 +211,7 @@ Each failure mode reproduced on purpose, then handled.
 
 - **Camera offline** → exponential backoff **with jitter**. Two hundred cameras reconnecting in lockstep after a switch reboot is a self-inflicted outage, and the jitter is the whole fix
 - **Stalled stream, socket still open** → `watchdog` fires, that one pipeline restarts, the other forty-nine never notice
-- **Disk full** → retention enforcement degrades by policy. The deletion loop must be conservative: never delete what it cannot prove is superseded
+- **Disk full** → retention enforcement degrades by policy. The deletion loop must be conservative: never delete what it cannot prove is superseded. With Lesson 25's partitioning this is `DROP PARTITION` and a segment unlink, not a scan — which is what makes it fast enough to run under pressure
 - **The AppHost dies** → systemd restarts it, state is re-derived, and the segment discipline bounds the loss
 - **The fencing rule, introduced small:** on restart, never resume the previous segment — open a new one. Leases and epochs are М11's problem; the rule that makes them necessary lands here
 
@@ -243,7 +249,7 @@ Every lesson marks which of its claims were run and which are documentation-deri
 
 1. **Does the API belong here or in М11?** Lesson 29 builds a read view. A write API with authentication is arguably М11's, arguably М12's, and putting it here would make this a six-lesson module.
 2. **How much retention policy is domain design rather than infrastructure?** The deletion loop is М10; schedules, per-camera overrides and legal-hold are product decisions that may deserve their own lesson in М11.
-3. **Postgres in a container or on the host?** The module currently says Quadlet unit. On an appliance that nobody administers, a host package with systemd is a defensible alternative and the tradeoff is worth teaching either way.
+3. **Postgres in a container or on the host?** The module currently says Quadlet unit. On an appliance that nobody administers, a host package with systemd is a defensible alternative and the tradeoff is worth teaching either way. Note this now carries both databases, so the answer applies to the archive index and the event stream too.
 4. **Does Lesson 28 need a real camera that misbehaves?** Cheap cameras stall in ways a simulator does not reproduce faithfully, and the module's most valuable failure mode is the hardest to fake.
 5. **Lesson numbering** assumes М9 ends at 24.
 

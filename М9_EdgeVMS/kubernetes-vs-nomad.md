@@ -99,7 +99,15 @@ Taken from the licence text in the Nomad repository rather than marketing materi
 
 The module has been rewritten around Nomad. The two costs above are carried explicitly rather than hidden: the GitOps chapter confronts push-versus-pull head-on, and the licensing question is taught as part of the module rather than left as a footnote — students shipping commercial products need to know how to read a BUSL grant.
 
-Neither tool wins the single-server case. Podman with Quadlet beats both there, and Part A says so.
+### Neither tool wins the single-server case
+
+Podman with Quadlet beats both there, and Part A says so. Three pieces of evidence, since this is the objection most often raised against the whole module:
+
+- **There is nothing to schedule.** Nomad places workers, not cameras — camera placement is the controller's job (М11). On one host "place N workers" is a systemd template unit
+- **HashiCorp's production requirements** suggest 4–8+ cores, 16–32 GB+ memory and 40–80 GB of fast disk for servers, and **say nothing at all about single-node deployments or co-locating a server and a client.** The agent is much lighter than those numbers; the point is that no appliance-shaped configuration is documented
+- **Agent restarts have known failure modes with the Podman driver** — HashiCorp publishes a support article on orphaned Podman containers after a Nomad agent restart. An appliance reboots unattended; inheriting that in exchange for no scheduling benefit is a bad trade
+
+The product question this raises — ship one stack everywhere, or two — is genuinely open and is put to students in Lesson 20 rather than answered for them.
 
 ---
 
@@ -111,7 +119,8 @@ Neither tool wins the single-server case. Podman with Quadlet beats both there, 
 - [Nomad LICENSE](https://raw.githubusercontent.com/hashicorp/nomad/main/LICENSE) — Licensor, Additional Use Grant, Change Date
 - [Nomad CE licence & support](https://developer.hashicorp.com/nomad/docs/ce-license-support)
 - [HashiCorp BSL announcement](https://www.hashicorp.com/en/blog/hashicorp-adopts-business-source-license)
+- [Nomad production requirements](https://developer.hashicorp.com/nomad/docs/deploy/production/requirements) — server sizing, and the absence of any single-node or co-located guidance
 - [k3s requirements](https://docs.k3s.io/installation/requirements)
 - [Fleet core concepts](https://fleet.rancher.io/explanations/concepts)
 
-*Checked against current documentation, 2 September 2026.*
+*Checked against current documentation, 2 September 2026; single-server section added 5 September 2026.*

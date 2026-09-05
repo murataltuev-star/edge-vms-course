@@ -4,7 +4,7 @@ Course material for building a video management system, shipping it as an applia
 
 ---
 
-## Edge → Node → Domain
+## Edge → Node → Domain → Federation
 
 The module names are not decoration. They mark one idea getting harder three times, and the course is arranged around it: **where the truth about the system lives, and how many things are able to disagree about it.**
 
@@ -91,7 +91,7 @@ It is built backwards from one demo. Two hundred cameras across four workers; `k
 The answer is that fencing belongs at the archive rather than at the controller: the lease epoch is part of the segment path, so a stale writer cannot name the files it would otherwise corrupt. You cannot stop a zombie from writing — you can only make its writes harmless.
 
 - [Module design](./М11_DomainVMS/module-design.md) — the two-scheduler contract, placement stability, fencing, shadow mode, and what the API refuses
-- [Where the database lives](./М11_DomainVMS/where-the-database-lives.md) — one Postgres per domain, why hosts cache rather than replicate, and the retention rule that protects customer footage
+- [Where the databases live](./М11_DomainVMS/where-the-database-lives.md) — a domain database and a host database, why hosts cache rather than replicate, and the retention rule that protects customer footage
 
 ## М12 — FederatedVMS
 

@@ -56,7 +56,7 @@ kill -CONT <worker-2>       # the zombie wakes up and tries to keep writing
 | Status model | **Positions and reasons kept apart** | Kubernetes shipped a phase enum and then wrote down, at length, why it was a mistake. |
 | Transport | **Server-streaming watch, client-streaming report** | The worker never has to be addressable. Sites sit behind NAT; a controller that must dial its workers does not survive contact with a customer network. |
 | Write API | **Built here, unauthenticated, marked temporary** | Follows the course's existing discipline: the stand-in is named as a stand-in at the point it appears, not discovered later. |
-| Database placement | **One Postgres per domain; hosts cache, never replicate** | There is exactly one writer, so the synchronisation problem never arises. See [`where-the-database-lives.md`](where-the-database-lives.md). |
+| Databases | **A domain database per domain; a host database per host** | Same engine, almost nothing else alike. One writer of domain state, so hosts cache rather than replicate and the synchronisation problem never arises. See [`where-the-database-lives.md`](where-the-database-lives.md). |
 | Domain boundary | **The largest set of nodes sharing a reliable network** | Span a link you do not trust and configuration depends on it. This is what makes the scope progression physical. |
 
 ---
@@ -165,7 +165,8 @@ The holder stopping is a purely local decision requiring no coordination — whi
 - Resume tokens: a reconnecting worker says where it got to, and gets a delta rather than a full resync
 - **Why ordering beats equality**, from the section above
 - **Opaque config**, and the failure mode when a worker receives configuration it cannot parse — which is a reportable divergence, not a crash
-- **Hosts cache; they do not replicate.** There is one database per domain and one writer. A worker persists its assignment, its config and its lease locally — SQLite is plenty — so a host rebooting while the controller is unreachable comes back recording rather than idle. This is not a second source of truth; it is a cache with an expiry, and Lesson 32 is about that expiry
+- **Hosts cache; they do not replicate.** There is one writer of domain state — the controller. A worker persists its assignment, config and lease into its own **host database**, the same one М10 built for the archive index and events, so a host rebooting while the controller is unreachable comes back recording rather than idle. This is not a second source of truth; it is a cache with an expiry, and Lesson 32 is about that expiry
+- **The one thing outside the database:** a last-known-assignment file of a few hundred bytes, so recording can start while Postgres is still coming up — or if its data directory did not survive the power cut
 - **Where the domain ends:** at the first network link you would not bet recording on. Nodes on one reliable network form one domain; anything past that is federation, not a bigger domain
 
 **Deliverable:** the contract, and М10's AppHost rewritten as a worker that subscribes and reports instead of deciding for itself — including surviving a reboot with the controller switched off.
@@ -232,9 +233,10 @@ The course's own convention — the stand-in before the real thing — applied a
 - Write API: camera CRUD, with **idempotency keys** so that a retried request does not create a second camera
 - **What the API refuses.** Placement is not a field a client may set. The operator assigns cameras to *sites*, never to workers or nodes — М10's rule, now enforced at the boundary
 - **Detectors.** Attaching a detector creates another object, of another worker class, with its own opaque config. The controller does not change. Which means **where inference runs — on the appliance, at the camera, or in the cloud — is a deployment question answered by worker class and placement constraints, not a schema question.** This resolves an open question carried since the course plan was written
+- **What the domain sees of host data.** Detail stays local; summary is forwarded. The domain gets a rollup of the archive index — *which host holds which camera, when* — and of events, only the alarms an operator must acknowledge. Everything else ages out of a partitioned table on the host that produced it. Playback asks the domain *where* and the host *what*
 - The API is unauthenticated, and the lesson says so in as many words
 
-**Deliverable:** the console showing two hundred cameras across four nodes; kill one node; one cause displayed.
+**Deliverable:** the console showing two hundred cameras across four nodes; kill one node; one cause displayed — and a footage search that resolves through the domain rollup to the right host.
 
 ---
 
@@ -273,7 +275,7 @@ The course's own convention — the stand-in before the real thing — applied a
 - [Eliminate Phase and simplify Conditions](https://github.com/kubernetes/kubernetes/issues/7856) — Kubernetes on why phase enums were a mistake: not extensible, every addition breaking, clients switch on them
 - [Kubernetes API conventions](https://github.com/kubernetes/community/blob/main/contributors/devel/sig-architecture/api-conventions.md) — the conditions model in its mature form
 - [Pod conditions](https://kubernetes.io/docs/concepts/workloads/pods/pod-condition/) — conditions as reasons rather than positions, in practice
-- [`where-the-database-lives.md`](where-the-database-lives.md) — one database per domain, caching versus replication, and the rule that destructive operations must never run from a stale cache
+- [`where-the-database-lives.md`](where-the-database-lives.md) — the domain database and the host database, caching versus replication, detail-local/summary-domain, and the rule that destructive operations must never run from a stale cache
 - [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) — the two-level scheduling argument this module implements
 
 *Written 4 September 2026.*

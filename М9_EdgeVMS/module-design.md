@@ -115,7 +115,11 @@ The payoff lesson, and the one that must be *seen*, not described.
 Opens with the honest argument, including the counter-argument.
 
 - What actually forces a second server: camera count, storage throughput, retention, availability
-- **Why an orchestrator is the wrong answer for a single appliance** — Part A's stack is genuinely better there. Scheduling earns its complexity only at multi-node
+- **Why an orchestrator is the wrong answer for a single appliance.** Students should leave able to argue this, not just assert it, because they will be asked. Four points:
+  - **On one box the scheduler has nothing to schedule.** Nomad places *workers*, not cameras — the interesting placement decision belongs to the domain controller (М11). "Place workers" on a single host reduces to "run N identical processes", which is a systemd template unit: `recorder@.service`, instantiated N times
+  - **The vendor's own guidance has no single-node story.** Nomad's production requirements suggest 4–8+ cores and 16–32 GB+ of memory with 40–80 GB of fast disk for *servers*, and the document does not address co-locating a server and client or running a single node at all. The agent itself is far lighter than those figures — the point is that the guidance is shaped for a datacentre, and there is no documented appliance configuration to point support at
+  - **Restarting the agent is not free.** HashiCorp publishes a support article titled *Troubleshooting: Orphaned Podman Containers After Nomad Agent Restart*. On a box that reboots unattended at 3am, adopting that failure mode in exchange for no scheduling benefit is a poor trade
+  - **What you would actually be adding:** a second thing in the boot path, a second answer to "why isn't the recorder running", and a second component to version and upgrade
 - Nomad's model: **servers** accept jobs and place work, **clients** register and execute it. Servers in a region form one raft consensus group and elect a leader; three or five servers per region
 - Regions may span multiple datacenters
 - Build a cluster: three servers, two clients
@@ -123,6 +127,8 @@ Opens with the honest argument, including the counter-argument.
 - The consequence for the rest of the course: the orchestrator schedules *workers*, and a domain controller (М11) assigns *cameras* to them. Camera lifecycle must not require a healthy control plane
 
 **Deliverable:** a working cluster, a measured shard size, and a written justification for why this deployment needed one.
+
+**Sidebar — the question a product team actually has to answer.** Not *is Nomad heavy* but **do you ship one stack or two?** Two deployment models means everything is built, documented, supported and — the real cost — **tested twice**, which is why many vendors standardise on the multi-node stack everywhere and absorb the overhead. The counter-argument for a VMS is that a large share of deployments are a single box, and those customers have the least IT support; standardising on the cluster stack optimises the minority case at the majority's expense. The lesson should put the question to students with the trade stated and no answer supplied, because the answer depends on a number only the vendor has: what fraction of installations are one server.
 
 ### Lesson 21 — The VMS as a Nomad job
 
