@@ -130,7 +130,7 @@ Roughly **47 lessons**, or a full semester. Worth deciding deliberately rather t
 ## Deliberately out of scope
 
 - **Analytics and inference at depth.** М11 attaches detectors; it does not teach computer vision
-- **High availability of the appliance itself.** One box per site, replaced not clustered
+- **High availability of a single-box site.** One box, replaced not clustered — a second server is sold for capacity or for failover, never bolted on to make one box redundant. Failover *between* nodes in a multi-node domain is very much in scope: М9 Lesson 21 reschedules workers off a dead node, М11 Lesson 32 reassigns its cameras, and the module says plainly what does not fail over — the footage already on that node's disks
 - **Multi-tenancy.** One operator organisation per deployment
 - **The cloud side.** М8 covers KVS; nothing here builds a SaaS control plane
 

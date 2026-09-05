@@ -130,17 +130,38 @@ Opens with the honest argument, including the counter-argument.
 
 **Sidebar — the question a product team actually has to answer.** Not *is Nomad heavy* but **do you ship one stack or two?** Two deployment models means everything is built, documented, supported and — the real cost — **tested twice**, which is why many vendors standardise on the multi-node stack everywhere and absorb the overhead. The counter-argument for a VMS is that a large share of deployments are a single box, and those customers have the least IT support; standardising on the cluster stack optimises the minority case at the majority's expense. The lesson should put the question to students with the trade stated and no answer supplied, because the answer depends on a number only the vendor has: what fraction of installations are one server.
 
-### Lesson 21 — The VMS as a Nomad job
+### Lesson 21 — The VMS as a Nomad job, and what happens when a node dies
 
-The lesson where Part A pays off rather than being discarded.
+The lesson where Part A pays off rather than being discarded — and where the orchestrator finally does something systemd cannot.
 
 - Jobspec structure: `job` → `group` → `task`, written in HCL
 - **The Podman task driver** — the same images and the same runtime as Lesson 19. Translating a Quadlet unit into a Nomad task is a genuine mapping, not a rewrite
-- The other drivers, and why they matter to a VMS: `exec2` for a native process needing device access, `virt` (beta) for a VM. Kubernetes cannot do this at all — it is the strongest argument for Nomad in a video product
+- The other drivers, and why they matter to a VMS: `exec2` for a native process needing device access, `virt` (beta) for a VM. Kubernetes cannot do this at all
 - Storage reality: recordings stay local or on NAS. **Do not put video bulk on replicated storage.** Replicate metadata; let footage be local and let the archive be KVS
 - Placement: cameras are not uniformly reachable from every client node
 
-**Deliverable:** the VMS running as a Nomad job with the same behaviour as Part A.
+#### Failover — the reason the second box exists
+
+Lesson 20 argued an orchestrator is wrong for one appliance. This is the other half of that argument, and students should meet it in the same module: **rescheduling work off a dead node is the thing Nomad does that a template unit cannot.**
+
+- **Restart versus reschedule.** Restart retries a failed task *on the same node*; reschedule places it on a *different* one. Service jobs default to unlimited reschedule attempts, so no operator intervention is expected
+- **What happens by default when a client stops heartbeating:** its allocations are marked lost and replaced elsewhere. The client is not told to stop — the server simply schedules a replacement
+- **Why that default is wrong for a VMS, and the block that fixes it.** A node partitioned from the Nomad servers is very often still reachable from its cameras and its disks. Killing its recorders because the *control plane* cannot see it is exactly the failure mode М9's whole design argues against
+
+  The `disconnect` block is where this is configured:
+
+  | Field | What it controls |
+  |---|---|
+  | `lost_after` | how long Nomad tries to reconnect before marking allocations lost; empty means immediately |
+  | `replace` | whether a disconnected allocation is rescheduled elsewhere at all |
+  | `stop_on_client_after` | how long a disconnected *client* keeps its own tasks running |
+  | `reconcile` | which allocation survives when the node comes back and both exist — `keep_original`, `keep_replacement`, `best_score` or `longest_running` |
+
+  The interesting exercise is not configuring it but arguing about it: **for a recorder, is it better to have two nodes recording the same camera for a minute, or neither?** The answer differs for recording and for the API, in the same job.
+
+- **What does not fail over: the footage.** The dead node's recordings are on its disks. A replacement records the *future* of that camera; the past stays where it was written, and stays unavailable until the node returns. This is the honest limit of the design, and М10's node-visibility table already says the operator must be able to see it
+
+**Deliverable:** the VMS running as a Nomad job with the same behaviour as Part A. Then pull the power on a client and produce two numbers: how long until recording resumed elsewhere, and how many seconds of footage were lost.
 
 ### Lesson 22 — Many sites: regions and federation
 
@@ -275,6 +296,8 @@ Keep x86-64 / UEFI as the taught target. Ship this appendix as student-facing re
 - [Podman Quadlet (`podman-systemd.unit`)](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html) — unit types, paths, fields, auto-update
 - [Nomad architecture](https://developer.hashicorp.com/nomad/docs/architecture) — servers/clients, raft, regions, gossip federation
 - [Nomad task drivers](https://developer.hashicorp.com/nomad/plugins/drivers) — pluggable drivers, Podman, exec2, virt
+- [Nomad `disconnect` block](https://developer.hashicorp.com/nomad/docs/job-specification/disconnect) — `lost_after`, `replace`, `stop_on_client_after`, and the four `reconcile` strategies
+- [Nomad rescheduling](https://developer.hashicorp.com/nomad/docs/job-declare/failure/reschedule) — restart versus reschedule, and unlimited attempts by default for service jobs
 - [Nomad Pack](https://developer.hashicorp.com/nomad/tools/nomad-pack) — templating, registries, Helm comparison
 - [Nomad LICENSE](https://raw.githubusercontent.com/hashicorp/nomad/main/LICENSE) — Licensor, Additional Use Grant, Change Date
 - [GStreamer hardware-accelerated decoding](https://gstreamer.freedesktop.org/documentation/tutorials/playback/hardware-accelerated-video-decoding.html) — `va`/`nvcodec`/`v4l2` plugins, rank-based selection

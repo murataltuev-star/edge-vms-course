@@ -198,7 +198,22 @@ The module's correctness lesson. See *The zombie writer* above.
 - **The other stale-state failure, which destroys data rather than interrupting it.** A worker cut off from the controller holds a cached desired state that ages. What is safe to do with it depends on the operation: keeping an existing recording running is safe indefinitely; starting something new is questionable; **deleting footage under a cached retention policy is not safe at all.** An operator raises retention from 7 days to 30 on Monday, a host loses contact on Tuesday, and on Wednesday it obediently deletes everything older than a week
 - **The rule: destructive operations stop at the grace period; recording does not.** A host that cannot confirm its retention policy keeps footage and says so. Full disks are visible and recoverable; deleted footage is neither
 
-**Deliverable:** STOP a worker, watch its cameras reassign, CONT it, and prove both that the archive is intact and that the zombie's segments are orphaned rather than interleaved. Then cut a worker off, expire its cache, and prove it kept recording and deleted nothing.
+#### Two failovers, and why neither alone is enough
+
+М9 Lesson 21 taught Nomad rescheduling a worker off a dead node. This module reassigns cameras off a dead worker. **They are different mechanisms at different levels, and a node failure needs both:**
+
+| | What failed | Who reacts | What moves |
+|---|---|---|---|
+| **Workload failover** | a node | Nomad servers | worker allocations reschedule onto surviving nodes |
+| **Domain failover** | a worker | the domain controller | cameras reassign to surviving workers |
+
+Nomad alone brings up a replacement worker with **no cameras**. The controller alone has **no worker** to reassign to. Only together does a node dying end with footage being recorded again.
+
+**The timing question students will ask, and its answer.** Nomad's `lost_after` and the controller's lease TTL are two independent timers — must they be reconciled? No, and the reason is the point of the whole two-level design: **the lease is the authority on ownership; Nomad only supplies capacity.** A replacement worker starting early is not granted anything by starting; it records nothing until the controller assigns it a camera at a new epoch. Nomad's timing affects how quickly recording resumes. It cannot affect correctness, because the fencing in this lesson does not depend on it.
+
+That is worth stating explicitly, because the alternative design — letting the orchestrator own camera placement — would make those two timers a correctness problem, and no amount of tuning would fix it.
+
+**Deliverable:** STOP a worker, watch its cameras reassign, CONT it, and prove both that the archive is intact and that the zombie's segments are orphaned rather than interleaved. Then cut a worker off, expire its cache, and prove it kept recording and deleted nothing. Finally kill a whole node and narrate both failovers in order, with the archive for one camera now split across two hosts and still playable end to end.
 
 ---
 
