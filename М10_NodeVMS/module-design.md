@@ -48,7 +48,7 @@ If a lesson does not move that demo forward, it does not belong in this module.
 | Change notification | **Poll on a timer, `LISTEN/NOTIFY` for latency** | NOTIFY is not durable — a listener that was disconnected misses it forever. Notify for speed, poll for correctness. Teaching only NOTIFY produces a system that silently stops converging. |
 | Node visibility | **Derived, never operator-set** | See below. The `cameras` table has no node column an operator can write. |
 | Language | **Python for the course; Go + C++ for the product** | Python teaches the loop and makes the language boundary visible. The product splits it — Go for the controller, C++ for the media worker — and Lesson 29 says why that split costs almost nothing. |
-| Database placement | **On the data partition, as a Quadlet unit** | М9's three-way boundary with consequences: `PGDATA` in a rootfs slot is destroyed by the next OS update. |
+| Database placement | **On the data partition, as a Quadlet unit** | М9's three-way boundary with consequences: `PGDATA` in a rootfs slot is destroyed by the next OS update. **One database per domain, not per host** — М11 adds nodes but no more databases; see [`where-the-database-lives.md`](../М11_DomainVMS/where-the-database-lives.md). |
 | DB credentials | **Hand-provisioned, marked temporary** | Follows the course's existing discipline. М12 replaces this, and the replacement is the lesson — but the temporariness is stated here, not discovered there. |
 
 ---

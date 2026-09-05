@@ -15,6 +15,8 @@ The module names are not decoration. They mark one idea getting harder three tim
 | **М11 · DomainVMS** | what *everyone* should be | in a database that several nodes act on | nodes, with each other | agreeing who owns what, when dead and merely-unreachable look identical |
 | **М12 · FederatedVMS** | who it *is*, and what it may do | in a trust root above every domain | domains, with the centre | staying correct while the centre is unreachable |
 
+**Every boundary in that table is a network you stopped trusting.** A domain is the largest set of nodes sharing a reliable link; past that you federate rather than build a bigger domain. That is what makes the progression physical rather than a tidy-looking hierarchy.
+
 [**М8**](./М8_KVS_VMS) comes before the progression starts: it builds the product itself with no local truth at all, because Kinesis holds the configuration and the archive both. Everything after it is the consequence of the box having to hold its own.
 
 **EdgeVMS has no desired state.** You flash an image and containers run; actual state is the only state there is. М9's whole job is making that replaceable safely — which is why it is about atomic updates, rollback and signatures rather than about cameras.
@@ -23,7 +25,9 @@ The module names are not decoration. They mark one idea getting harder three tim
 
 **DomainVMS keeps that loop and takes away the shared address space.** Conceptually nothing changes; practically everything does, because two nodes can now hold different opinions, and a paused process is indistinguishable from a dead one. That is why М11 is the only module where a mistake corrupts customer footage instead of stopping a service.
 
-**FederatedVMS is the first layer that is allowed to be unavailable**, and that constraint is the whole module. A site records video whether or not the centre answers, so identity, trust and entitlement are cached and degrade on a grace period rather than blocking. Federation rather than hierarchy — domains stay authoritative for their own operation.
+**Every layer is allowed to be unavailable to the layer beneath it**, and the layer beneath caches what it needs to carry on. Workers keep recording when the controller is down; hosts keep recording when the domain database is down; domains keep operating when the centre is unreachable. FederatedVMS is where that stops being one decision among several and becomes a module's entire thesis — which is what makes this federation rather than hierarchy.
+
+The rule has a sharp edge, and it is the one worth carrying away: **a stale cache may keep recording forever, and must never delete anything.** An operator raises retention from 7 days to 30 on Monday; a host loses contact on Tuesday; on Wednesday it obediently deletes everything older than a week. Destructive operations expire. Recording does not.
 
 **М13 is the one module that is not a new scope.** Observability is how you see the four you already have, which is why it comes last and why it does not get a VMS name.
 
@@ -87,6 +91,7 @@ It is built backwards from one demo. Two hundred cameras across four workers; `k
 The answer is that fencing belongs at the archive rather than at the controller: the lease epoch is part of the segment path, so a stale writer cannot name the files it would otherwise corrupt. You cannot stop a zombie from writing — you can only make its writes harmless.
 
 - [Module design](./М11_DomainVMS/module-design.md) — the two-scheduler contract, placement stability, fencing, shadow mode, and what the API refuses
+- [Where the database lives](./М11_DomainVMS/where-the-database-lives.md) — one Postgres per domain, why hosts cache rather than replicate, and the retention rule that protects customer footage
 
 ## М12 — FederatedVMS
 

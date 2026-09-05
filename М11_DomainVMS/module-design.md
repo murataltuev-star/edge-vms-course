@@ -56,6 +56,8 @@ kill -CONT <worker-2>       # the zombie wakes up and tries to keep writing
 | Status model | **Positions and reasons kept apart** | Kubernetes shipped a phase enum and then wrote down, at length, why it was a mistake. |
 | Transport | **Server-streaming watch, client-streaming report** | The worker never has to be addressable. Sites sit behind NAT; a controller that must dial its workers does not survive contact with a customer network. |
 | Write API | **Built here, unauthenticated, marked temporary** | Follows the course's existing discipline: the stand-in is named as a stand-in at the point it appears, not discovered later. |
+| Database placement | **One Postgres per domain; hosts cache, never replicate** | There is exactly one writer, so the synchronisation problem never arises. See [`where-the-database-lives.md`](where-the-database-lives.md). |
+| Domain boundary | **The largest set of nodes sharing a reliable network** | Span a link you do not trust and configuration depends on it. This is what makes the scope progression physical. |
 
 ---
 
@@ -163,8 +165,10 @@ The holder stopping is a purely local decision requiring no coordination — whi
 - Resume tokens: a reconnecting worker says where it got to, and gets a delta rather than a full resync
 - **Why ordering beats equality**, from the section above
 - **Opaque config**, and the failure mode when a worker receives configuration it cannot parse — which is a reportable divergence, not a crash
+- **Hosts cache; they do not replicate.** There is one database per domain and one writer. A worker persists its assignment, its config and its lease locally — SQLite is plenty — so a host rebooting while the controller is unreachable comes back recording rather than idle. This is not a second source of truth; it is a cache with an expiry, and Lesson 32 is about that expiry
+- **Where the domain ends:** at the first network link you would not bet recording on. Nodes on one reliable network form one domain; anything past that is federation, not a bigger domain
 
-**Deliverable:** the contract, and М10's AppHost rewritten as a worker that subscribes and reports instead of deciding for itself.
+**Deliverable:** the contract, and М10's AppHost rewritten as a worker that subscribes and reports instead of deciding for itself — including surviving a reboot with the controller switched off.
 
 ---
 
@@ -190,8 +194,10 @@ The module's correctness lesson. See *The zombie writer* above.
 - **Monotonic clocks and the two margins**
 - **Fencing at the archive:** the epoch in the path, and what the zombie's output actually is afterwards
 - `kill -STOP` and `kill -CONT` as the reproduction, because they produce a genuinely paused process rather than a simulated one
+- **The other stale-state failure, which destroys data rather than interrupting it.** A worker cut off from the controller holds a cached desired state that ages. What is safe to do with it depends on the operation: keeping an existing recording running is safe indefinitely; starting something new is questionable; **deleting footage under a cached retention policy is not safe at all.** An operator raises retention from 7 days to 30 on Monday, a host loses contact on Tuesday, and on Wednesday it obediently deletes everything older than a week
+- **The rule: destructive operations stop at the grace period; recording does not.** A host that cannot confirm its retention policy keeps footage and says so. Full disks are visible and recoverable; deleted footage is neither
 
-**Deliverable:** STOP a worker, watch its cameras reassign, CONT it, and prove both that the archive is intact and that the zombie's segments are orphaned rather than interleaved.
+**Deliverable:** STOP a worker, watch its cameras reassign, CONT it, and prove both that the archive is intact and that the zombie's segments are orphaned rather than interleaved. Then cut a worker off, expire its cache, and prove it kept recording and deleted nothing.
 
 ---
 
@@ -249,11 +255,15 @@ The course's own convention — the stand-in before the real thing — applied a
 
 ## Open questions
 
-1. **What happens when the controller itself is down?** Workers must keep recording — that is settled. Whether the controller needs high availability is not: one per site makes it a single point of *configuration* failure only, but across sites the answer may differ.
-2. **One controller per site, or one per fleet?** Bears directly on М12, and on whether a site keeps working when its uplink does not.
-3. **Does the archive index live in the same Postgres as configuration?** They have very different write rates and very different backup requirements.
-4. **Rebalance trigger.** Operator-initiated only, or scheduled during a maintenance window? The module currently assumes the former.
-5. **How much retention policy is domain design rather than infrastructure?** Schedules, per-camera overrides and legal hold are product decisions that may deserve their own lessons.
+1. **Rebalance trigger.** Operator-initiated only, or scheduled during a maintenance window? The module currently assumes the former.
+2. **How much retention policy is domain design rather than infrastructure?** Schedules, per-camera overrides and legal hold are product decisions that may deserve their own lessons.
+3. **Does a domain need database HA at all, or is backup-and-restore honest?** [`where-the-database-lives.md`](where-the-database-lives.md) recommends single-node by default and witness-based HA on request; whether the product ships the option is a commercial decision.
+
+**Resolved by [`where-the-database-lives.md`](where-the-database-lives.md):**
+
+- ~~What happens when the controller is down~~ — workers keep recording from cached assignments; configuration, reassignment and deletion stop
+- ~~One controller per site or per fleet~~ — one per domain, and a domain is one reliable network
+- ~~Does the archive index share Postgres with configuration~~ — no. The host that wrote the footage owns its index; the domain holds a rollup only
 
 ---
 
@@ -263,6 +273,7 @@ The course's own convention — the stand-in before the real thing — applied a
 - [Eliminate Phase and simplify Conditions](https://github.com/kubernetes/kubernetes/issues/7856) — Kubernetes on why phase enums were a mistake: not extensible, every addition breaking, clients switch on them
 - [Kubernetes API conventions](https://github.com/kubernetes/community/blob/main/contributors/devel/sig-architecture/api-conventions.md) — the conditions model in its mature form
 - [Pod conditions](https://kubernetes.io/docs/concepts/workloads/pods/pod-condition/) — conditions as reasons rather than positions, in practice
+- [`where-the-database-lives.md`](where-the-database-lives.md) — one database per domain, caching versus replication, and the rule that destructive operations must never run from a stale cache
 - [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) — the two-level scheduling argument this module implements
 
 *Written 4 September 2026.*

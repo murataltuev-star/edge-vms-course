@@ -141,7 +141,7 @@ Roughly **47 lessons**, or a full semester. Worth deciding deliberately rather t
 1. **The BUSL decision, taken once.** If Nomad is unacceptable in a shipped product, that changes М9 and everything above it. Decide before М11, not after М13
 2. **Does the vendor run a MASA?** BRSKI is unimplementable without one, and it is a permanent operational commitment — a signing service that must outlive every appliance shipped
 3. **М13's position** — before or after the domain controller, and now also sharpened by М12 being nine lessons long
-4. **Does the controller need high availability?** Workers keep recording when it is down, which is settled. Whether a site can tolerate losing its controller — and whether there is one per site or one per fleet — is not, and it bears on М12
+4. **Does the product ship a database HA option?** [`where-the-database-lives.md`](./М11_DomainVMS/where-the-database-lives.md) settles the architecture — one Postgres per domain, hosts cache, single-node by default — but whether HA is offered, and priced, is commercial
 
 **Resolved since the first version of this plan:**
 
@@ -150,6 +150,7 @@ Roughly **47 lessons**, or a full semester. Worth deciding deliberately rather t
 - ~~Lesson numbering~~ — М9 is 16–24, М10 is 25–29, М11 is 30–34, М12 is 35–43, М13 is 44–47
 - ~~Consul in or out~~ — out, and for a better reason than licensing alone ([`consul-and-openbao.md`](./М12_FederatedVMS/consul-and-openbao.md))
 - ~~Identity split across М12 and М14~~ — they were one layer; merged into М12
+- ~~Where the domain database lives, and whether hosts replicate it~~ — one per domain, hosts cache a read-only slice, and a domain is the largest set of nodes on a reliable network ([`where-the-database-lives.md`](./М11_DomainVMS/where-the-database-lives.md))
 
 ---
 
