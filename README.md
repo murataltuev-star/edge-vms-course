@@ -14,13 +14,13 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 |---|---|---|
 | [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 15 lessons |
 | [**М9** — Edge VMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback<br>2 · Nomad + Podman — workload plane | **Designed** · 9 lessons (16–24) |
-| М10 — State | 3 · Postgres — domain config & state | Planned · ~4 |
-| М11 — Domain controller | 4 · Cameras, archives, detectors | Planned · ~6 |
+| [**М10** — Node VMS](./М10_NodeVMS) | 3 · Postgres — domain state<br>4 · AppHost — the loop that acts on it | **Designed** · 5 lessons (25–29) |
+| [**М11** — Domain controller](./М11_DomainController) | 4 · Placement, leases, the API | **Designed** · 5 lessons (30–34) |
 | М12 — Secrets & PKI | 5 · OpenBao — secrets, certificates | Planned · ~4 |
 | М13 — Observability | 6 · Prometheus + logs | Planned · ~4 |
 | М14 — Device management | 7 · Enrollment, inventory, versions | Planned · ~5 |
 
-**[COURSE-PLAN.md](./COURSE-PLAN.md)** carries the full reasoning: why the modules run in this order, what each contains, and two structural decisions worth taking before М10 — a licensing concentration (Nomad, Consul and Vault are all BUSL under IBM) and the fact that secrets appear three modules before the module that manages them.
+**[COURSE-PLAN.md](./COURSE-PLAN.md)** carries the full reasoning: why the modules run in this order, what each contains, and two structural decisions worth taking before М11 — a licensing concentration (Nomad, Consul and Vault are all BUSL under IBM) and the fact that secrets appear three modules before the module that manages them.
 
 ---
 
@@ -44,12 +44,31 @@ Part A builds a single appliance — A/B partitions, signed update bundles, roll
 - [Module design](./М9_EdgeVMS/module-design.md) — lesson plan, partition layout, verification strategy, ARM porting appendix
 - [Kubernetes vs Nomad](./М9_EdgeVMS/kubernetes-vs-nomad.md) — why the orchestrator changed, and what it cost
 - [RAUC alternatives](./М9_EdgeVMS/rauc-alternatives.md) — SWUpdate, Mender, bootc, systemd-sysupdate, and where each wins
+- [One container per camera?](./М9_EdgeVMS/apphost-and-process-model.md) — the process model at 1000 cameras, and why the orchestrator must not own camera lifecycle
 
-Both decision records reach the same shape of conclusion: the tool that teaches best is not always the tool that ships best, and the documents say which is which.
+All three decision records reach the same shape of conclusion: the tool that teaches best is not always the tool that ships best, and the documents say which is which.
 
-## М10–М14 — not yet started
+## М10 — Node VMS
 
-Postgres for the state the appliance owns; a domain controller that reconciles desired cameras against running pipelines; OpenBao for secrets and per-device certificates; metrics and logs sized for a thin uplink; and finally enrollment, inventory and version skew across a fleet. Scope and sequencing in the [course plan](./COURSE-PLAN.md).
+Five lessons in which the box starts owning its own truth. `INSERT INTO cameras` causes a camera to start recording; `DELETE` stops it; killing the AppHost loses nothing but the open segment. Between the row and the pipeline there is only a loop the student wrote.
+
+Its organising rule is that **desired state is persisted and actual state is derived** — persist the second and you have built a cache that lies. It is also where the process model from М9's third decision record gets built: fifty GStreamer pipelines in one Python process, with the GIL boundary demonstrated rather than asserted.
+
+- [Module design](./М10_NodeVMS/module-design.md) — lesson plan, the Python shard model, and what the operator is never asked to decide
+
+## М11 — Domain controller
+
+Five lessons on what only exists once there is a second node: the controller and a worker can disagree about who owns a camera, and a worker can be alive, unreachable and still writing. This is the only module where a mistake corrupts customer footage rather than stopping a service.
+
+It is built backwards from one demo. Two hundred cameras across four workers; `kill -STOP` one of them — alive, holding its file handles, exactly what a hung disk looks like — and watch its cameras reappear elsewhere. Then `kill -CONT` it and let the zombie try to keep writing. **The archive is intact, and the student can prove it.**
+
+The answer is that fencing belongs at the archive rather than at the controller: the lease epoch is part of the segment path, so a stale writer cannot name the files it would otherwise corrupt. You cannot stop a zombie from writing — you can only make its writes harmless.
+
+- [Module design](./М11_DomainController/module-design.md) — the two-scheduler contract, placement stability, fencing, shadow mode, and what the API refuses
+
+## М12–М14 — not yet started
+
+OpenBao for secrets and per-device certificates; metrics and logs sized for a thin uplink; and finally enrollment, inventory and version skew across a fleet. Scope and sequencing in the [course plan](./COURSE-PLAN.md).
 
 ---
 

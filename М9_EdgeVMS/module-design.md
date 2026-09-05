@@ -104,6 +104,8 @@ The payoff lesson, and the one that must be *seen*, not described.
 
 **Sidebar (context, not taught):** RAUC is not the only atomic-update approach, and for a product shipping on x86-64 UEFI it may not be the best one — **bootc** ships the OS itself as an OCI image, through the same registry and signing chain as the containers above. RAUC is kept here because A/B slots are legible, its signature verification is unconditional, and its bootloader coverage means these lessons port to ARM. Alternatives compared in [`rauc-alternatives.md`](rauc-alternatives.md).
 
+**Second sidebar (setting up Lesson 20):** one container per camera is correct at this scale and stops being correct somewhere near fifty. Say so here rather than letting students generalise the pattern silently; Lesson 20 breaks it deliberately. Reasoning in [`apphost-and-process-model.md`](apphost-and-process-model.md).
+
 ---
 
 ## Part B — Many Servers, Many Sites
@@ -117,8 +119,10 @@ Opens with the honest argument, including the counter-argument.
 - Nomad's model: **servers** accept jobs and place work, **clients** register and execute it. Servers in a region form one raft consensus group and elect a leader; three or five servers per region
 - Regions may span multiple datacenters
 - Build a cluster: three servers, two clients
+- **Break container-per-camera on purpose.** Run [`reference/shard-memory-probe.py`](reference/shard-memory-probe.py) to measure the per-process baseline against the per-pipeline increment, and derive the shard size from the curve. Teach PSS versus RSS here — summing RSS across processes double-counts every shared library page and produces the wrong conclusion
+- The consequence for the rest of the course: the orchestrator schedules *workers*, and a domain controller (М11) assigns *cameras* to them. Camera lifecycle must not require a healthy control plane
 
-**Deliverable:** a working cluster, and a written justification for why this deployment needed one.
+**Deliverable:** a working cluster, a measured shard size, and a written justification for why this deployment needed one.
 
 ### Lesson 21 — The VMS as a Nomad job
 
