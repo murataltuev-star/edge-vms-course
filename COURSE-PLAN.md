@@ -12,11 +12,13 @@ A shipped edge VMS is seven layers deep. The course builds them in dependency or
 | 2 | **Nomad + Podman** | What workload is running, and where? | М9 Part B | Designed |
 | 3 | **Postgres** | What does this system know about itself? | М10 | Designed |
 | 4 | **Domain controller** | Cameras, archives, detectors — the actual product | М10 (one node) · М11 (many) | Designed |
-| 5 | **OpenBao** | Who is allowed to know what, and how do they prove it? | М12 | Planned |
+| 5 | **OpenBao** | Who is allowed to know what, and how do they prove it? | М12 | Designed |
 | 6 | **Prometheus + logs** | Is it working, and how would I know? | М13 | Planned |
-| 7 | **Device management** | What do I have, where, on which version? | М14 | Planned |
+| 7 | **Device management** | What do I have, where, on which version? | М12 | Designed |
 
 Layers 1–2 are the two update planes М9 is built around: the OS underneath, the workload on top. Layers 3–4 are the product. Layers 5–7 are what turns one working box into a fleet somebody can operate.
+
+**Layers 5 and 7 turned out to be one layer.** They are both in М12. The plan had identity in layer 5 and device management in layer 7, three modules apart, and each asked the same question — *how does a machine prove who it is in order to get its first secret?* Enrollment is where identity and device management meet, and separating them meant neither owned it.
 
 **Layer 4 is split across two modules,** which is a change from this plan's first version. М10 builds the reconciliation loop on a single node, where both ends of it are visible at once; М11 takes the same loop to many nodes and adds placement and the API. A database with nothing acting on it is not a working system, so М10 could not stop at Postgres.
 
@@ -39,9 +41,9 @@ Three of seven layers under IBM's BUSL, in a product that is *shipped to custome
 - **Vault → OpenBao.** A Linux Foundation fork, MPL-2.0, with serious adopters (Nvidia migrated to it). This is why layer 5 is written as OpenBao in the table above rather than Vault.
 - **Consul → drop it.** Nomad has **native service discovery** that needs no Consul, and HashiCorp's own documentation says it "suits edge computing… and minimal single-cluster setups prioritizing simplicity." It gives templated service addresses but *not* dynamic DNS, *not* HTTP/TCP/gRPC health checks with healthy-instance filtering, and *not* service mesh. For a handful of services per site, that is likely enough.
 
-That leaves **Nomad as the only unavoidable BUSL dependency**, and no fork of it exists — unlike Terraform (OpenTofu) and Vault (OpenBao). If that single dependency is unacceptable, the decision is to teach Kubernetes instead, and it should be taken now rather than at М14.
+That leaves **Nomad as the only unavoidable BUSL dependency**, and no fork of it exists — unlike Terraform (OpenTofu) and Vault (OpenBao). If that single dependency is unacceptable, the decision is to teach Kubernetes instead, and it should be taken now rather than at М13.
 
-**Consul earns its place only if** you need mTLS service mesh, DNS-based discovery, or health-based routing across many services. Note that mTLS overlaps with what OpenBao's PKI gives you in layer 5 — so before adding Consul, check whether layer 5 already covers the need.
+**This is now settled**, in [`consul-and-openbao.md`](./М12_FederatedVMS/consul-and-openbao.md). The short version: Consul and OpenBao are not alternatives — they overlap on exactly one thing, mTLS between services — and Consul's mesh CA turns out to be the *same* root → per-locality intermediate → short-leaf design М12 arrives at independently. The decision turns on scope instead: no service mesh issues an identity to a device that has never been on the network, so the product runs a PKI regardless, and a second certificate hierarchy buys nothing. The accepted cost is health-check-filtered discovery, which Nomad's native discovery does not provide.
 
 ### 2. Secrets arrive three modules before the module that manages them
 
@@ -75,12 +77,19 @@ Where the course stops being about infrastructure and starts being about the pro
 
 **Detectors resolve an open question rather than needing a lesson:** attaching one creates another object of another worker class with its own opaque config, and the controller does not change. Where inference runs is therefore a *deployment* question, answered by worker class and placement constraints.
 
-### М12 — Secrets and PKI: OpenBao · ~4 lessons
+### М12 — FederatedVMS: identity, trust and the fleet · 9 lessons (35–43) · [designed](./М12_FederatedVMS/module-design.md)
 
-- Why hand-provisioned credentials stop working the moment there is more than one box
-- Auth methods, and the appliance's identity problem: how does a machine prove who it is to get its first secret?
-- PKI: per-device certificates, mTLS between services, rotation without downtime
-- **The honest edge problem: unsealing.** A box that reboots unattended at 3am must unseal without a human. Auto-unseal normally leans on a cloud KMS, which an air-gapped site does not have. There is no clean answer, and the module should say so rather than pretend
+**Merged from the old М12 and М14**, which asked the same question twice. The fourth and last scope level: things that must be true above any single domain.
+
+Its thesis is a constraint: **everything below this layer must keep working when this layer is unreachable.** A site records video whether or not the centre answers, so identity, trust and entitlement are cached and degrade on a grace period rather than blocking.
+
+- **Secure introduction** — how a box holding no secret obtains one, over a network it cannot yet trust. [BRSKI](https://datatracker.ietf.org/doc/html/rfc8995) as the reference (pledge, registrar, MASA, voucher, IDevID → LDevID) and registration-with-approval as the shipped fallback. A shared secret in a shipped image is a defect, not a trade-off
+- **An intermediate CA per domain** — the structural move that makes offline tolerance possible, because routine issuance never leaves the site
+- **Lifetimes against offline tolerance**, with the arithmetic students should be able to state: *tolerable outage = certificate lifetime − renewal margin*. Revocation at the edge is a lifetime problem, not a list problem
+- **The unsealing problem, resolved rather than lamented.** If the appliance needs a vault to boot, the vault is not allowed to be unavailable — which contradicts the thesis. So the appliance does not run one; the vault is central and the box holds a hardware-rooted certificate
+- **People and scope across domains** — the authorisation model М11 deliberately left out
+- **Inventory, reported never commanded**, and **version skew as the normal state** — the N−1 contract rule that М11's opaque config and revision ordering pay for
+- **hawkBit**, closing both update planes with a control plane that finally spans sites
 
 ### М13 — Observability: Prometheus and logs · ~4 lessons
 
@@ -88,17 +97,6 @@ Where the course stops being about infrastructure and starts being about the pro
 - What to actually alarm on for a VMS: fragment write rate, camera offline, disk fill rate, time skew. Not CPU graphs
 - **The edge constraint:** you cannot ship everything to a central Prometheus over a thin uplink. Remote-write with downsampling, or local retention with pull-on-demand
 - Logs: journald, retention, and never letting a secret reach them — which is why this module follows М12
-
-### М14 — Device management: enrollment, inventory, versions · ~5 lessons
-
-The capstone that closes the fleet story.
-
-- **Enrollment:** a box arrives at a site. How does it join, get an identity, and fetch its configuration without someone typing secrets into it?
-- **Inventory:** what do I have, where is it, what is it running?
-- **Version skew:** a fleet on mixed versions is the normal state, not a failure. Design for it
-- **hawkBit** for OS updates — the pull-based answer to the push-based gap М9 accepts when it chooses Nomad Pack over Fleet
-
-This is where the two update planes finally get a control plane that spans sites.
 
 ---
 
@@ -109,7 +107,6 @@ The order is dependency-driven, not layer-numbered:
 - **М10 before М11** — the loop has to work on one box before placement across several is meaningful
 - **М11 before М12** — secrets management is abstract until there are services worth protecting
 - **М12 before М13** — so that "never log a secret" is a rule students already understand
-- **М14 last** — the fleet capstone needs everything else to exist first
 
 **One defensible alternative:** move observability (М13) earlier, on the grounds that you cannot operate what you cannot see, and М11's reconciliation loop is much easier to debug with metrics in front of you. The cost is teaching monitoring before there is much worth monitoring.
 
@@ -123,11 +120,10 @@ The order is dependency-driven, not layer-numbered:
 | М9 — EdgeVMS | 9 | 24 |
 | М10 — NodeVMS | 5 | 29 |
 | М11 — DomainVMS | 5 | 34 |
-| М12 — OpenBao | ~4 | ~38 |
-| М13 — Observability | ~4 | ~42 |
-| М14 — Device management | ~5 | ~47 |
+| М12 — FederatedVMS | 9 | 43 |
+| М13 — Observability | ~4 | ~47 |
 
-Roughly **47 lessons**, or a full semester. Worth deciding deliberately rather than discovering at М12: this is a large course, and М10–М14 are each a genuine module rather than an appendix.
+Roughly **47 lessons**, or a full semester. Worth deciding deliberately rather than discovering at М12: this is a large course, and М10–М13 are each a genuine module rather than an appendix.
 
 ---
 
@@ -142,16 +138,18 @@ Roughly **47 lessons**, or a full semester. Worth deciding deliberately rather t
 
 ## Open questions
 
-1. **The BUSL decision, taken once.** If Nomad is unacceptable in a shipped product, that changes М9 and everything above it. Decide before М11, not after М14
-2. **Consul in or out.** The recommendation here is out, on the evidence that Nomad's native discovery covers edge-scale needs. Revisit if service mesh becomes a requirement
-3. **М13's position** — before or after the domain controller
-4. **Does the controller need high availability?** Workers keep recording when it is down, which is settled. Whether a site can tolerate losing its controller — and whether there is one per site or one per fleet — is not, and it bears on М14
+1. **The BUSL decision, taken once.** If Nomad is unacceptable in a shipped product, that changes М9 and everything above it. Decide before М11, not after М13
+2. **Does the vendor run a MASA?** BRSKI is unimplementable without one, and it is a permanent operational commitment — a signing service that must outlive every appliance shipped
+3. **М13's position** — before or after the domain controller, and now also sharpened by М12 being nine lessons long
+4. **Does the controller need high availability?** Workers keep recording when it is down, which is settled. Whether a site can tolerate losing its controller — and whether there is one per site or one per fleet — is not, and it bears on М12
 
 **Resolved since the first version of this plan:**
 
 - ~~Where inference runs~~ — a deployment question, not a schema one. Opaque worker config means the controller is unchanged whether inference runs on the appliance, at the camera or in the cloud (М11)
 - ~~Where the write API belongs~~ — built in М11, unauthenticated and marked as such; authentication arrives with OpenBao in М12
-- ~~Lesson numbering~~ — М9 is 16–24, М10 is 25–29, М11 is 30–34
+- ~~Lesson numbering~~ — М9 is 16–24, М10 is 25–29, М11 is 30–34, М12 is 35–43, М13 is 44–47
+- ~~Consul in or out~~ — out, and for a better reason than licensing alone ([`consul-and-openbao.md`](./М12_FederatedVMS/consul-and-openbao.md))
+- ~~Identity split across М12 and М14~~ — they were one layer; merged into М12
 
 ---
 

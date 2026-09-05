@@ -250,7 +250,7 @@ The course's own convention — the stand-in before the real thing — applied a
 ## Open questions
 
 1. **What happens when the controller itself is down?** Workers must keep recording — that is settled. Whether the controller needs high availability is not: one per site makes it a single point of *configuration* failure only, but across sites the answer may differ.
-2. **One controller per site, or one per fleet?** Bears directly on М14, and on whether a site keeps working when its uplink does not.
+2. **One controller per site, or one per fleet?** Bears directly on М12, and on whether a site keeps working when its uplink does not.
 3. **Does the archive index live in the same Postgres as configuration?** They have very different write rates and very different backup requirements.
 4. **Rebalance trigger.** Operator-initiated only, or scheduled during a maintenance window? The module currently assumes the former.
 5. **How much retention policy is domain design rather than infrastructure?** Schedules, per-camera overrides and legal hold are product decisions that may deserve their own lessons.

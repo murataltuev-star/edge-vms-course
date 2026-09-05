@@ -13,6 +13,7 @@ The module names are not decoration. They mark one idea getting harder three tim
 | **М9 · EdgeVMS** | what it *is* | in the image that booted | nothing — a box is whatever was flashed onto it | replacing the OS underneath a running product without destroying the recordings |
 | **М10 · NodeVMS** | what it *should be* | in a database on the box | desired state and actual state, inside one process | closing the gap — and never persisting the half that must be re-derived |
 | **М11 · DomainVMS** | what *everyone* should be | in a database that several nodes act on | nodes, with each other | agreeing who owns what, when dead and merely-unreachable look identical |
+| **М12 · FederatedVMS** | who it *is*, and what it may do | in a trust root above every domain | domains, with the centre | staying correct while the centre is unreachable |
 
 [**М8**](./М8_KVS_VMS) comes before the progression starts: it builds the product itself with no local truth at all, because Kinesis holds the configuration and the archive both. Everything after it is the consequence of the box having to hold its own.
 
@@ -22,7 +23,9 @@ The module names are not decoration. They mark one idea getting harder three tim
 
 **DomainVMS keeps that loop and takes away the shared address space.** Conceptually nothing changes; practically everything does, because two nodes can now hold different opinions, and a paused process is indistinguishable from a dead one. That is why М11 is the only module where a mistake corrupts customer footage instead of stopping a service.
 
-The last three modules ask the questions that follow once truth is distributed: who is allowed to assert it (**М12** — identity and secrets), whether you can see it (**М13** — observability), and what is true of the fleet itself (**М14** — inventory and version skew).
+**FederatedVMS is the first layer that is allowed to be unavailable**, and that constraint is the whole module. A site records video whether or not the centre answers, so identity, trust and entitlement are cached and degrade on a grace period rather than blocking. Federation rather than hierarchy — domains stay authoritative for their own operation.
+
+**М13 is the one module that is not a new scope.** Observability is how you see the four you already have, which is why it comes last and why it does not get a VMS name.
 
 ---
 
@@ -36,9 +39,8 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback<br>2 · Nomad + Podman — workload plane | **Designed** · 9 lessons (16–24) |
 | [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — domain state<br>4 · AppHost — the loop that acts on it | **Designed** · 5 lessons (25–29) |
 | [**М11** — DomainVMS](./М11_DomainVMS) | 4 · Placement, leases, the API | **Designed** · 5 lessons (30–34) |
-| М12 — Secrets & PKI | 5 · OpenBao — secrets, certificates | Planned · ~4 |
-| М13 — Observability | 6 · Prometheus + logs | Planned · ~4 |
-| М14 — Device management | 7 · Enrollment, inventory, versions | Planned · ~5 |
+| [**М12** — FederatedVMS](./М12_FederatedVMS) | 5 · OpenBao — identity, trust, PKI<br>7 · Enrollment, inventory, version skew | **Designed** · 9 lessons (35–43) |
+| М13 — Observability | 6 · Prometheus + logs | Planned · ~4 (44–47) |
 
 **[COURSE-PLAN.md](./COURSE-PLAN.md)** carries the full reasoning: why the modules run in this order, what each contains, and two structural decisions worth taking before М11 — a licensing concentration (Nomad, Consul and Vault are all BUSL under IBM) and the fact that secrets appear three modules before the module that manages them.
 
@@ -86,9 +88,20 @@ The answer is that fencing belongs at the archive rather than at the controller:
 
 - [Module design](./М11_DomainVMS/module-design.md) — the two-scheduler contract, placement stability, fencing, shadow mode, and what the API refuses
 
-## М12–М14 — not yet started
+## М12 — FederatedVMS
 
-OpenBao for secrets and per-device certificates; metrics and logs sized for a thin uplink; and finally enrollment, inventory and version skew across a fleet. Scope and sequencing in the [course plan](./COURSE-PLAN.md).
+Nine lessons on what has to be true above any single domain: who a box is, who a person is, what a customer is entitled to, and what the fleet actually consists of. Merged from two modules that were three apart and asked the same question twice — *how does a machine prove who it is to get its first secret?* — with neither owning it.
+
+The demo: a box arrives in a carton, nobody types a secret into it, and minutes later it is recording. Then the uplink is cut for thirty days and it keeps working, because routine certificate issuance never leaves the site. Then it is marked stolen and loses access on a schedule stated in advance.
+
+It also resolves the problem the course plan had flagged as having no clean answer. Unattended unsealing at 3am: **if the appliance needs a vault to boot, the vault is not allowed to be unavailable** — which contradicts the layer's own thesis. So the appliance does not run one.
+
+- [Module design](./М12_FederatedVMS/module-design.md) — secure introduction, per-domain intermediate CAs, lifetimes against offline tolerance, inventory and version skew
+- [Consul and OpenBao](./М12_FederatedVMS/consul-and-openbao.md) — two answers to mTLS, and why the product needs only one
+
+## М13 — not yet started
+
+Metrics and logs sized for a thin uplink: what to alarm on for a VMS, and why you cannot ship everything to a central Prometheus. Scope and sequencing in the [course plan](./COURSE-PLAN.md).
 
 ---
 
