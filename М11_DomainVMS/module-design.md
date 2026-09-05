@@ -224,9 +224,43 @@ Lesson 25 argued an orchestrator is wrong for one appliance. This is the other h
 
 *A reconciler you write, above the one you were given. This is where the module gets hard.*
 
+Part A ends with a working cluster, and a student entitled to ask the obvious question: **you already have a scheduler and you already have a database — why is either one not enough?** Part B has to answer that before it builds anything, because adding a second of either is expensive and the naive design is genuinely tempting.
+
+### There are two planes, and each needs its own pair
+
+| | Schedules | Its state lives in | Changes when | Must survive |
+|---|---|---|---|---|
+| **Infrastructure** | Nomad — workers onto nodes | Nomad's own raft | you ship a release | — |
+| **Domain** | the controller — cameras onto workers | the domain database | an operator clicks a button | the infrastructure plane being down |
+
+That last cell is the whole argument. Everything below follows from it.
+
+### Why not let Nomad schedule cameras?
+
+It can hold arbitrary state and it already places things. Four reasons it must not:
+
+- **Cardinality and churn.** An allocation is one of tens per node, changing when engineers deploy. A camera is one of thousands per site, changing when an operator clicks. Two orders of magnitude apart, on completely different clocks
+- **State in the wrong place.** A thousand cameras' configuration in Nomad's raft means every operator edit becomes consensus traffic replicated to every server. Raft is for cluster state, not customer data
+- **Availability coupling — the decisive one.** If a camera is an allocation, adding a camera requires healthy Nomad servers. A VMS must accept configuration and keep recording through a control-plane outage, which [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) argues is disqualifying on its own
+- **Ownership.** Allocations are *placed* and nothing contests them. Cameras are *owned*, and ownership has to be fenced. Nomad has no lease or epoch for allocations because it has never needed one — which is exactly why Lesson 29 exists
+
+### Why not keep desired state in the host database?
+
+Because a host database has no single writer for domain state. Every node would hold its own opinion about who owns camera 7, and *agreement needs one authority.*
+
+**But note what is not happening here: you are not adding a second database.** М10 deliberately built two on one box — a domain database and a host database sharing an instance — precisely so that this module *moves* one rather than splitting one. The domain database is promoted to domain scope; host databases stay exactly where they were, holding each node's cache, its own archive index and its own events. No schema changes. That was the whole point of building both in Lesson 20.
+
+### What the second scheduler costs, stated plainly
+
+Two systems to operate, two places a change can sit un-applied, and a student who must learn which plane a given failure lives in. The course does not pretend this is free.
+
+What it buys is the thing that cannot be bought any other way: **camera lifecycle that survives the orchestrator**, and an ownership model precise enough to fence. Every remaining lesson in this module is only possible because ownership belongs to the controller rather than to Nomad.
+
+---
+
 ### Lesson 27 — Two schedulers, and the contract between them
 
-- Why a second scheduler exists at all, and what the orchestrator must never learn
+- **The argument above, made as a lesson** — students should be able to defend the second scheduler against someone proposing to put cameras in Nomad, and to say what it costs
 - Desired state published by the controller; actual state reported by workers; `observed_revision >= revision` as the only test of applied, unchanged from М10
 - **Streams, not callbacks.** A server-streaming watch and a client-streaming report mean the worker is never required to be addressable — which is what makes this work behind a customer's NAT
 - Resume tokens: a reconnecting worker says where it got to, and gets a delta rather than a full resync
