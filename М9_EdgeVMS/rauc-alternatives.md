@@ -1,6 +1,6 @@
 # RAUC and Its Alternatives
 
-**A decision record for М9_EdgeVMS.** Companion to [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md), written in answer to "are there alternatives to RAUC?" — the same kind of question, and it produced the same kind of answer: the incumbent choice survives for the course, but probably shouldn't for the product.
+**A decision record for М9_EdgeVMS.** Companion to [`kubernetes-vs-nomad.md`](../М11_DomainVMS/kubernetes-vs-nomad.md), written in answer to "are there alternatives to RAUC?" — the same kind of question, and it produced the same kind of answer: the incumbent choice survives for the course, but probably shouldn't for the product.
 
 ---
 

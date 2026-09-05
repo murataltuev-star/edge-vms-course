@@ -8,22 +8,22 @@ Course material for building a video management system, shipping it as an applia
 
 The module names are not decoration. They mark one idea getting harder three times, and the course is arranged around it: **where the truth about the system lives, and how many things are able to disagree about it.**
 
-| | The box knows | Truth lives | What can disagree | The new hard problem |
-|---|---|---|---|---|
-| **М9 · EdgeVMS** | what it *is* | in the image that booted | nothing — a box is whatever was flashed onto it | replacing the OS underneath a running product without destroying the recordings |
+|                        | The box knows                   | Truth lives                             | What can disagree                               | The new hard problem                                                               |
+| ---------------------- | ------------------------------- | --------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **М9 · EdgeVMS**       | what it *is*                    | in the image that booted                | nothing — a box is whatever was flashed onto it | replacing the OS underneath a running product without destroying the recordings    |
 | **М10 · NodeVMS** | what it *should be* | in a database on the box | desired state and actual state, inside one process | closing the gap — and never persisting the half that must be re-derived |
-| **М11 · DomainVMS** | what *everyone* should be | in a database that several nodes act on | nodes, with each other | agreeing who owns what, when dead and merely-unreachable look identical |
-| **М12 · FederatedVMS** | who it *is*, and what it may do | in a trust root above every domain | domains, with the centre | staying correct while the centre is unreachable |
+| **М11 · DomainVMS**    | what *everyone* should be       | in a database that several nodes act on | nodes, with each other                          | agreeing who owns what, when dead and merely-unreachable look identical            |
+| **М12 · FederatedVMS** | who it *is*, and what it may do | in a trust root above every domain      | domains, with the centre                        | staying correct while the centre is unreachable                                    |
 
 **Every boundary in that table is a network you stopped trusting.** A domain is the largest set of nodes sharing a reliable link; past that you federate rather than build a bigger domain. That is what makes the progression physical rather than a tidy-looking hierarchy.
 
 [**М8**](./М8_KVS_VMS) comes before the progression starts: it builds the product itself with no local truth at all, because Kinesis holds the configuration and the archive both. Everything after it is the consequence of the box having to hold its own.
 
-**EdgeVMS has no desired state.** You flash an image and containers run; actual state is the only state there is. М9's whole job is making that replaceable safely — which is why it is about atomic updates, rollback and signatures rather than about cameras.
+**EdgeVMS has no desired state.** You flash an image and containers run; actual state is the only state there is. М9's whole job is making that replaceable safely — which is why it is four lessons about atomic updates, rollback and signatures, and not one about cameras.
 
-**NodeVMS introduces the wish.** A row saying a camera should be recording is not a camera recording, and something has to close the gap. The rule this turns on runs through everything above it: *desired state is persisted, actual state is derived.* Persist the second and you have built a cache that lies.
+**NodeVMS introduces the wish.** A row saying a camera should be recording is not a camera recording, and something has to close the gap — five lessons in which the student writes that reconciler by hand, at a scale where both ends fit in one terminal. The rule it turns on runs through everything above: *desired state is persisted, actual state is derived.* Persist the second and you have built a cache that lies.
 
-**DomainVMS keeps that loop and takes away the shared address space.** Conceptually nothing changes; practically everything does, because two nodes can now hold different opinions, and a paused process is indistinguishable from a dead one. That is why М11 is the only module where a mistake corrupts customer footage instead of stopping a service.
+**DomainVMS is where the second box appears, and it teaches one idea twice on purpose.** First a production reconciler — a Nomad cluster, the VMS as a job on it, a node pulled off the wall — because a jobspec *is* desired state and a scheduler *is* the loop. Then the pivot: **Nomad's allocations belong to whoever placed them, and nothing argues.** A camera is *owned*, two workers can claim it, and a paused process is indistinguishable from a dead one. That is why М11 is the only module where a mistake corrupts customer footage instead of stopping a service.
 
 **Every layer is allowed to be unavailable to the layer beneath it**, and the layer beneath caches what it needs to carry on. Workers keep recording when the controller is down; hosts keep recording when the domain database is down; domains keep operating when the centre is unreachable. FederatedVMS is where that stops being one decision among several and becomes a module's entire thesis — which is what makes this federation rather than hierarchy.
 
@@ -40,10 +40,10 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | Module | Layer it builds | State |
 |---|---|---|
 | [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 15 lessons |
-| [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback<br>2 · Nomad + Podman — workload plane | **Designed** · 9 lessons (16–24) |
-| [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — domain state<br>4 · AppHost — the loop that acts on it | **Designed** · 5 lessons (25–29) |
-| [**М11** — DomainVMS](./М11_DomainVMS) | 4 · Placement, leases, the API | **Designed** · 5 lessons (30–34) |
-| [**М12** — FederatedVMS](./М12_FederatedVMS) | 5 · OpenBao — identity, trust, PKI<br>7 · Enrollment, inventory, version skew | **Designed** · 9 lessons (35–43) |
+| [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback | **Designed** · 4 lessons (16–19) |
+| [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — domain state<br>4 · AppHost — the loop that acts on it | **Designed** · 5 lessons (20–24) |
+| [**М11** — DomainVMS](./М11_DomainVMS) | 2 · Nomad + Podman — the scheduler<br>4 · Placement, leases, the API | **Designed** · 9 lessons (25–33) |
+| [**М12** — FederatedVMS](./М12_FederatedVMS) | 5 · OpenBao — identity, trust, PKI<br>7 · Enrollment, inventory, version skew | **Designed** · 10 lessons (34–43) |
 | М13 — Observability | 6 · Prometheus + logs | Planned · ~4 (44–47) |
 
 **[COURSE-PLAN.md](./COURSE-PLAN.md)** carries the full reasoning: why the modules run in this order, what each contains, and two structural decisions worth taking before М11 — a licensing concentration (Nomad, Consul and Vault are all BUSL under IBM) and the fact that secrets appear three modules before the module that manages them.
@@ -63,39 +63,42 @@ Fifteen lessons take a student who knows Python but has never built a web applic
 
 ## М9 — EdgeVMS
 
-Nine lessons turning that cloud VMS into an appliance. Its spine is that a real edge product has **two independent update planes**: RAUC replaces the operating system underneath, while a scheduler manages the workload on top. Conflate them and you get systems where a config change requires an OS flash, or where an OS update destroys the recordings.
+Four lessons turning that cloud VMS into an appliance: A/B partitions, signed update bundles, rollback proven by shipping a deliberately broken update, and then Podman and Quadlet.
 
-Part A builds a single appliance — A/B partitions, signed update bundles, rollback proven by shipping a deliberately broken update, then Podman and Quadlet. Part B goes to many servers and many sites with Nomad.
+Its spine is that a real edge product has **two independent update planes** — the operating system underneath, the workload on top — and both are visible on one box. Lesson 19 is where it bites: Podman's storage must be redirected to the data partition, because images and volumes left in a rootfs slot are destroyed by the next OS update. Conflate the planes and you build systems where a config change requires an OS flash.
+
+*The multi-node half of this module moved to М10, where desired state is the subject. A module called EdgeVMS should not build a raft cluster.*
 
 - [Module design](./М9_EdgeVMS/module-design.md) — lesson plan, partition layout, verification strategy, ARM porting appendix
-- [Kubernetes vs Nomad](./М9_EdgeVMS/kubernetes-vs-nomad.md) — why the orchestrator changed, and what it cost
 - [RAUC alternatives](./М9_EdgeVMS/rauc-alternatives.md) — SWUpdate, Mender, bootc, systemd-sysupdate, and where each wins
 - [One container per camera?](./М9_EdgeVMS/apphost-and-process-model.md) — the process model at 1000 cameras, and why the orchestrator must not own camera lifecycle
 
-All three decision records reach the same shape of conclusion: the tool that teaches best is not always the tool that ships best, and the documents say which is which.
+Both reach the same shape of conclusion, as does the orchestrator record now filed with М11: the tool that teaches best is not always the tool that ships best, and the documents say which is which.
 
 ## М10 — NodeVMS
 
-Five lessons in which the box starts owning its own truth. `INSERT INTO cameras` causes a camera to start recording; `DELETE` stops it; killing the AppHost loses nothing but the open segment. Between the row and the pipeline there is only a loop the student wrote.
+Five lessons in which one box starts owning its own truth. `INSERT INTO cameras` causes a camera to start recording; `DELETE` stops it; killing the AppHost loses nothing but the open segment. Between the row and the pipeline there is only a loop the student wrote.
 
-Its organising rule is that **desired state is persisted and actual state is derived** — persist the second and you have built a cache that lies. It is also where the process model from М9's third decision record gets built: fifty GStreamer pipelines in one Python process, with the GIL boundary demonstrated rather than asserted.
+Its organising rule is that **desired state is persisted and actual state is derived** — persist the second and you have built a cache that lies. It is also where the process model from М9's decision record gets built: fifty GStreamer pipelines in one Python process, with the GIL boundary demonstrated rather than asserted.
 
 - [Module design](./М10_NodeVMS/module-design.md) — lesson plan, the Python shard model, and what the operator is never asked to decide
+- [`reference/shard-memory-probe.py`](./М10_NodeVMS/reference/shard-memory-probe.py) — measures what sharding actually saves, in PSS rather than RSS
 
 ## М11 — DomainVMS
 
-Five lessons on what only exists once there is a second node: the controller and a worker can disagree about who owns a camera, and a worker can be alive, unreachable and still writing. This is the only module where a mistake corrupts customer footage rather than stopping a service.
+Nine lessons in two halves. **Part A** is the scheduler: a Nomad cluster, the VMS as a job on it, and a node pulled off the wall to watch work reschedule — with students made to argue why none of it belongs on a single appliance. **Part B** is what a scheduler never has to handle: contested ownership. The controller and a worker can disagree about who owns a camera, and a worker can be alive, unreachable and still writing. This is the only module where a mistake corrupts customer footage rather than stopping a service.
 
 It is built backwards from one demo. Two hundred cameras across four workers; `kill -STOP` one of them — alive, holding its file handles, exactly what a hung disk looks like — and watch its cameras reappear elsewhere. Then `kill -CONT` it and let the zombie try to keep writing. **The archive is intact, and the student can prove it.**
 
 The answer is that fencing belongs at the archive rather than at the controller: the lease epoch is part of the segment path, so a stale writer cannot name the files it would otherwise corrupt. You cannot stop a zombie from writing — you can only make its writes harmless.
 
-- [Module design](./М11_DomainVMS/module-design.md) — the two-scheduler contract, placement stability, fencing, shadow mode, and what the API refuses
+- [Module design](./М11_DomainVMS/module-design.md) — the cluster, node failover, the two-scheduler contract, placement stability, fencing, shadow mode, and what the API refuses
+- [Kubernetes vs Nomad](./М11_DomainVMS/kubernetes-vs-nomad.md) — why the orchestrator is Nomad, what it cost, and why neither belongs on one box
 - [Where the databases live](./М11_DomainVMS/where-the-database-lives.md) — a domain database and a host database, why hosts cache rather than replicate, and the retention rule that protects customer footage
 
 ## М12 — FederatedVMS
 
-Nine lessons on what has to be true above any single domain: who a box is, who a person is, what a customer is entitled to, and what the fleet actually consists of. Merged from two modules that were three apart and asked the same question twice — *how does a machine prove who it is to get its first secret?* — with neither owning it.
+Ten lessons on what has to be true above any single domain: who a box is, who a person is, what a customer is entitled to, and what the fleet actually consists of. Merged from two modules that were three apart and asked the same question twice — *how does a machine prove who it is to get its first secret?* — with neither owning it.
 
 The demo: a box arrives in a carton, nobody types a secret into it, and minutes later it is recording. Then the uplink is cut for thirty days and it keeps working, because routine certificate issuance never leaves the site. Then it is marked stolen and loses access on a schedule stated in advance.
 

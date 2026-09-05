@@ -1,3 +1,5 @@
 .DS_Store
 **/.DS_Store
 domain-controller-v1/
+__pycache__/
+*.pyc

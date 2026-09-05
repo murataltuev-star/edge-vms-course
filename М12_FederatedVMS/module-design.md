@@ -8,7 +8,7 @@ It is also the first layer that may be switched off without the product stopping
 
 > **Scope note.** [`COURSE-PLAN.md`](../COURSE-PLAN.md) originally had these as two modules three apart: М12 for secrets and PKI, М14 for device management. They asked the same question twice — *"how does a machine prove who it is to get its first secret?"* and *"how does a box join and get an identity without someone typing secrets into it?"* — and neither owned it. They are merged here. The seven-layer model had identity as layer 5 and device management as layer 7; building it revealed they are one layer, and enrollment is where they meet.
 
-> **A word that is already taken.** М9 Lesson 22 teaches Nomad *federation* — regions joined by gossip. That is the workload plane. This is the product plane, across domains. Two planes again, exactly as М9's OS-versus-workload distinction, and the module says so on its first page so students do not merge them.
+> **One word, two planes.** Lesson 35 teaches Nomad *federation* — regions joined by gossip, sharing no state. That is the **workload** plane spanning sites. Everything after it is the **product** plane: trust, identity and entitlement spanning domains. The module deliberately teaches them adjacently, because the distinction is the same one М9 drew between the OS and the workload, and students who meet the two federations a module apart tend to merge them.
 
 ---
 
@@ -60,9 +60,10 @@ Finally the box is marked stolen, and loses access on a schedule the student can
 
 - **М9 Lesson 19** — credentials are provisioned at commissioning, never baked into an image that ships identically to every device. This module finally answers *how*.
 - **М9 Lesson 17** — the RAUC signing chain, built with real `openssl`. The PKI lessons here are the same skill, one scope up.
-- **М10 Lesson 25** — the hand-provisioned database password, marked temporary. Cashed in at Lesson 39.
-- **М11 Lesson 34** — the deliberately unauthenticated API. Also cashed in at Lesson 39.
+- **М10 Lesson 20** — the hand-provisioned database password, marked temporary. Cashed in at Lesson 39.
+- **М11 Lesson 31** — the deliberately unauthenticated API. Also cashed in at Lesson 39.
 - **М11 entire** — opaque config and revision ordering are what make version skew survivable, and Lesson 42 collects on that.
+- **М10 Part B** — Nomad clusters and jobs. Lesson 35 extends that to regions; the rest of the module does not depend on it.
 
 ---
 
@@ -138,9 +139,9 @@ The vault is central. The appliance holds its device certificate — in the TPM 
 
 ---
 
-## Part A — Identity
+## Part A — Many networks, and who may be trusted across them
 
-### Lesson 35 — The layer that is allowed to be down
+### Lesson 34 — The layer that is allowed to be down
 
 - The thesis, and what it demands of every layer beneath it
 - What the federated database actually holds: trust roots, device identities, people and the domains they can see, entitlements, inventory
@@ -149,6 +150,19 @@ The vault is central. The appliance holds its device certificate — in the TPM 
 - Designing for absence: what each lower layer caches, for how long, and what it does when the cache expires
 
 **Deliverable:** the federated schema, and a written table of what every layer below must cache and how it degrades.
+
+---
+
+### Lesson 35 — Many sites: regions and federation
+
+Moved here from М9, because "many sites" is where this module begins rather than where the appliance module ends.
+
+- Regions are **fully independent** — they share no jobs, clients or state, and nothing replicates between them
+- They are loosely coupled by a **gossip protocol**, so a job can be submitted to any region, or any region's state queried, transparently; requests are forwarded to the right regional servers
+- Why "independent regions, loosely coupled" suits camera sites better than one stretched cluster: a site that loses its uplink keeps recording
+- Namespaces and node pools for separating tenants and hardware classes
+
+**Deliverable:** two federated regions, each running the VMS, both reachable from one CLI.
 
 ---
 
@@ -218,7 +232,7 @@ Every earlier module left a marker. This lesson collects them all.
 - М10's rule at fleet scope: inventory is *observation*, and nothing in it is authoritative over a device
 - What a box reports, how often, and how much of a thin uplink that may consume
 - Reconciling inventory against entitlement — what you have versus what you are licensed for, and which one wins when they disagree
-- The divergence idea from М11 Lesson 33, applied to a fleet: something running that inventory does not know about is a gap in the model
+- The divergence idea from М11 Lesson 30, applied to a fleet: something running that inventory does not know about is a gap in the model
 
 **Deliverable:** an inventory view across domains, and a report of everything it cannot account for.
 
@@ -258,7 +272,7 @@ The capstone.
 - OpenBao in a container: auth methods, policies, dynamic credentials, leases
 - Inventory reconciliation, the entitlement comparison, and the N−1 compatibility tests — all ordinary software, testable against fake workers in the style of Lessons 11–15
 
-**Track 2 — needs real hardware.** Genuinely two things: **TPM 2.0**, which cannot be faked in any way worth teaching, and hawkBit driving real appliances. BRSKI can be walked through end to end with a simulated MASA, but a student without a TPM is reading rather than running Lesson 36's second half, and the lesson should say which paragraph that starts at.
+**Track 2 — needs real hardware.** Three things: **TPM 2.0**, which cannot be faked in any way worth teaching; **two federated Nomad regions** for Lesson 35; and hawkBit driving real appliances. BRSKI can be walked through end to end with a simulated MASA, but a student without a TPM is reading rather than running Lesson 36's second half, and the lesson should say which paragraph that starts at.
 
 ---
 

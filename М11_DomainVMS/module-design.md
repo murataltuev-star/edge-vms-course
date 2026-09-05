@@ -1,8 +1,12 @@
 # М11_DomainVMS — Module Design
 
-**A camera survives the death of the box that was recording it.**
+**Many nodes, two schedulers, and a camera that survives the death of the box recording it.**
 
-М10's loop converged because nothing in it could disagree with itself: desired state in Postgres, actual state in a dictionary, both inside one process. Add a second node and three new things become possible, all of them bad.
+М10 built a reconciler on one box. This module is everything that appears once there is a second, and it arrives in two halves that look alike and are not.
+
+The first half hands the student a production reconciler: a Nomad cluster, the VMS as a job on it, and a node pulled off the wall to watch work reschedule. **A jobspec is desired state; the scheduler is the loop** — the same shape they wrote by hand in М10, industrial.
+
+Then the pivot, and it is the module's hinge. **Nomad's allocations belong to whoever placed them, and nothing argues.** Domain objects are different: a camera is not scheduled onto a node once and forgotten, it is *owned*, and ownership can be contested. Three new things become possible, all of them bad:
 
 1. The controller and a worker can **disagree about who owns a camera**.
 2. A worker can be **alive, unreachable, and still writing**.
@@ -10,7 +14,7 @@
 
 This module is those three problems. It is the hardest correctness content in the course, and the only module where getting it wrong corrupts customer data rather than merely stopping a service.
 
-> **Scope note.** [`COURSE-PLAN.md`](../COURSE-PLAN.md) originally gave М11 the whole of layer 4. М10 took the single-node half — the loop is much easier to see when both ends are in one terminal. What remains here is everything that only exists once there is more than one node. The write API is built in this module and is **deliberately unauthenticated**; М12 replaces it, the same way М10's hand-provisioned database password is replaced.
+> **Scope note.** The multi-node lessons here were briefly М9's Part B and then briefly М10's, before it became clear they are one arc with this module rather than a separate subject: Lesson 25 builds a cluster, Lesson 27 explains why a second scheduler is needed above it, and splitting those across a module boundary meant teaching the two-level idea twice. Nomad's cross-site federation went further still, to [М12](../М12_FederatedVMS/module-design.md), where many networks actually begin. The write API is built here and is **deliberately unauthenticated**; М12 replaces it, the same way М10's hand-provisioned database password is replaced.
 
 ---
 
@@ -49,6 +53,8 @@ kill -CONT <worker-2>       # the zombie wakes up and tries to keep writing
 | Decision | Choice | Why |
 |---|---|---|
 | Scheduling | **Two levels, strictly separated** | The orchestrator never learns what a camera is. Adding a camera is a database write, not a deployment. |
+| Orchestrator | **Nomad** | Schedules non-container workloads, keeps Podman as the runtime, far smaller operational surface than Kubernetes. See [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md). |
+| Single-server deployments | **No orchestrator at all** | М9's Quadlet stack is better on one box, and Lesson 25 makes students argue that rather than assert it. |
 | Convergence token | **Monotonic revision**, not token equality | Ordering expresses *distance*; equality only expresses *difference*. See below. |
 | Worker config | **Opaque to the controller** | The controller stores, versions and delivers it, and never parses it. This is what allows a Go controller and a C++ worker, and what lets a new detector type ship without touching controller code. |
 | Placement | **Stable by default; rebalance explicit and budgeted** | Adding a worker must move *nothing*. A load-balancing heuristic that fires on membership change turns one worker joining into two hundred gaps in the archive. |
@@ -63,8 +69,8 @@ kill -CONT <worker-2>       # the zombie wakes up and tries to keep writing
 
 ## Prerequisites
 
-- **М10 entire.** This module rewrites its AppHost into a worker that takes instruction instead of deciding for itself, and Lesson 33 is the migration.
-- **Lesson 21** — the Nomad job. Workers are allocations; cameras are not.
+- **М10 entire.** Its AppHost is rewritten here into a worker that takes instruction instead of deciding for itself, and Lesson 30 is the migration.
+- **Lesson 19** — Quadlet. Lesson 26 maps those units onto a scheduler, which is a translation rather than a rewrite.
 - **Lessons 5–6** — signals. `kill -STOP` is the module's most important teaching device.
 - **М9's process-model record** — capacity, shard sizing, and why the orchestrator must not own camera lifecycle.
 
@@ -96,7 +102,7 @@ Placement is not scheduling. The orchestrator answers "where does this workload 
 
 > **Only move a camera when you must.** Three triggers, and nothing else: the camera is new, its worker is gone, or an operator asked for a rebalance.
 
-Moving a camera costs a pipeline restart and a discontinuity in the archive. A tidy-looking "keep the workers evenly loaded" heuristic fires on every membership change, and one worker joining a cluster becomes two hundred small gaps in customer footage. The property test in Lesson 31 is therefore blunt: **add a worker, assert that no existing camera moved.**
+Moving a camera costs a pipeline restart and a discontinuity in the archive. A tidy-looking "keep the workers evenly loaded" heuristic fires on every membership change, and one worker joining a cluster becomes two hundred small gaps in customer footage. The property test in Lesson 28 is therefore blunt: **add a worker, assert that no existing camera moved.**
 
 ### Why not consistent hashing
 
@@ -155,9 +161,70 @@ The holder stopping is a purely local decision requiring no coordination — whi
 
 ---
 
-## Lessons
+## Part A — More than one node, told what to run
 
-### Lesson 30 — Two schedulers, and the contract between them
+*A reconciler you are given. Workloads are placed, and nothing argues about them.*
+
+### Lesson 25 — When one box isn't enough
+
+Opens with the honest argument, including the counter-argument.
+
+- What actually forces a second server: camera count, storage throughput, retention, availability
+- **Why an orchestrator is the wrong answer for a single appliance.** Students should leave able to argue this, not just assert it, because they will be asked. Four points:
+  - **On one box the scheduler has nothing to schedule.** Nomad places *workers*, not cameras — the interesting placement decision belongs to the domain controller (М11). "Place workers" on a single host reduces to "run N identical processes", which is a systemd template unit: `recorder@.service`, instantiated N times
+  - **The vendor's own guidance has no single-node story.** Nomad's production requirements suggest 4–8+ cores and 16–32 GB+ of memory with 40–80 GB of fast disk for *servers*, and the document does not address co-locating a server and client or running a single node at all. The agent itself is far lighter than those figures — the point is that the guidance is shaped for a datacentre, and there is no documented appliance configuration to point support at
+  - **Restarting the agent is not free.** HashiCorp publishes a support article titled *Troubleshooting: Orphaned Podman Containers After Nomad Agent Restart*. On a box that reboots unattended at 3am, adopting that failure mode in exchange for no scheduling benefit is a poor trade
+  - **What you would actually be adding:** a second thing in the boot path, a second answer to "why isn't the recorder running", and a second component to version and upgrade
+- Nomad's model: **servers** accept jobs and place work, **clients** register and execute it. Servers in a region form one raft consensus group and elect a leader; three or five servers per region
+- Regions may span multiple datacenters
+- Build a cluster: three servers, two clients
+- **Break container-per-camera on purpose.** Run [`shard-memory-probe.py`](../М10_NodeVMS/reference/shard-memory-probe.py) to measure the per-process baseline against the per-pipeline increment, and derive the shard size from the curve. Teach PSS versus RSS here — summing RSS across processes double-counts every shared library page and produces the wrong conclusion
+- The consequence for the rest of the course: the orchestrator schedules *workers*, and a domain controller (М11) assigns *cameras* to them. Camera lifecycle must not require a healthy control plane
+
+**Deliverable:** a working cluster, a measured shard size, and a written justification for why this deployment needed one.
+
+**Sidebar — the question a product team actually has to answer.** Not *is Nomad heavy* but **do you ship one stack or two?** Two deployment models means everything is built, documented, supported and — the real cost — **tested twice**, which is why many vendors standardise on the multi-node stack everywhere and absorb the overhead. The counter-argument for a VMS is that a large share of deployments are a single box, and those customers have the least IT support; standardising on the cluster stack optimises the minority case at the majority's expense. The lesson should put the question to students with the trade stated and no answer supplied, because the answer depends on a number only the vendor has: what fraction of installations are one server.
+
+### Lesson 26 — The VMS as a Nomad job, and what happens when a node dies
+
+The lesson where М9's Quadlet units pay off rather than being discarded — and where the orchestrator finally does something systemd cannot.
+
+- Jobspec structure: `job` → `group` → `task`, written in HCL
+- **The Podman task driver** — the same images and the same runtime as Lesson 19. Translating a Quadlet unit into a Nomad task is a genuine mapping, not a rewrite
+- The other drivers, and why they matter to a VMS: `exec2` for a native process needing device access, `virt` (beta) for a VM. Kubernetes cannot do this at all
+- Storage reality: recordings stay local or on NAS. **Do not put video bulk on replicated storage.** Replicate metadata; let footage be local and let the archive be KVS
+- Placement: cameras are not uniformly reachable from every client node
+
+#### Failover — the reason the second box exists
+
+Lesson 25 argued an orchestrator is wrong for one appliance. This is the other half of that argument, and students should meet it in the same module: **rescheduling work off a dead node is the thing Nomad does that a template unit cannot.**
+
+- **Restart versus reschedule.** Restart retries a failed task *on the same node*; reschedule places it on a *different* one. Service jobs default to unlimited reschedule attempts, so no operator intervention is expected
+- **What happens by default when a client stops heartbeating:** its allocations are marked lost and replaced elsewhere. The client is not told to stop — the server simply schedules a replacement
+- **Why that default is wrong for a VMS, and the block that fixes it.** A node partitioned from the Nomad servers is very often still reachable from its cameras and its disks. Killing its recorders because the *control plane* cannot see it is exactly the failure mode М9's whole design argues against
+
+  The `disconnect` block is where this is configured:
+
+  | Field | What it controls |
+  |---|---|
+  | `lost_after` | how long Nomad tries to reconnect before marking allocations lost; empty means immediately |
+  | `replace` | whether a disconnected allocation is rescheduled elsewhere at all |
+  | `stop_on_client_after` | how long a disconnected *client* keeps its own tasks running |
+  | `reconcile` | which allocation survives when the node comes back and both exist — `keep_original`, `keep_replacement`, `best_score` or `longest_running` |
+
+  The interesting exercise is not configuring it but arguing about it: **for a recorder, is it better to have two nodes recording the same camera for a minute, or neither?** The answer differs for recording and for the API, in the same job.
+
+- **What does not fail over: the footage.** The dead node's recordings are on its disks. A replacement records the *future* of that camera; the past stays where it was written, and stays unavailable until the node returns. This is the honest limit of the design, and М10's node-visibility table already says the operator must be able to see it
+
+**Deliverable:** the VMS running as a Nomad job with the same behaviour it had under Quadlet in М9. Then pull the power on a client and produce two numbers: how long until recording resumed elsewhere, and how many seconds of footage were lost.
+
+---
+
+## Part B — Objects that can be owned twice
+
+*A reconciler you write, above the one you were given. This is where the module gets hard.*
+
+### Lesson 27 — Two schedulers, and the contract between them
 
 - Why a second scheduler exists at all, and what the orchestrator must never learn
 - Desired state published by the controller; actual state reported by workers; `observed_revision >= revision` as the only test of applied, unchanged from М10
@@ -165,7 +232,7 @@ The holder stopping is a purely local decision requiring no coordination — whi
 - Resume tokens: a reconnecting worker says where it got to, and gets a delta rather than a full resync
 - **Why ordering beats equality**, from the section above
 - **Opaque config**, and the failure mode when a worker receives configuration it cannot parse — which is a reportable divergence, not a crash
-- **Hosts cache; they do not replicate.** There is one writer of domain state — the controller. A worker persists its assignment, config and lease into its own **host database**, the same one М10 built for the archive index and events, so a host rebooting while the controller is unreachable comes back recording rather than idle. This is not a second source of truth; it is a cache with an expiry, and Lesson 32 is about that expiry
+- **Hosts cache; they do not replicate.** There is one writer of domain state — the controller. A worker persists its assignment, config and lease into its own **host database**, the same one М10 built for the archive index and events, so a host rebooting while the controller is unreachable comes back recording rather than idle. This is not a second source of truth; it is a cache with an expiry, and Lesson 29 is about that expiry
 - **The one thing outside the database:** a last-known-assignment file of a few hundred bytes, so recording can start while Postgres is still coming up — or if its data directory did not survive the power cut
 - **Where the domain ends:** at the first network link you would not bet recording on. Nodes on one reliable network form one domain; anything past that is federation, not a bigger domain
 
@@ -173,7 +240,7 @@ The holder stopping is a purely local decision requiring no coordination — whi
 
 ---
 
-### Lesson 31 — Placement that doesn't churn
+### Lesson 28 — Placement that doesn't churn
 
 - Capacity per worker class, taken from М10's measurements
 - Constraints as labels: site, reachability, hardware
@@ -186,7 +253,7 @@ The holder stopping is a purely local decision requiring no coordination — whi
 
 ---
 
-### Lesson 32 — Leases, epochs, and the zombie writer
+### Lesson 29 — Leases, epochs, and the zombie writer
 
 The module's correctness lesson. See *The zombie writer* above.
 
@@ -200,7 +267,7 @@ The module's correctness lesson. See *The zombie writer* above.
 
 #### Two failovers, and why neither alone is enough
 
-М9 Lesson 21 taught Nomad rescheduling a worker off a dead node. This module reassigns cameras off a dead worker. **They are different mechanisms at different levels, and a node failure needs both:**
+М10 Lesson 26 taught Nomad rescheduling a worker off a dead node. This module reassigns cameras off a dead worker. **They are different mechanisms at different levels, and a node failure needs both:**
 
 | | What failed | Who reacts | What moves |
 |---|---|---|---|
@@ -217,7 +284,7 @@ That is worth stating explicitly, because the alternative design — letting the
 
 ---
 
-### Lesson 33 — Shadow mode: the controller that writes nothing
+### Lesson 30 — Shadow mode: the controller that writes nothing
 
 The course's own convention — the stand-in before the real thing — applied at the top layer. `camera_sim.py` before the pipeline; a fake actuator before GStreamer; and now a controller that observes before it commands.
 
@@ -241,7 +308,7 @@ The course's own convention — the stand-in before the real thing — applied a
 
 ---
 
-### Lesson 34 — The API, and what it refuses
+### Lesson 31 — The API, and what it refuses
 
 - The read view: desired and observed joined in one query, **grouped by failure domain**, so that a dead node reads as one cause rather than fifty faults
 - **Positions and reasons.** `phase` says where an object is in its lifecycle; conditions say why it cannot get further — licence satisfied, storage writable, device reachable. Kubernetes shipped the phase enum and then documented why it was wrong: enums are not extensible, every addition is a breaking change, and clients inevitably switch on them
@@ -255,9 +322,35 @@ The course's own convention — the stand-in before the real thing — applied a
 
 ---
 
+### Lesson 32 — Packaging, delivery, and the honest GitOps gap
+
+- **Nomad Pack**: templating and packaging with remote registries, deploying multiple resources together — the closest thing to Helm in this ecosystem
+- Per-site variation: site name, camera list, retention, stream names, from one pack with per-site variables
+- CI-driven delivery: a pipeline runs `nomad-pack run` against each region
+
+**And then the part most courses would skip.** The Kubernetes world has pull-based reconcilers — Fleet, Argo, Flux — where an agent at each site pulls desired state from Git and heals drift locally. Nomad has no first-class equivalent; the pattern here is **push-based**, and your pipeline has to reach each region.
+
+For edge sites on flaky links, that is a real downgrade. Students should be able to state the difference, say which failure modes it introduces, and describe what they would build to close it. Teaching the gap is more useful than pretending the two ecosystems are equivalent.
+
+**Deliverable:** one pack, three simulated sites, per-site differences — plus a written analysis of what breaks when a site is offline for a day.
+
+---
+
+### Lesson 33 — Two update planes, and the licence
+
+- RAUC updates the OS *underneath* Nomad; Nomad updates workloads *on top of it*. Same box, two planes, different cadences — М9's thesis, now with a scheduler in it
+- Draining a client node before an OS update, and returning it to service
+- What breaks if you conflate them
+- **Reading the licence you just built on.** Nomad Community Edition is BUSL, Licensor IBM. Production use is granted provided the work isn't offered to third parties on a hosted or embedded basis to compete with IBM's paid versions; the Change Date is four years per version, converting to MPL 2.0. Students shipping commercial products need to be able to read a grant like this and know when to ask a lawyer. Full analysis in the decision record
+- Acceptance criteria for the module, in the style of the spec's section 10
+
+---
+
+---
+
 ## Verification plan
 
-**The most verifiable module since М8**, which is a pleasant surprise for the one with the hardest content. Both of the module's difficult ideas are testable in the authoring sandbox:
+Split cleanly by part. **Part B is the most verifiable content since М8**, which is a pleasant surprise for the hardest material in the course; Part A is the least, because there is no Nomad in the authoring sandbox and jobspec is HCL with no parser available.
 
 **Track 1 — verified here.**
 
@@ -266,7 +359,7 @@ The course's own convention — the stand-in before the real thing — applied a
 - The lease state machine, the divergence taxonomy, resume tokens, and idempotency are all ordinary logic
 - Streaming behaviour tested against a fake worker, in the style of Lessons 11–15
 
-**Track 2 — needs the real bench.** Only what involves real GStreamer, real cameras and real Nomad: end-to-end reassignment timing, and the console against a live system.
+**Track 2 — needs the real bench.** All of Part A: cluster formation, `nomad job validate`, Nomad Pack rendering, and the node-failure exercise. Plus anything involving real GStreamer and real cameras — end-to-end reassignment timing, and the console against a live system. Part A lessons carry explicit *expected output* blocks so a deviation is recognisable rather than mysterious.
 
 ---
 
@@ -290,6 +383,14 @@ The course's own convention — the stand-in before the real thing — applied a
 - [Eliminate Phase and simplify Conditions](https://github.com/kubernetes/kubernetes/issues/7856) — Kubernetes on why phase enums were a mistake: not extensible, every addition breaking, clients switch on them
 - [Kubernetes API conventions](https://github.com/kubernetes/community/blob/main/contributors/devel/sig-architecture/api-conventions.md) — the conditions model in its mature form
 - [Pod conditions](https://kubernetes.io/docs/concepts/workloads/pods/pod-condition/) — conditions as reasons rather than positions, in practice
+- [Nomad architecture](https://developer.hashicorp.com/nomad/docs/architecture) — servers and clients, raft, regions
+- [Nomad task drivers](https://developer.hashicorp.com/nomad/plugins/drivers) — Podman, `exec2`, `virt`
+- [Nomad `disconnect` block](https://developer.hashicorp.com/nomad/docs/job-specification/disconnect) — `lost_after`, `replace`, `stop_on_client_after`, and the four `reconcile` strategies
+- [Nomad rescheduling](https://developer.hashicorp.com/nomad/docs/job-declare/failure/reschedule) — restart versus reschedule, unlimited attempts by default for service jobs
+- [Nomad production requirements](https://developer.hashicorp.com/nomad/docs/deploy/production/requirements) — server sizing, and the absence of single-node guidance
+- [Nomad Pack](https://developer.hashicorp.com/nomad/tools/nomad-pack) — templating and registries
+- [Nomad LICENSE](https://raw.githubusercontent.com/hashicorp/nomad/main/LICENSE) — Licensor, Additional Use Grant, Change Date
+- [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md) — why the orchestrator is Nomad, what it cost, and why neither belongs on one box
 - [`where-the-database-lives.md`](where-the-database-lives.md) — the domain database and the host database, caching versus replication, detail-local/summary-domain, and the rule that destructive operations must never run from a stale cache
 - [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) — the two-level scheduling argument this module implements
 

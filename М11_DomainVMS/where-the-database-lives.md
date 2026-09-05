@@ -23,7 +23,7 @@ The question contained its own answer. A domain is defined by the desired state 
 
 Putting Postgres on every host and synchronising would mean choosing one of:
 
-- **Multi-master** — and for a *desired state* store, conflicting writes are precisely the thing that must not happen. "Camera 7 belongs to worker A" and "camera 7 belongs to worker B", merged, is the split-brain М11 Lesson 32 exists to prevent
+- **Multi-master** — and for a *desired state* store, conflicting writes are precisely the thing that must not happen. "Camera 7 belongs to worker A" and "camera 7 belongs to worker B", merged, is the split-brain М11 Lesson 29 exists to prevent
 - **A consensus system** — which is what you would end up building, and Postgres is not one
 - **Primary with read replicas** — the sane version of the idea, and a legitimate option, but it is an availability choice rather than a way to make every host self-sufficient
 
@@ -48,7 +48,7 @@ The distinction is the whole answer, and it is easy to miss because both words d
 
 Three things, and only the first is small:
 
-- **The desired-state cache** — its assignment, the opaque config for those cameras, its lease and epoch. Arrives on the watch stream from М11 Lesson 30
+- **The desired-state cache** — its assignment, the opaque config for those cameras, its lease and epoch. Arrives on the watch stream from М11 Lesson 27
 - **The archive index** — which segment covers which camera over which time range. Written constantly
 - **Events** — motion, camera offline, analytics hits, operator actions. High volume, mostly never read
 
@@ -71,7 +71,7 @@ An earlier draft of this record said SQLite was plenty for the cache. That was a
 **Why Postgres locally rather than SQLite**, once index and events are in the picture:
 
 - **Concurrency.** SQLite permits one writer at a time; WAL lets readers run alongside a writer but does not change that. Twenty media workers writing index rows, an event stream, and the AppHost reading is real contention
-- **Partitioning is the decisive feature.** Index and events are both rolling time windows. `DROP PARTITION` against `DELETE FROM` on a table taking a hundred rows a second is not a close comparison, and it makes М10 Lesson 28's retention loop instant instead of a vacuum problem
+- **Partitioning is the decisive feature.** Index and events are both rolling time windows. `DROP PARTITION` against `DELETE FROM` on a table taking a hundred rows a second is not a close comparison, and it makes М10 Lesson 23's retention loop instant instead of a vacuum problem
 - **Types that match the work.** `tstzrange` with a GiST index answers *what footage covers this window* directly — which is М8's timeline query — and JSONB carries event payloads that differ per detector
 - **One engine, one skillset.** The same `psql`, `pg_dump`, monitoring and client library. Students learn one thing; whoever operates the appliance operates one thing
 
@@ -160,7 +160,7 @@ So split it by who wrote it:
 - **The domain database holds a rollup only** — *"host 3 has camera 7 for these time ranges"*
 - **Playback asks the domain *where*, then the host *what***
 
-Which extends the rule М9 Lesson 21 already teaches — *do not put video bulk on replicated storage; replicate metadata and let footage be local* — one level up: **replicate the summary, not the index.**
+Which extends the rule М10 Lesson 26 already teaches — *do not put video bulk on replicated storage; replicate metadata and let footage be local* — one level up: **replicate the summary, not the index.**
 
 ### The same shape, three times
 
@@ -194,7 +194,7 @@ Most events are never read. A filtered subset — alarms an operator must acknow
 | Where does the domain end? | At the first network you would not bet recording on |
 | HA? | Optional, witness- or monitor-based, never consensus-store-based |
 
-**Course changes.** М10 Lesson 25 builds **both** databases from the first lesson — on one box they share an instance, so М11 moves one rather than splitting one, and no schema changes when it does. Splitting a database in a later module would teach exactly the wrong instinct. Lesson 25 also gains the event schema and time partitioning; Lesson 28's retention becomes `DROP PARTITION`. М11 gains the cache-versus-replica distinction in Lesson 30, the stale-cache rule in Lesson 32, the event-forwarding rule in Lesson 34, and closes three open questions. **No module grows a lesson.**
+**Course changes.** М10 Lesson 20 builds **both** databases from the first lesson — on one box they share an instance, so М11 moves one rather than splitting one, and no schema changes when it does. Splitting a database in a later module would teach exactly the wrong instinct. Lesson 20 also gains the event schema and time partitioning; Lesson 23's retention becomes `DROP PARTITION`. М11 gains the cache-versus-replica distinction in Lesson 27, the stale-cache rule in Lesson 29, the event-forwarding rule in Lesson 31, and closes three open questions. **No module grows a lesson.**
 
 **Product recommendation: two databases on one engine, detail local and summary forwarded, and retention that never runs from a stale cache.** The last is the one to write into the acceptance tests, because it is the only one whose absence stays invisible until a customer asks where their footage went.
 
@@ -205,6 +205,6 @@ Most events are never read. A filtered subset — alarms an operator must acknow
 - [PostgreSQL HA: repmgr vs Patroni vs pg_auto_failover](https://tomasz-gintowt.medium.com/postgresql-high-availability-repmgr-vs-patroni-vs-pg-auto-failover-a16fd0bfbc1e) — external dependencies of each, witness versus monitor versus DCS, and the closing argument that a system the team understands beats a more advanced one it does not
 - [`consul-and-openbao.md`](../М12_FederatedVMS/consul-and-openbao.md) — why Patroni's DCS requirement is a step backwards for this stack
 - [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) — camera lifecycle must survive a control-plane outage, which is the rule this record generalises
-- М9 Lesson 21 — replicate metadata, let footage be local
+- М10 Lesson 26 — replicate metadata, let footage be local
 
 *Written 5 September 2026.*

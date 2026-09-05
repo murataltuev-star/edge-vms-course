@@ -1,6 +1,6 @@
 # One Container Per Camera? The VMS Process Model
 
-**A decision record for М9_EdgeVMS and М11.** Companion to [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md) and [`rauc-alternatives.md`](rauc-alternatives.md), written in answer to "if one server handles 1000 cameras, is that 1000 Podman containers — and another 1000 for recording?"
+**A decision record for М9_EdgeVMS and М11.** Companion to [`kubernetes-vs-nomad.md`](../М11_DomainVMS/kubernetes-vs-nomad.md) and [`rauc-alternatives.md`](rauc-alternatives.md), written in answer to "if one server handles 1000 cameras, is that 1000 Podman containers — and another 1000 for recording?"
 
 No to both. The interesting part is *why*, because the usual reason given is the wrong one.
 
@@ -54,7 +54,7 @@ The reason it wins is that the expensive part is per-*process*, not per-camera: 
 | Container per camera | (baseline + pipeline) × 1000 | **~38 GB** |
 | 50-camera shards | (baseline + 50 × pipeline) × 20 | **~9 GB** |
 
-**These are estimates, not measurements** — flagged as such deliberately, because the module can do better. [`reference/shard-memory-probe.py`](reference/shard-memory-probe.py) measures the two quantities that decide it:
+**These are estimates, not measurements** — flagged as such deliberately, because the module can do better. [`shard-memory-probe.py`](../М10_NodeVMS/reference/shard-memory-probe.py) measures the two quantities that decide it:
 
 ```
 B = process baseline   : GStreamer initialised, zero pipelines
@@ -63,7 +63,7 @@ I = marginal increment : the cost of pipeline N+1 in a live process
 shared: B + N·I        split: N·(B + I)        saving: (N−1)·B
 ```
 
-It reports **PSS, not RSS**. Summing RSS across N processes counts every page of libgstreamer N times and inflates the split case; PSS divides shared pages by the number of processes mapping them. Getting this wrong is how the naive measurement reaches the naive conclusion — and it is a good half-hour of Lesson 20.
+It reports **PSS, not RSS**. Summing RSS across N processes counts every page of libgstreamer N times and inflates the split case; PSS divides shared pages by the number of processes mapping them. Getting this wrong is how the naive measurement reaches the naive conclusion — and it is a good half-hour of Lesson 25.
 
 ### Sizing the shard
 
@@ -101,7 +101,7 @@ Decode and encode. Live transcoding for an operator's 16-up wall, and analytics 
 | Transcode / analytics | Concurrent demand | Yes | 4–16 workers, GPU-pinned |
 | Control plane | Fixed | No | 1 controller |
 
-The middle tier is **demand-driven, not camera-driven** — sized by concurrent viewers and enabled detectors. It is also hardware-bound, which is where Nomad's `exec2` and `virt` drivers earn the argument made in [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md): a native process needing direct device access does not have to be containerised.
+The middle tier is **demand-driven, not camera-driven** — sized by concurrent viewers and enabled detectors. It is also hardware-bound, which is where Nomad's `exec2` and `virt` drivers earn the argument made in [`kubernetes-vs-nomad.md`](../М11_DomainVMS/kubernetes-vs-nomad.md): a native process needing direct device access does not have to be containerised.
 
 ---
 
@@ -160,7 +160,7 @@ The break-even is somewhere near 50, and it is worth having students find it rat
 | Camera-side session limits | **One pipeline owning the connection**, whichever model |
 | Operational legibility at 1000 cameras | **Sharded workers** — 25 units instead of 1000 |
 
-**Course decision: teach both, in that order.** Lesson 19 builds container-per-camera on a handful of cameras, because it is the legible thing and it is correct at that scale. Lesson 20 should then break it on purpose — run the probe, show the curve, and derive the shard. That is a better lesson than asserting the conclusion, and it follows the same pattern as the other two records in this folder: the legible choice is right for teaching and wrong for the product.
+**Course decision: teach both, in that order.** Lesson 19 builds container-per-camera on a handful of cameras, because it is the legible thing and it is correct at that scale. Lesson 25 should then break it on purpose — run the probe, show the curve, and derive the shard. That is a better lesson than asserting the conclusion, and it follows the same pattern as the other two records in this folder: the legible choice is right for teaching and wrong for the product.
 
 **Product recommendation: shard, and split the supervisors.** The sharding policy — how many objects per worker, and on what signal to rebalance — is a real design decision with operational consequences, and it does not belong in the schema that records its *outcome*. It needs an owner and a measurement, not a default.
 
@@ -171,7 +171,7 @@ The break-even is somewhere near 50, and it is worth having students find it rat
 - [Large number of RTSP streams: nvstreammux or separate pipeline per camera?](https://forums.developer.nvidia.com/t/large-number-of-rtsp-streams-nvstreammux-or-separate-pipeline-per-camera/229269) — "10 streams in one pipeline per container is preferred"; single-process memory overhead described as low
 - [Building a multi-camera media server for AI processing on Jetson](https://developer.nvidia.com/blog/building-multi-camera-media-server-ai-processing-jetson) — multi-camera media-server structure
 - [Nomad task drivers](https://developer.hashicorp.com/nomad/plugins/drivers) — `exec2` and `virt` for the non-containerised tier
-- `reference/shard-memory-probe.py` — the measurement this record declines to guess at
+- [`М10_NodeVMS/reference/shard-memory-probe.py`](../М10_NodeVMS/reference/shard-memory-probe.py) — the measurement this record declines to guess at
 - Memory figures in §2 are engineering estimates, explicitly not measurements. The probe exists to replace them.
 
 *Written 4 September 2026.*

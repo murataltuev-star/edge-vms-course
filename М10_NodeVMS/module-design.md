@@ -1,10 +1,10 @@
 # М10_NodeVMS — Module Design
 
-**One box, one database, one loop: the row becomes a running pipeline.**
+**One node learns what it should be, and closes the gap itself.**
 
-М8 built a VMS with no database — Kinesis held the configuration and the archive both. М9 made the box atomic and replaceable. This module gives the box its own truth and something that acts on it: five lessons in which `INSERT INTO cameras` causes a camera to start recording, and `DELETE` causes it to stop, with nothing in between but a loop the student wrote.
+М8 built a VMS with no database — Kinesis held the configuration and the archive both. М9 made the box atomic and replaceable, but a box still only knows what was flashed onto it. This module is where a node learns **what it should be**: five lessons in which `INSERT INTO cameras` causes a camera to start recording, `DELETE` causes it to stop, and nothing sits in between but a loop the student wrote.
 
-> **Scope note.** [`COURSE-PLAN.md`](../COURSE-PLAN.md) had М10 as Postgres alone, with the reconciliation loop deferred to М11. This module merges them. A database nothing acts on is not a working system, and the loop is far easier to teach on one box — where both ends are visible in one terminal — than across a cluster. М11 keeps what genuinely needs more than one node: placement, state that spans sites, and the product API.
+> **Scope note.** This module has been assembled three times, and the last move is the one worth knowing. The course plan first had М10 as Postgres alone with the loop deferred to М11; the loop came back, because a database nothing acts on is not a working system. Then М9's multi-node half landed here — it is desired-state work, and М9 is supposed to be one box. It did not stay: a Nomad cluster and a domain controller turned out to be one arc cut in the wrong place, so scheduling went on to [М11](../М11_DomainVMS/module-design.md). What is left is one node, which is what the name promises.
 
 ---
 
@@ -19,9 +19,15 @@ Every layer so far has had a single source of truth that lived somewhere else. N
 
 > **The rule that organises the whole module: desired state is persisted, actual state is derived.**
 
-A student who persists actual state has built a cache that goes stale and lies. A student who forgets to persist desired state has built something that forgets its cameras on reboot. Both mistakes are worth making once, deliberately, in Lesson 26.
+A student who persists actual state has built a cache that goes stale and lies. A student who forgets to persist desired state has built something that forgets its cameras on reboot. Both mistakes are worth making once, deliberately, in Lesson 21.
 
 The convergence test is one comparison, and it is the same one at every layer above this: **applied means `observed_revision >= revision`.**
+
+### The pattern is not exotic
+
+What the student builds here is what a scheduler already is: desired state in one place, actual state observed, and a loop closing the gap. They write it by hand first, at a scale where both ends fit in one terminal.
+
+М11 then hands them a production implementation of the same idea — a Nomad jobspec *is* desired state and its scheduler *is* the loop — and puts the two side by side. Meeting a scheduler after having written one is what stops it being magic, and it is why М11 can argue for two reconcilers at two levels without that sounding like an abstraction.
 
 ---
 
@@ -42,12 +48,12 @@ If a lesson does not move that demo forward, it does not belong in this module.
 
 | Decision | Choice | Why |
 |---|---|---|
-| Scope | **One node, end to end** | The loop is the lesson. Placement across nodes adds a second thing to get wrong before the first one works. |
+| Scope | **One node, end to end** | The loop is the lesson, and it is far easier to see when both ends are in one terminal. Scheduling across nodes is М11's. |
 | Worker model | **N pipelines in one Python process** | The conclusion of [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md), now built. Container-per-camera is М9's world and stops being right near fifty. |
 | Actual state | **Derived, never persisted** | Kill the AppHost and it must rebuild its picture from Postgres plus observation. Anything it remembers across a restart is a bug. |
 | Change notification | **Poll on a timer, `LISTEN/NOTIFY` for latency** | NOTIFY is not durable — a listener that was disconnected misses it forever. Notify for speed, poll for correctness. Teaching only NOTIFY produces a system that silently stops converging. |
 | Node visibility | **Derived, never operator-set** | See below. The `cameras` table has no node column an operator can write. |
-| Language | **Python for the course; Go + C++ for the product** | Python teaches the loop and makes the language boundary visible. The product splits it — Go for the controller, C++ for the media worker — and Lesson 29 says why that split costs almost nothing. |
+| Language | **Python for the course; Go + C++ for the product** | Python teaches the loop and makes the language boundary visible. The product splits it — Go for the controller, C++ for the media worker — and Lesson 24 says why that split costs almost nothing. |
 | Databases | **Two, from the first lesson: a domain database and a host database** | On one box they share an instance, so М11 *moves* one rather than splitting one — and nothing in the schema changes when it does. See [`where-the-database-lives.md`](../М11_DomainVMS/where-the-database-lives.md). |
 | Database placement | **On the data partition, as a Quadlet unit** | М9's three-way boundary with consequences: `PGDATA` in a rootfs slot is destroyed by the next OS update. |
 | Local storage engine | **Postgres, not SQLite** | The archive index and the event stream need a real database regardless, so a second engine for a small cache is pure cost. Partitioning is the deciding feature. |
@@ -58,7 +64,7 @@ If a lesson does not move that demo forward, it does not belong in this module.
 ## Prerequisites
 
 - **Lessons 5–6** — process supervision, signals, and the self-matching `pkill` bug. The AppHost is what `looper.py` grows into.
-- **Lessons 9–10** — GStreamer pipelines and what each element does. Lesson 27 builds them from Python instead of a shell string.
+- **Lessons 9–10** — GStreamer pipelines and what each element does. Lesson 22 builds them from Python instead of a shell string.
 - **Lesson 19** — Quadlet, and the OS/app/data boundary that decides where `PGDATA` goes.
 - **Lesson 13** — configuration is read from the environment; credentials are never in the image.
 
@@ -95,7 +101,7 @@ The obvious way to notice a camera that has stopped sending while its TCP socket
 rtspsrc ! rtph264depay ! h264parse ! watchdog timeout=8000 ! splitmuxsink
 ```
 
-Zero Python in the data path, and the failure arrives on the bus the AppHost is already reading. This one element is worth a section of Lesson 27 on its own, because it is the model for the whole design: push the per-frame concern into C, keep Python at control rate.
+Zero Python in the data path, and the failure arrives on the bus the AppHost is already reading. This one element is worth a section of Lesson 22 on its own, because it is the model for the whole design: push the per-frame concern into C, keep Python at control rate.
 
 ### The event loop, and not having two of them
 
@@ -117,7 +123,7 @@ Fifty non-blocking pops every 200 ms costs nothing measurable. `bus.get_pollfd()
 
 ### What it costs
 
-Each recording pipeline creates roughly three to five native threads, so fifty cameras is 150–250 threads in the process. Linux is fine with that, but it is a number to measure rather than assume — `reference/shard-memory-probe.py` from М9 is extended in Lesson 27 to report it alongside PSS.
+Each recording pipeline creates roughly three to five native threads, so fifty cameras is 150–250 threads in the process. Linux is fine with that, but it is a number to measure rather than assume — `reference/shard-memory-probe.py` from М9 is extended in Lesson 22 to report it alongside PSS.
 
 And the honest cost: **one segfault takes the whole shard.** That is the price of sharding, paid in exchange for the per-process baseline. It is bounded by shard size, by systemd restarting the unit, and by `splitmuxsink` — a crash loses the open segment and nothing else.
 
@@ -139,7 +145,7 @@ That last row is the real argument for C++ in the media worker, and it is a bett
 
 The instinct is right: an operator wants to assign cameras, not nodes. The useful part is knowing exactly where that stops being true.
 
-**Node is derived, never chosen.** This has a schema consequence that Lesson 25 makes concrete: the `cameras` table has **no node column an operator can write**. Placement lives in a separate, controller-owned row with its own revision, and the API will not accept it from a client.
+**Node is derived, never chosen.** This has a schema consequence that Lesson 20 makes concrete: the `cameras` table has **no node column an operator can write**. Placement lives in a separate, controller-owned row with its own revision, and the API will not accept it from a client.
 
 But the node is physical, and physics leaks in four places where hiding it would be a lie:
 
@@ -158,13 +164,15 @@ So: invisible in configuration, visible in diagnostics and capacity. The same re
 
 ## Lessons
 
-### Lesson 25 — The two databases the cloud VMS didn't need
+*Five lessons, one node. The student writes the reconciler.*
+
+### Lesson 20 — The databases the cloud VMS didn't need
 
 - Why М8's spec forbade a database, and why the answer flips on-prem: in the cloud KVS held the configuration; on a box, the box holds it
 - **Two databases, one instance.** The *domain database* holds what an operator asked for; the *host database* holds what this box knows — its cached assignment, its archive index, and its events. On one box they share a Postgres instance, and М11 moves one of them to its own. Building one database now and splitting it in М11 would teach the wrong instinct
 - Domain schema: cameras, streams, sites and retention policies
 - **Host schema:** the archive index (which segment covers which camera over which range, as a `tstzrange` with a GiST index — М8's timeline query, answered directly) and the event stream (motion, camera offline, operator actions, with a JSONB payload because detectors differ)
-- **Time partitioning from day one.** Both index and events are rolling windows taking on the order of a hundred rows a second at scale. Retention is `DROP PARTITION`, not `DELETE FROM` — Lesson 28 collects on this
+- **Time partitioning from day one.** Both index and events are rolling windows taking on the order of a hundred rows a second at scale. Retention is `DROP PARTITION`, not `DELETE FROM` — Lesson 23 collects on this
 - **Events are not metrics.** An operator searches events; an engineer alarms on metrics. They look alike and belong in different modules — М13 has the second kind
 - **Operator-owned columns versus controller-owned columns.** `enabled`, `rtsp_url`, `retention_days`, `site_id` are written by people; `revision`, `assigned_worker`, `observed_revision`, `phase` are written by machines and never appear as form fields
 - `revision` as a monotonic, controller-assigned integer per object — not a hash, not a timestamp
@@ -176,7 +184,7 @@ So: invisible in configuration, visible in diagnostics and capacity. The same re
 
 ---
 
-### Lesson 26 — A reconcile loop with nothing in it
+### Lesson 21 — A reconcile loop with nothing in it
 
 The `camera_sim.py` move, applied to control: build the loop before the thing it controls.
 
@@ -190,7 +198,7 @@ The `camera_sim.py` move, applied to control: build the loop before the thing it
 
 ---
 
-### Lesson 27 — Fifty pipelines in one process
+### Lesson 22 — Fifty pipelines in one process
 
 Swap the `print()` for GStreamer. This is the module's technical centre; see *How the shard is actually organised* above.
 
@@ -205,13 +213,13 @@ Swap the `print()` for GStreamer. This is the module's technical centre; see *Ho
 
 ---
 
-### Lesson 28 — Failure is the feature
+### Lesson 23 — Failure is the feature
 
 Each failure mode reproduced on purpose, then handled.
 
 - **Camera offline** → exponential backoff **with jitter**. Two hundred cameras reconnecting in lockstep after a switch reboot is a self-inflicted outage, and the jitter is the whole fix
 - **Stalled stream, socket still open** → `watchdog` fires, that one pipeline restarts, the other forty-nine never notice
-- **Disk full** → retention enforcement degrades by policy. The deletion loop must be conservative: never delete what it cannot prove is superseded. With Lesson 25's partitioning this is `DROP PARTITION` and a segment unlink, not a scan — which is what makes it fast enough to run under pressure
+- **Disk full** → retention enforcement degrades by policy. The deletion loop must be conservative: never delete what it cannot prove is superseded. With Lesson 20's partitioning this is `DROP PARTITION` and a segment unlink, not a scan — which is what makes it fast enough to run under pressure
 - **The AppHost dies** → systemd restarts it, state is re-derived, and the segment discipline bounds the loss
 - **The fencing rule, introduced small:** on restart, never resume the previous segment — open a new one. Leases and epochs are М11's problem; the rule that makes them necessary lands here
 
@@ -219,7 +227,7 @@ Each failure mode reproduced on purpose, then handled.
 
 ---
 
-### Lesson 29 — What the console shows, and what Python stops being right for
+### Lesson 24 — What the console shows, and what Python stops being right for
 
 - The joined view: desired and observed in one query, so "is this camera actually recording?" is not three round trips
 - Status vocabulary for the UI: `converged`, `lagging`, `stalled`, `unreachable` as *positions*; licence, storage and reachability as **conditions** — reasons an object cannot converge, kept out of the phase enum
@@ -239,7 +247,7 @@ Better than М9's, because almost nothing here needs hardware.
 
 **Track 1 — verified in the authoring sandbox.** Postgres runs in a container and needs no appliance; the schema, migrations, the reconcile loop and the state machine are all ordinary software. The loop is tested against a fake actuator exactly as Lessons 11–15 tested against fake AWS objects, which means convergence, backoff, restart and the deliberate mistakes are all provable here.
 
-**Track 2 — needs a real bench.** Anything with GStreamer in it: the pipeline strings, the GIL demonstration, the `watchdog` timing, and the memory and thread measurements. The authoring sandbox has no GStreamer and the package mirrors are blocked, so Lesson 27's numbers come from the student's box, produced by a script that ships with the module rather than from figures asserted in the text.
+**Track 2 — needs a real bench.** Anything with GStreamer in it: the pipeline strings, the GIL demonstration, the `watchdog` timing, and the memory and thread measurements. The authoring sandbox has no GStreamer and the package mirrors are blocked, so Lesson 22's numbers come from the student's box, produced by a script that ships with the module rather than from figures asserted in the text.
 
 Every lesson marks which of its claims were run and which are documentation-derived.
 
@@ -247,11 +255,11 @@ Every lesson marks which of its claims were run and which are documentation-deri
 
 ## Open questions
 
-1. **Does the API belong here or in М11?** Lesson 29 builds a read view. A write API with authentication is arguably М11's, arguably М12's, and putting it here would make this a six-lesson module.
+1. **Does the API belong here or in М11?** Lesson 24 builds a read view. A write API with authentication is arguably М11's and arguably М12's; М11 currently builds it.
 2. **How much retention policy is domain design rather than infrastructure?** The deletion loop is М10; schedules, per-camera overrides and legal-hold are product decisions that may deserve their own lesson in М11.
 3. **Postgres in a container or on the host?** The module currently says Quadlet unit. On an appliance that nobody administers, a host package with systemd is a defensible alternative and the tradeoff is worth teaching either way. Note this now carries both databases, so the answer applies to the archive index and the event stream too.
-4. **Does Lesson 28 need a real camera that misbehaves?** Cheap cameras stall in ways a simulator does not reproduce faithfully, and the module's most valuable failure mode is the hardest to fake.
-5. **Lesson numbering** assumes М9 ends at 24.
+4. **Does Lesson 23 need a real camera that misbehaves?** Cheap cameras stall in ways a simulator does not reproduce faithfully, and the module's most valuable failure mode is the hardest to fake.
+5. **Does the shard-memory probe belong here or in М11?** It ships with this module and Lesson 22 runs it, but М11 Lesson 25 runs it again to derive a shard size. Duplicated use, single home — worth confirming that is the right call.
 
 ---
 
@@ -264,6 +272,6 @@ Every lesson marks which of its claims were run and which are documentation-deri
 - [GStreamer bindings](https://gstreamer.freedesktop.org/bindings/) — which bindings are officially maintained
 - [`go-gst`](https://github.com/go-gst/go-gst) — the live Go binding, successor to `tinyzimmer/go-gst`
 - [`gstreamermm`](https://github.com/GNOME/gstreamermm) — archived, which is why C++ uses the C API directly
-- [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) — the decision this module implements
+- [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) — the process model this module implements
 
 *Written 4 September 2026.*

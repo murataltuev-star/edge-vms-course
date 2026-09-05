@@ -8,19 +8,21 @@ A shipped edge VMS is seven layers deep. The course builds them in dependency or
 
 | # | Layer | The question it answers | Module | State |
 |---|---|---|---|---|
-| 1 | **RAUC** | What OS is this box running, and can I change it safely? | М9 Part A | Designed |
-| 2 | **Nomad + Podman** | What workload is running, and where? | М9 Part B | Designed |
+| 1 | **RAUC** | What OS is this box running, and can I change it safely? | М9 | Designed |
+| 2 | **Nomad + Podman** | What workload is running, and where? | М9 (one box) · М11 Part A (many) | Designed |
 | 3 | **Postgres** | What does this system know about itself? | М10 | Designed |
 | 4 | **Domain controller** | Cameras, archives, detectors — the actual product | М10 (one node) · М11 (many) | Designed |
 | 5 | **OpenBao** | Who is allowed to know what, and how do they prove it? | М12 | Designed |
 | 6 | **Prometheus + logs** | Is it working, and how would I know? | М13 | Planned |
 | 7 | **Device management** | What do I have, where, on which version? | М12 | Designed |
 
-Layers 1–2 are the two update planes М9 is built around: the OS underneath, the workload on top. Layers 3–4 are the product. Layers 5–7 are what turns one working box into a fleet somebody can operate.
+Layers 1–2 are the two update planes М9 is built around: the OS underneath, the workload on top — both visible on a single box, which is all М9 needs. Layers 3–4 are the product. Layers 5–7 are what turns one working box into a fleet somebody can operate.
 
 **Layers 5 and 7 turned out to be one layer.** They are both in М12. The plan had identity in layer 5 and device management in layer 7, three modules apart, and each asked the same question — *how does a machine prove who it is in order to get its first secret?* Enrollment is where identity and device management meet, and separating them meant neither owned it.
 
-**Layer 4 is split across two modules,** which is a change from this plan's first version. М10 builds the reconciliation loop on a single node, where both ends of it are visible at once; М11 takes the same loop to many nodes and adds placement and the API. A database with nothing acting on it is not a working system, so М10 could not stop at Postgres.
+**Layer 4 is split across two modules,** which is a change from this plan's first version. М10 builds the reconciliation loop on a single node, where both ends of it are visible at once; М11 handles what happens when ownership is contested. A database with nothing acting on it is not a working system, so М10 could not stop at Postgres.
+
+**Layer 2 moved out of М9 and into М11 Part A.** М9's own progression promises one box — *a box is whatever was flashed onto it* — and it cannot promise that while building a three-server cluster in its second half. It spent one revision in М10, on the grounds that scheduling is desired-state work; that is true, but it put the two-level idea in two modules and taught it twice. A cluster and the controller above it are one arc. Nomad's cross-site federation went further still, to М12, where many networks actually begin.
 
 ---
 
@@ -55,7 +57,7 @@ This is deliberate and follows the course's existing discipline — `camera_sim.
 
 ## The modules
 
-### М10 — NodeVMS: Postgres + AppHost · 5 lessons (25–29) · [designed](./М10_NodeVMS/module-design.md)
+### М10 — NodeVMS: Postgres and the AppHost · 5 lessons (20–24) · [designed](./М10_NodeVMS/module-design.md)
 
 The cloud VMS spec forbade a database outright. The appliance needs one, and understanding *why the answer flipped* is half the module: in the cloud, KVS held the configuration; on-prem, the box holds it. The other half is that a row saying a camera should be recording is a wish until something makes it true.
 
@@ -65,7 +67,7 @@ The cloud VMS spec forbade a database outright. The appliance needs one, and und
 - The reconcile loop, built against a fake actuator first: desired persisted, actual derived, `observed_revision >= revision` as the only test of applied
 - Fifty GStreamer pipelines in one Python process — the GIL boundary demonstrated, `watchdog` for stall detection, and where Python stops being the right answer
 
-### М11 — DomainVMS: the domain controller, across nodes · 5 lessons (30–34) · [designed](./М11_DomainVMS/module-design.md)
+### М11 — DomainVMS: the scheduler, and the controller above it · 9 lessons (25–33) · [designed](./М11_DomainVMS/module-design.md)
 
 Where the course stops being about infrastructure and starts being about the product, and the only module where getting it wrong corrupts customer data rather than merely stopping a service. М10's loop already works on one box; this is everything that appears once there is more than one.
 
@@ -77,9 +79,9 @@ Where the course stops being about infrastructure and starts being about the pro
 
 **Detectors resolve an open question rather than needing a lesson:** attaching one creates another object of another worker class with its own opaque config, and the controller does not change. Where inference runs is therefore a *deployment* question, answered by worker class and placement constraints.
 
-### М12 — FederatedVMS: identity, trust and the fleet · 9 lessons (35–43) · [designed](./М12_FederatedVMS/module-design.md)
+### М12 — FederatedVMS: identity, trust and the fleet · 10 lessons (34–43) · [designed](./М12_FederatedVMS/module-design.md)
 
-**Merged from the old М12 and М14**, which asked the same question twice. The fourth and last scope level: things that must be true above any single domain.
+**Merged from the old М12 and М14**, which asked the same question twice, and given Nomad's cross-site federation from М9. The fourth and last scope level: things that must be true above any single domain.
 
 Its thesis is a constraint: **everything below this layer must keep working when this layer is unreachable.** A site records video whether or not the centre answers, so identity, trust and entitlement are cached and degrade on a grace period rather than blocking.
 
@@ -91,7 +93,7 @@ Its thesis is a constraint: **everything below this layer must keep working when
 - **Inventory, reported never commanded**, and **version skew as the normal state** — the N−1 contract rule that М11's opaque config and revision ordering pay for
 - **hawkBit**, closing both update planes with a control plane that finally spans sites
 
-### М13 — Observability: Prometheus and logs · ~4 lessons
+### М13 — Observability: Prometheus and logs · ~4 lessons (44–47)
 
 - Metrics from Nomad, Podman and the domain controller
 - What to actually alarm on for a VMS: fragment write rate, camera offline, disk fill rate, time skew. Not CPU graphs
@@ -104,7 +106,8 @@ Its thesis is a constraint: **everything below this layer must keep working when
 
 The order is dependency-driven, not layer-numbered:
 
-- **М10 before М11** — the loop has to work on one box before placement across several is meaningful
+- **М9 before М10** — an appliance has to exist before it can be scheduled onto
+- **М10 before М11** — the loop has to work on one box before a scheduler above it, or contested ownership, means anything
 - **М11 before М12** — secrets management is abstract until there are services worth protecting
 - **М12 before М13** — so that "never log a secret" is a rule students already understand
 
@@ -117,10 +120,10 @@ The order is dependency-driven, not layer-numbered:
 | Module | Lessons | Cumulative |
 |---|---|---|
 | М8 — Cloud VMS | 15 | 15 |
-| М9 — EdgeVMS | 9 | 24 |
-| М10 — NodeVMS | 5 | 29 |
-| М11 — DomainVMS | 5 | 34 |
-| М12 — FederatedVMS | 9 | 43 |
+| М9 — EdgeVMS | 4 | 19 |
+| М10 — NodeVMS | 5 | 24 |
+| М11 — DomainVMS | 9 | 33 |
+| М12 — FederatedVMS | 10 | 43 |
 | М13 — Observability | ~4 | ~47 |
 
 Roughly **47 lessons**, or a full semester. Worth deciding deliberately rather than discovering at М12: this is a large course, and М10–М13 are each a genuine module rather than an appendix.
@@ -130,7 +133,7 @@ Roughly **47 lessons**, or a full semester. Worth deciding deliberately rather t
 ## Deliberately out of scope
 
 - **Analytics and inference at depth.** М11 attaches detectors; it does not teach computer vision
-- **High availability of a single-box site.** One box, replaced not clustered — a second server is sold for capacity or for failover, never bolted on to make one box redundant. Failover *between* nodes in a multi-node domain is very much in scope: М9 Lesson 21 reschedules workers off a dead node, М11 Lesson 32 reassigns its cameras, and the module says plainly what does not fail over — the footage already on that node's disks
+- **High availability of a single-box site.** One box, replaced not clustered — a second server is sold for capacity or for failover, never bolted on to make one box redundant. Failover *between* nodes in a multi-node domain is very much in scope: М10 Lesson 26 reschedules workers off a dead node, М11 Lesson 29 reassigns its cameras, and the module says plainly what does not fail over — the footage already on that node's disks
 - **Multi-tenancy.** One operator organisation per deployment
 - **The cloud side.** М8 covers KVS; nothing here builds a SaaS control plane
 
