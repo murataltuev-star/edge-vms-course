@@ -47,7 +47,7 @@ Node 3 reappears on another server with its configuration intact and resumes its
 | Domain layer | **A directory, not a configuration store** | Lookup, creation and rebalance only. It may be unavailable without recording stopping. |
 | Fencing | **At the archive, not at the controller** | You cannot stop a zombie from writing. You can make its writes land where nobody reads. |
 | Epoch issuer | **A Nomad Variable with check-and-set** | Atomic, monotonic and raft-replicated, so it survives losing a server. Nomad's *variable lock* is the trap: its lock ID is an opaque UUID, not a fencing token. |
-| Directory storage | **Postgres — the third use of one engine** | Not because it suits a few thousand rows, but because a second engine is pure cost. The same argument М10 made against SQLite. |
+| Directory storage | **No database at all.** A Nomad Variable per Node for the list; an object store for the restore point | The two halves have nothing in common: kilobytes queried constantly, and megabytes read once on failover. Splitting them removes the last per-domain database — so a domain really is a set of Nodes on a network, not an installation. |
 | Orchestrator | **Nomad** | Non-container workloads, Podman kept as the runtime, far smaller operational surface. See [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md). |
 | Single-server deployments | **No orchestrator at all** | М9's Quadlet stack is better on one box, and Lesson 25 makes students argue that rather than assert it. |
 | Convergence token | **Monotonic revision**, not token equality | Ordering expresses *distance*; equality only *difference*. See below. |
@@ -185,9 +185,17 @@ PUT  var domain/epoch {42}  cas=8123
 
 Atomic, single-issuer, monotonic. Simpler still: `ModifyIndex` is itself raft-assigned and monotonic, so a write of anything yields a usable epoch — fencing needs *increase*, not density.
 
-**Why this beats a Postgres sequence in the directory.** A sequence works, but the directory's Postgres can be restored from scratch, and a sequence that restarts at 1 issues epochs that collide with ones already written into archive paths — silent corruption produced by the recovery procedure. Nomad's raft is replicated to every server; you cannot lose the counter without losing the cluster, and if the cluster is gone there are no allocations to fail over. **And it adds no coupling**: failover already requires Nomad, because Nomad is what reschedules the allocation.
+**Why this beats a sequence in a database.** A sequence works right up until the database is restored from a backup, at which point it reissues numbers already written into archive paths — silent corruption produced by the recovery procedure itself. This is a large part of why the domain ended up with no database at all. Nomad's raft is replicated to every server; you cannot lose the counter without losing the cluster, and if the cluster is gone there are no allocations to fail over. **And it adds no coupling**: failover already requires Nomad, because Nomad is what reschedules the allocation.
 
-> **Nomad Variables for identity, bootstrap and coordination — small, rare, cluster-critical. Postgres for configuration, index and events — large, frequent, queryable.** Configuration no, coordination yes.
+Which generalises into the rule the whole module stores things by — **three stores, chosen by shape rather than by habit:**
+
+| | Holds | Shape | Why not one of the others |
+|---|---|---|---|
+| **Postgres**, per Node | configuration, archive index, events | large, frequent, **queried** | the only one of the three that can answer a question |
+| **Nomad Variables**, per Node and per domain | identity, the epoch, the directory list | small, rare, **must be consistent** | raft is memory-resident and replicated to every server, so it must stay small |
+| **Object storage**, per domain | each Node's published configuration | large, rare, **never queried** | it is a blob nobody but its author parses, and durability is the whole requirement |
+
+> **Small and consistent goes in the scheduler's store. Large and queryable goes in a database. Large and opaque goes in an object store.** The mistake this module started out making was assuming the third case needed the second.
 
 ---
 
@@ -242,7 +250,8 @@ The reflexive answer, and wrong here: cameras are **not uniform** (4K at 8 Mbps 
 - The other drivers and why a VMS cares: `exec2` for a native process needing device access, `virt` for a VM. Kubernetes cannot do this at all
 - **Node identity: where it comes from, and where it must not.** The Node must be the same Node after it moves. Nomad's *allocation index* looks like the answer and has had documented uniqueness bugs — two simultaneously-running allocations sharing an index, accepted and later fixed. Fine for a metrics label; **never for something archive correctness depends on**
 - **Nomad Variables are the right mechanism** — an encrypted, namespaced, ACL'd key-value store the scheduler delivers to a task. A Node reads *which Node am I, where is the directory, what is my epoch* from there. It is exactly what Variables are for, and it is why identity survives rescheduling without living on any disk
-- **And why configuration does *not* go there.** Variables cap at **64 KiB per entry** — originally 16 KiB, raised since, and capped at all because, in HashiCorp's own words, the limit exists *"to reduce the potential performance impact of Variables on our raft store."* That is the maintainers stating this module's own reason for keeping camera configuration out of the scheduler: the raft store is memory-resident and replicated to every server. A thousand cameras do not fit in 64 KiB either, and a key-value store cannot answer *which cameras have retention over 30 days* anyway
+- **And why configuration does *not* go there.** Variables cap at **64 KiB per entry** — originally 16 KiB, raised since, and capped at all because, in HashiCorp's own words, the limit exists *"to reduce the potential performance impact of Variables on our raft store."* That is the maintainers stating this module's own reason: the raft store is memory-resident and replicated to every server, so it is the wrong place for anything that grows. A thousand cameras of settings do not fit, and a key-value store cannot answer *which cameras have retention over 30 days* anyway
+- **What does fit is the pointer.** A Node's Variable holds its identity, its camera ids, and *where its configuration object is and at which revision* — hundreds of bytes, not megabytes. Lesson 29 turns that into the whole directory
 - Storage reality: recordings stay local. **Do not put video bulk on replicated storage**
 - Placement constraints: cameras are not uniformly reachable from every server
 
@@ -266,20 +275,21 @@ Walk it explicitly, because "it pulls its configuration back" hides every intere
 Server A dies
   └─ Nomad reschedules Node 3's allocation → Server B
        1. empty Postgres; migrations run
-       2. read identity from a Nomad Variable — "I am Node 3, the directory is at X"
-       3. ask the directory for Node 3's last published configuration
-       4. restore it; check the revision it came back with
+       2. read its own Nomad Variable — "I am Node 3; my configuration
+          is object node-3/rev-812, and these are my camera ids"
+       3. fetch that object from the domain's object store
+       4. restore it; check the revision against the Variable
        5. request a new epoch
        6. begin recording into epoch-N+1
 ```
 
 - **Step 2 is why identity cannot live on disk.** The disk is on the dead server
 - **Step 4 is where the RPO becomes visible.** The revision that comes back may be behind the one the operator last saw acknowledged
-- **Step 5 is why the directory must be reachable to fail over**, even though it is not needed to run
+- **Steps 2 and 3 are why the domain must be reachable to fail over**, even though nothing in it is needed to *run*. Note they are two different things to reach — the scheduler's own store and an object store — and neither is a database somebody installed for this
 
 #### The mechanism, and what not to build
 
-**Not Postgres logical replication.** The Node's report channel from Lesson 29 already streams upward; configuration revisions ride on it beside status. One mechanism, two uses, and no second piece of infrastructure to operate.
+**Not Postgres logical replication.** There is nothing at the domain to replicate *into*. A Node writes its configuration to the object store itself and then updates its own Variable to name the new revision — in that order, so a Variable never points at an object that is not there. The report channel from Lesson 29 carries status, not bulk.
 
 - **The acknowledgement rule**, from the section above: acknowledge on local commit, and show *saved · not yet replicated* until the directory confirms. Never acknowledge a write whose durability you cannot vouch for, and never block the write on it either
 - **A Node the directory has never seen** comes up *unconfigured*, and does not invent anything
@@ -320,8 +330,11 @@ That is a **directory**, not a configuration store — which is why it may be do
 ### Lesson 29 — What the domain knows that a Node cannot
 
 - The directory: which Nodes exist, which cameras belong to which, and how far behind each Node's replica is
-- **What it runs on: Postgres again** — the third use of one engine in the course. Not because it suits a few thousand rows, but because a second engine means a second backup story and a second thing to debug. The argument М10 made against SQLite, one scope up
-- **What is *not* in it: the epoch.** That lives in a Nomad Variable, so the directory can be restored from scratch without the fencing tokens ever going backwards
+- **The directory is two things, and only one of them is queried.** A *list* — kilobytes, read constantly, answering *where is camera 7* — and a *restore point*, megabytes per Node, read exactly once in the life of a failover and never parsed by anything but the Node that wrote it. Building one store for both is what makes people reach for a database
+- **So there is no domain database.** The list is **a Nomad Variable per Node**; the restore point is **an object per Node in an object store**. Both already exist for other reasons: Variables deliver identity and the epoch, and М9's appliance already talks to object storage
+- **One writer per key, enforced by the platform.** Node 3 writes only `nodes/node-3`, and a Nomad ACL policy says so. That is Candidate 2 expressed in the storage layer rather than in a convention — the same property Postgres was being asked to provide by discipline
+- **What is *not* in it: the epoch.** A Nomad Variable too, but the domain's — so the whole directory can be lost and rebuilt without the fencing tokens ever going backwards
+- **Reading it.** *Where is camera 7* scans one Variable per Node — tens of entries, not thousands of rows — and the console caches the result. Say the number out loud: this stops being adequate somewhere in the low hundreds of Nodes per domain, and that is a limit the product states rather than discovers
 - **Why it is small, and why that matters.** It is not a configuration store — it may be unavailable while recording continues and while an operator edits a camera on its own Node
 - The contract: **streams, not callbacks.** A server-streaming watch and a client-streaming report mean a Node is never required to be addressable, which is what makes this work behind a customer's NAT
 - **Why ordering beats equality**, from the section above
@@ -368,7 +381,7 @@ The course's own convention — the stand-in before the real thing — at the to
 
 ### Lesson 32 — The API, and what it refuses
 
-- The read view: the directory joined with what Nodes report, **grouped by failure domain**, so a dead server reads as one cause
+- The read view: the directory list merged with what Nodes report, **grouped by failure domain**, so a dead server reads as one cause. There is no join to write — it is a merge in the API process, which is what a directory of tens of entries permits
 - **Positions and reasons.** `phase` says where an object is; conditions say why it cannot get further. Kubernetes shipped the phase enum and then documented why it was wrong
 - Write API: camera CRUD with **idempotency keys**, and **what it refuses** — a client may not set placement
 - **Detectors.** Another worker class with its own opaque config; the domain does not change. So **where inference runs is a deployment question**, not a schema one
@@ -446,9 +459,10 @@ Split by part, and the split is clean.
 1. **Is 2a ever right?** The course builds 2b, and the CSI detach problem means 2a cannot fail over unattended — so 2a is only defensible where an operator is on call. Whether any VMS deployment meets that description is a product question, not a technical one.
 2. **Rebalance trigger.** Operator-initiated only, or scheduled during a maintenance window? The module assumes the former.
 3. **How much retention policy is domain design rather than infrastructure?** Schedules, per-camera overrides and legal hold may deserve their own lessons.
-4. **Can a task write Variables under workload identity, or does the directory need an operator token?** The Variables API documentation does not say, and it decides how the directory authenticates. Check before building.
+4. **Can a task write Variables under workload identity, and can an ACL policy scope it to that Node's own prefix?** This is now load-bearing rather than incidental: the whole one-writer-per-key property rests on Node 3 being unable to write `nodes/node-4`. The Variables documentation does not settle it. **Check before building** — if the answer is no, the directory needs a small write service in front of it, which is a component the design currently does not have.
 5. **How short should a grant's lifetime be?** Lesson 33 makes students pick a number and defend it; the product must pick one too, trading an operator locked out during an outage against a revoked administrator retaining access.
-6. **Does the directory need high availability (HA)?** Less than it looked. Most of it is rebuildable — every Node republishes its own configuration — and the epoch, the one thing that could not be rebuilt, now lives in Nomad's raft rather than in the directory. What remains is a lookup service whose loss is an inconvenience.
+6. ~~**Does the directory need high availability (HA)?**~~ **Answered by removing the thing that would have needed it.** The list is in Nomad's raft, replicated across servers already there for scheduling; the restore point is in an object store, whose durability is its whole product. Neither is a database somebody has to make highly available, and the repmgr-versus-Patroni discussion this module was heading for does not happen. What remains is a real question one level down: **what does an air-gapped domain use for object storage** — MinIO on the servers, and who backs *that* up?
+7. **Where does the domain CA run?** It is now the domain's only stateful *service* — the directory is storage, and storage does not sign things. So it is a Nomad job, which means it can be rescheduled like anything else and its unavailability stops certificate renewal for as long as it takes to reschedule, bounded by the certificate lifetime. That is a numbers problem rather than a design flaw, but the module should say it. Its key does not live in the directory; see [`where-the-database-lives.md`](where-the-database-lives.md).
 
 **Resolved while designing the module:**
 

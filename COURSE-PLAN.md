@@ -153,7 +153,7 @@ Roughly **48 lessons**, or a full semester. Worth deciding deliberately rather t
 - ~~Lesson numbering~~ — М9 is 16–24, М10 is 25–29, М11 is 30–34, М12 is 35–43, М13 is 44–47
 - ~~Consul in or out~~ — out, and for a better reason than licensing alone ([`consul-and-openbao.md`](./М12_FederatedVMS/consul-and-openbao.md))
 - ~~Identity split across М12 and М14~~ — they were one layer; merged into М12
-- ~~Where the domain database lives, and whether hosts replicate it~~ — each **Node** owns its configuration and replicates one way upward; the domain holds a directory; a domain is the largest set of servers on a reliable network ([`where-the-database-lives.md`](./М11_DomainVMS/where-the-database-lives.md))
+- ~~Where the domain database lives, and whether hosts replicate it~~ — **there is no domain database.** Each **Node** owns its configuration in its own Postgres and publishes one way upward; the domain's directory is a Nomad Variable per Node plus an object per Node; a domain is the largest set of servers on a reliable network ([`where-the-database-lives.md`](./М11_DomainVMS/where-the-database-lives.md))
 
 ---
 

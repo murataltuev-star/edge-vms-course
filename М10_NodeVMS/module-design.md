@@ -56,7 +56,7 @@ If a lesson does not move that demo forward, it does not belong in this module.
 | Change notification | **Poll on a timer, `LISTEN/NOTIFY` for latency** | NOTIFY is not durable — a listener that was disconnected misses it forever. Notify for speed, poll for correctness. Teaching only NOTIFY produces a system that silently stops converging. |
 | Node visibility | **Decided for the operator, never by them** | See below. The `cameras` table has no Node column a client may write. |
 | Language | **Python for the course; Go + C++ for the product** | Python teaches the loop and makes the language boundary visible. The product splits it — Go for the controller, C++ for the media worker — and Lesson 24 says why that split costs almost nothing. |
-| Databases | **Two, from the first lesson: a domain database and a node database** | On one box they share an instance, so М11 *moves* one rather than splitting one — and nothing in the schema changes when it does. See [`where-the-database-lives.md`](../М11_DomainVMS/where-the-database-lives.md). |
+| Databases | **One, and the Node owns it** | Configuration, archive index and events in one Postgres. М11 adds Nodes, not a second database — the domain above them is a Nomad Variable and an object store, so nothing here is ever demoted to a cache. See [`where-the-database-lives.md`](../М11_DomainVMS/where-the-database-lives.md). |
 | Database placement | **On the data partition, as a Quadlet unit** | М9's three-way boundary with consequences: `PGDATA` in a rootfs slot is destroyed by the next OS update. |
 | Authentication | **One hand-provisioned operator, marked temporary** | On one Node there is nothing to decide. The tables exist from Lesson 20 so М11 adds policy rather than schema. |
 | Local storage engine | **Postgres, not SQLite** | The archive index and the event stream need a real database regardless, so a second engine for a small cache is pure cost. Partitioning is the deciding feature. |
@@ -176,15 +176,16 @@ So: invisible in configuration, visible in diagnostics and capacity. The same re
 
 *Five lessons, one Node on one server. The student writes the reconciler.*
 
-### Lesson 20 — The databases the cloud VMS didn't need
+### Lesson 20 — The database the cloud VMS didn't need
 
 - Why М8's spec forbade a database, and why the answer flips on-prem: in the cloud KVS held the configuration; on a box, the box holds it
-- **Two databases, one instance.** The *domain database* holds what an operator asked for; the *node database* holds what this box knows — its cached assignment, its archive index, and its events. On one box they share a Postgres instance, and М11 moves one of them to its own. Building one database now and splitting it in М11 would teach the wrong instinct
-- Domain schema: cameras, streams, sites and retention policies
-- **Node schema:** the archive index (which segment covers which camera over which range, as a `tstzrange` with a GiST index — М8's timeline query, answered directly) and the event stream (motion, camera offline, operator actions, with a JSONB payload because detectors differ)
+- **One database, and this Node owns it.** Not a cache of anything: the Node is the authority for its own configuration, and М11 keeps it that way when several Nodes appear — nothing above ever writes these rows. **There is no second database here and none arrives later**, which is worth saying plainly because most control-plane courses would put one in
+- **Three kinds of data, one engine.** *Configuration* — cameras, streams, sites, retention policies — is what an operator asked for. The *archive index* and the *event stream* are what this box observed. They differ in almost every property except the engine they run on, and Lesson 23 depends on the difference
+- **Configuration schema:** cameras, streams, sites and retention policies
+- **Observation schema:** the archive index (which segment covers which camera over which range, as a `tstzrange` with a GiST index — М8's timeline query, answered directly) and the event stream (motion, camera offline, operator actions, with a JSONB payload because detectors differ)
 - **Time partitioning from day one.** Both index and events are rolling windows taking on the order of a hundred rows a second at scale. Retention is `DROP PARTITION`, not `DELETE FROM` — Lesson 23 collects on this
 - **Events are not metrics.** An operator searches events; an engineer alarms on metrics. They look alike and belong in different modules — М13 has the second kind
-- **Operators and grants, in the schema from the start.** An `operators` table, and a `grants` table carrying `subject`, `capability` and `valid_until`. On one Node authorization is a non-problem — one operator, all rights — so this lesson builds the tables and no policy. **The expiry column is unused here and present so that М11 populates rather than migrates**, exactly as the two databases above exist so М11 relocates rather than splits. The lesson says so, rather than leaving a student to wonder why a column does nothing
+- **Operators and grants, in the schema from the start.** An `operators` table, and a `grants` table carrying `subject`, `capability` and `valid_until`. On one Node authorization is a non-problem — one operator, all rights — so this lesson builds the tables and no policy. **The expiry column is unused here and present so that М11 populates rather than migrates.** The lesson says so, rather than leaving a student to wonder why a column does nothing
 - **Operator-owned columns versus controller-owned columns.** `enabled`, `rtsp_url`, `retention_days`, `site_id` are written by people; `revision`, `assigned_worker`, `observed_revision`, `phase` are written by machines and never appear as form fields
 - `revision` as a monotonic, controller-assigned integer per object — not a hash, not a timestamp
 - Migrations as a shipped artifact, and the appliance constraint: they run at boot on a box nobody visits, so they must be idempotent and must never be able to leave it unbootable

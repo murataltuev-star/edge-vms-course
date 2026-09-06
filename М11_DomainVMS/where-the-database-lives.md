@@ -2,18 +2,25 @@
 
 **A decision record for М10_NodeVMS and М11_DomainVMS.** Companion to [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) and [`consul-and-openbao.md`](../М12_FederatedVMS/consul-and-openbao.md), written in answer to *"a domain exists when its Postgres exists — so is Postgres installed on every host, and how do they sync?"*, and then revised in answer to a second question that corrected it: *if the host needs an event store and an index anyway, why not Postgres locally too?*
 
-It has now been revised a third time, and that revision **inverts the second verdict below.** The question that did it: *the Node is a Nomad allocation, not a server — its configuration does not change when Nomad moves it from one server to another, so why does anything need to write ownership at all?* That is right, and the design changed because of it. Each revision is left visible rather than quietly edited out, because the sequence is the lesson.
+It was revised a third time, and that revision **inverted the second verdict below.** The question that did it: *the Node is a Nomad allocation, not a server — its configuration does not change when Nomad moves it from one server to another, so why does anything need to write ownership at all?* That is right, and the design changed because of it.
+
+A fourth revision followed the PKI split — М11 now runs a certificate authority in every domain, which poses a *where does the key live* question this record is the right place to answer — and while making it, **found this record wrong in five places about the epoch.** It said the domain database issues it. It does not: the epoch is a Nomad Variable, and everything downstream of that error is corrected below.
+
+A fifth revision removed the domain database entirely. The objection that did it was aimed at this record's own first verdict — *"a node database, one per Node, and a domain directory, one per domain; both Postgres"* — and consisted of pointing at the last three words. It is wrong, and the reason it took five revisions to see is instructive: the directory does two jobs with nothing in common, and a database is the obvious answer to either one taken alone.
+
+Each revision is left visible rather than quietly edited out, because the sequence is the lesson.
 
 ---
 
 ## Verdict
 
-Four things. The second is the one this record got wrong twice before getting right.
+Five things. The first was wrong in every earlier draft, in a different way each time.
 
-1. **Two databases, one engine.** A *node database*, one per Node, and a *domain directory*, one per domain. Both Postgres; almost nothing else about them is alike.
+1. **One database, and it belongs to a Node.** Postgres per Node, holding its configuration, its archive index and its events. **The domain has no database at all** — its directory is a Nomad Variable per Node plus an object per Node in an object store, because those two halves are a small consistent thing and a large opaque thing and neither is a query workload.
 2. **The Node owns its configuration and replicates one way upward.** It does not cache someone else's. A Node is a Nomad allocation with stable identity, so when a server dies the Node moves and **its cameras go with it** — nothing rewrites ownership, because ownership never changed.
 3. **Destructive operations must never run from state whose authority is unreachable.** Recording continues; deletion does not.
 4. **A domain is the largest set of nodes sharing a reliable network.** That is what decides where domain boundaries fall, and it makes the whole Edge → Node → Domain → Federation progression physical rather than arbitrary.
+5. **Storage is chosen by shape, not by habit.** Small and consistent goes in the scheduler's store; large and queryable goes in the database; large and opaque goes in an object store. A record about where databases live turns out to be mostly about what they are *not* for.
 
 ---
 
@@ -52,22 +59,49 @@ Both designs have exactly one writer per row, so neither has a merge problem. Th
 - **Its configuration** — its cameras, their settings, its retention policy. **Owned, not cached.** Replicated one way upward for durability and lookup
 - **The archive index** — which segment covers which camera over which range. Written constantly; rebuildable by scanning
 - **Events** — motion, camera offline, analytics hits, operator actions. High volume, mostly never read
+- **Its own certificate and key** — how it proves it is Node 3 on every stream to the directory. Short-lived, renewed from the domain's CA, and the key never leaves the Node
 
 > This does not contradict М10's rule that *desired state is persisted and actual state is derived*. The Node persists desired state because it *is* the authority for it; what stays derived is everything about what is actually running.
 
-### One engine, two databases
+### The domain has no database
 
-An earlier draft of this record said SQLite was plenty for the cache. That was answering a narrower question than the one a Node actually poses: **the index and the events need a real database regardless**, so a Node is running Postgres either way, and a second engine for a small cache buys nothing.
+Earlier drafts of this record put a Postgres in every domain and then spent a page arguing about how to make it highly available. Both the database and the argument were avoidable, and seeing why requires noticing that **the directory is two jobs wearing one name.**
 
-| | Domain directory | Node database |
+| | **The list** | **The restore point** |
 |---|---|---|
-| Instances | one per domain | **one per Node** |
-| Written by | the controller, plus each Node publishing upward | **this Node only** |
-| Holds | which Nodes exist, which cameras belong to which, a durable copy of each Node's config, and the epoch counter | **its own configuration**, archive **index**, events |
-| Size | small | large and always growing |
-| Write rate | rare — an operator created or moved something | ~100 rows/sec at a thousand cameras, plus events |
-| Backup | small, and it is itself a backup of the Nodes | reconstructible by rescanning segments — except the configuration |
-| Losing it costs | creation, lookup, rebalance, **and new epochs, so failover cannot complete** | **that Node's configuration**, unless the domain copy survives |
+| Holds | which Nodes exist, which cameras belong to which, how far behind each is | a durable copy of each Node's configuration |
+| Size | kilobytes | megabytes, growing with the fleet |
+| Written | on create, rebalance, and each status report | on every publication |
+| **Read** | **constantly** — every console page | **once, during a failover that may never happen** |
+| Queried? | yes — *where is camera 7* | **never.** Nothing but the Node that wrote it ever parses it |
+| Needs | consistency | durability |
+
+A database is a defensible answer to either column alone. It is a poor answer to both at once, and the instinct to have one store rather than two is what produced the Postgres. So:
+
+- **The list is a Nomad Variable per Node.** Already replicated across the Nomad servers, already how a Node learns its identity and its epoch, already ACL'd. Hundreds of bytes per Node: camera ids, and the revision its configuration object is at
+- **The restore point is an object per Node.** Write-rarely, read-almost-never, opaque — the definition of an object store's workload, and М9's appliance already speaks to one
+
+**What this buys, beyond one fewer component:**
+
+- **One writer per key becomes a platform property rather than a convention.** A Nomad ACL policy can say Node 3 writes only `nodes/node-3`. In Postgres that guarantee was discipline; here it is enforced
+- **The HA argument disappears.** Nomad's raft is replicated because the scheduler needs it to be; object storage durability is what an object store sells. Neither is something a customer has to operate
+- **A domain becomes a set of Nodes on a network, literally** — nothing to install, so no box whose loss is the domain's loss
+
+**The cost, stated plainly:** two mechanisms instead of one, an object store that must exist on-premises for air-gapped sites (MinIO, and someone must back *that* up), and a lookup that scans rather than queries — fine at tens of Nodes per domain, and a stated limit somewhere in the low hundreds.
+
+### The Node's own database
+
+Still Postgres, and still one. An earlier draft said SQLite was plenty; that was answering a narrower question than a Node actually poses, because **the index and the events need a real database regardless** — so a Node is running Postgres either way, and putting configuration anywhere else buys nothing.
+
+| | Node database |
+|---|---|
+| Instances | **one per Node** |
+| Written by | **this Node only** |
+| Holds | **its own configuration**, archive **index**, events |
+| Size | large and always growing |
+| Write rate | ~100 rows/sec at a thousand cameras, plus events |
+| Backup | index and events reconstructible by rescanning segments; **configuration is not**, which is what the restore point is for |
+| Losing it costs | **that Node's configuration**, unless its published object survives |
 
 **Why Postgres locally rather than SQLite**, once index and events are in the picture:
 
@@ -76,11 +110,19 @@ An earlier draft of this record said SQLite was plenty for the cache. That was a
 - **Types that match the work.** `tstzrange` with a GiST index answers *what footage covers this window* directly — which is М8's timeline query — and JSONB carries event payloads that differ per detector
 - **One engine, one skillset.** The same `psql`, `pg_dump`, monitoring and client library. Students learn one thing; whoever operates the appliance operates one thing
 
-### The one thing that stays outside the database
+### What stays outside the databases, and why
 
-Putting a Node's configuration in Postgres puts Postgres in the boot path for recording. A few seconds of `After=postgresql.service` is fine. A data directory corrupted by power loss is not — the Node would be unable to record at all, where a flat file would have carried on.
+**Only one database is left in the design**, so this list is longer than the thing it is an exception to. That is the point: naming the reasons matters more than the list, because the reasons are what tell you where the next one goes.
 
-So keep exactly one thing outside: a **last-known-assignment file**, a few hundred bytes, rewritten whenever the configuration changes. Not a database — a crash-recovery hint, so a Node can start recording while Postgres is still coming up or is broken. Everything queryable lives in Postgres; only the boot-path fallback does not.
+| | Where it lives | Out of the database because |
+|---|---|---|
+| **Last-known assignment** | a few hundred bytes on the Node's disk | Postgres is now in the boot path for recording. `After=postgresql.service` costs seconds and is fine; a data directory corrupted by power loss is not, and a Node that cannot record at all is a worse outcome than one recording from a stale hint |
+| **The epoch** | a Nomad Variable, check-and-set | It is a **fencing token**, so it must never go backwards — and a database restored from last night's backup hands out numbers it has already issued. Nomad's raft store gives monotonicity and survives losing a server |
+| **The directory list** | a Nomad Variable per Node | Small, consistent, and needed by the thing that does the rescheduling. Putting it in a database meant installing one per domain to hold a few kilobytes |
+| **The restore point** | an object per Node | Large and **opaque** — no query ever touches it, and durability rather than consistency is the requirement. See above |
+| **The domain CA's private key** | offline, or a token, never a table | A key in a database is a key in every backup, every replica, and every `pg_dump` a support engineer ever takes. Issuance is an online service; the key it signs with does not have to be, and the only thing that must be online is the intermediate's *signing capability*, not its storage |
+
+A crash-recovery hint, a correctness primitive, a small consistent index, a large opaque blob, and a signing key. The last is the one most likely to be got wrong by convenience, because a certificates table is genuinely useful — **issued certificates are directory entries; the key that signed them is not.**
 
 ---
 
@@ -91,11 +133,21 @@ The course had already made this decision twice without naming it as one princip
 | Layer                  | May be unavailable to | What the layer below does                         |
 | ---------------------- | --------------------- | ------------------------------------------------- |
 | Controller (М11)       | Workers               | keep recording from cached assignments            |
-| Federation (М12)       | Domains               | keep operating on cached identity and entitlement |
+| Domain (М11)           | Nodes                 | keep editing their own configuration, and renew their own certificates |
+| Federation (М12)       | Domains               | keep operating on cached identity and entitlement, and **issue certificates from an intermediate delegated to them** |
 
 > **Every layer is allowed to be unavailable to the layer beneath it, and the layer beneath caches what it needs to carry on.**
 
 Stated once, it becomes a design rule rather than three separate accidents — and it is the thing that makes an edge product different from a datacentre one.
+
+### Caching is not the only way down
+
+The PKI split exposed a second mechanism the rule had been hiding, and it is the better one where it is available.
+
+- **Caching** hands down a *value*. It goes stale, and everything above about grace periods and destructive operations exists to manage that staleness.
+- **Delegation** hands down an *authority*. A domain given an intermediate CA does not hold a cached certificate that expires — it **mints fresh ones indefinitely** with the centre gone, which is why routine issuance never leaves the site.
+
+Delegation is strictly stronger, and it is available exactly when the thing handed down can be bounded and withdrawn on a schedule — which is what a certificate lifetime *is*. That also says precisely what cannot be delegated: **a secret has no such operation.** You cannot hand a domain a bounded, expiring piece of a password; you can only give it a copy, which is another place to steal it from. So the CA moves down into the domain and the vault does not, and that asymmetry — not a preference about topology — is why М12's appliance holds certificates and runs no vault.
 
 ---
 
@@ -126,7 +178,7 @@ A Node that cannot confirm its retention policy keeps footage and reports that i
 
 ## Where the domain boundary falls
 
-Node-owned configuration means a Node no longer depends on the network for its *own* settings. But three things still cross it — creating a camera, rebalancing, and **issuing the epoch that lets a failover complete** — so a domain spanning a link you do not trust is a domain that cannot fail over.
+Node-owned configuration means a Node no longer depends on the network for its *own* settings. But four things still cross it — creating a camera, rebalancing, **reaching the epoch issuer**, and **restoring a dead Node's configuration from the directory** — and the last two are what a failover needs. A domain spanning a link you do not trust is a domain that cannot fail over.
 
 > **A domain is the largest set of nodes that share a reliable network.**
 
@@ -136,21 +188,31 @@ This settles two of М11's open questions at once: one controller per domain, an
 
 ---
 
-## High availability of the domain database
+## The high-availability argument this design does not have
 
-What does losing it actually cost? Less than it used to. Recording continues, and so does editing a camera at its own Node. What stops is creating cameras, cross-Node lookup, rebalancing — and **issuing a new epoch, which means a failover in progress cannot complete.** That last one is the reason the directory cannot simply be treated as disposable.
+Earlier drafts of this record spent a page here choosing between repmgr, pg_auto_failover and Patroni for the domain database. **There is no domain database, so there is no choice to make** — but the page is kept, marked as superseded, because the reasoning is the reason the database went away.
 
-| Option | What it needs | Verdict |
+**What losing the directory costs now:** creating cameras, cross-Node lookup, rebalancing, certificate issuance for new services, and — the one that matters — every Node's off-box restore point, so no failover can complete. Recording continues. So does editing a camera at its own Node, and renewing a certificate a Node already holds, up to its lifetime.
+
+> **The directory is not needed to run; it is needed to recover.**
+
+That was already a weaker requirement than a database's — a backup may be minutes stale and briefly unreachable without anyone noticing. Splitting it removed the requirement entirely: **Nomad's raft is replicated because the scheduler needs it to be, and durability is what an object store sells.** Both are highly available for reasons that have nothing to do with this product, which is the cheapest kind of availability there is.
+
+### Superseded, and kept for the trap in it
+
+| Option | What it needs | Verdict *(when the directory was Postgres)* |
 |---|---|---|
-| **Single Postgres, backup and restore** | Nothing | **The default.** Honest for an appliance |
+| **Single Postgres, backup and restore** | Nothing | The default. Honest for an appliance |
 | **repmgr** | A witness node holding no data, as referee before a standby promotes | Reasonable when a customer asks for HA |
 | **pg_auto_failover** | A monitor node that actively coordinates state changes | Same class, arguably simpler to reason about |
-| **Patroni** | A distributed configuration store — etcd, Consul, ZooKeeper or Kubernetes | **Note the trap** |
-| Domain database in the federated layer | A working uplink | **Never.** Inverts М12's thesis |
+| **Patroni** | A distributed configuration store — etcd, Consul, ZooKeeper or Kubernetes | **The trap** |
+| Domain database in the federated layer | A working uplink | Never. Inverts М12's thesis |
 
-**The Patroni trap is worth stating explicitly**, because it is exactly the kind of dependency that arrives sideways: Patroni requires a DCS, and the obvious candidates are etcd or Consul. [`consul-and-openbao.md`](../М12_FederatedVMS/consul-and-openbao.md) has just argued Consul out of the stack — choosing Patroni means either bringing it back or adding etcd instead, and now the database's availability depends on a consensus cluster the product otherwise has no use for. repmgr's witness and pg_auto_failover's monitor avoid that entirely.
+**The Patroni trap is why this section survives its own obsolescence**, because it is exactly the kind of dependency that arrives sideways. Patroni requires a DCS, and the obvious candidates are etcd or Consul. [`consul-and-openbao.md`](../М12_FederatedVMS/consul-and-openbao.md) had just argued Consul out of the stack — so choosing Patroni meant either bringing it back or adding etcd instead, and the database's availability would then depend on a consensus cluster the product otherwise has no use for.
 
-On a four-box deployment bought to record cameras, spending one on a database witness is a hard sell. **Ship single-node by default; offer HA to customers who ask for it**, and pick by what the team can operate rather than by what is most sophisticated.
+Which is the general lesson, and it applies to more than Patroni: **when making a component highly available requires a second component that is already highly available, ask whether the state could simply live in the second one.** For the epoch, and then for the whole directory, the answer was yes — the Nomad servers were already a replicated consensus cluster, sitting there, doing scheduling. The database was the thing that did not need to exist.
+
+**What is genuinely worth protecting is the CA key**, and it never was a Postgres problem. Losing the directory costs a restore point that every living Node republishes within one publication interval. Losing the domain's signing key means reissuing every certificate in the domain, and losing it *to someone else* means a domain whose entire mutual authentication is forged. Different failure, different mechanism, and none of the table above speaks to it.
 
 ---
 
@@ -158,12 +220,12 @@ On a four-box deployment bought to record cameras, spending one on a database wi
 
 This answers М11's third open question, and then turns out to answer more than that.
 
-If the archive index lives in the domain database, then during a database outage recording continues but **the footage becomes unfindable** — the worst kind of failure, because it is silent and to a customer it is indistinguishable from data loss.
+Suppose the archive index lived at the domain rather than at the Node. During any domain outage recording would continue but **the footage would become unfindable** — the worst kind of failure, because it is silent and to a customer it is indistinguishable from data loss. That alone rules it out, before any argument about write rates.
 
 So split it by who wrote it:
 
 - **The Node that recorded the footage owns its index**, locally. Writing it never needs the network
-- **The domain holds a rollup only** — *"Node 3 has camera 7 for these time ranges"*. Each entry also records which **server's** storage the segments are on, because the Node moves and the footage does not
+- **The domain holds a rollup only** — *"Node 3 has camera 7"*, in that Node's Variable beside its camera ids. Coarse enough to stay inside a key-value entry, which is the test for whether something belongs at the domain at all
 - **Playback asks the domain *where*, then the Node *what***
 
 Which extends the rule М10 Lesson 26 already teaches — *do not put video bulk on replicated storage; replicate metadata and let footage be local* — one level up: **replicate the summary, not the index.**
@@ -173,7 +235,7 @@ Which extends the rule М10 Lesson 26 already teaches — *do not put video bulk
 | Data | Local | Forwarded to the domain |
 |---|---|---|
 | Footage | every segment | nothing |
-| Archive index | every segment's time range, and which server's disks hold it | which Node has which camera, when |
+| Archive index | every segment's time range, and which server's disks hold it | which Node has which camera — a list, not a timeline |
 | Events | every event | alarms needing acknowledgement, and counts |
 
 > **Detail is local; summary is domain.** Three data types, one rule — worth naming once rather than rediscovering per data type, because the fourth one will arrive eventually.
@@ -192,18 +254,22 @@ Most events are never read. A filtered subset — alarms an operator must acknow
 
 | Criterion | Answer |
 |---|---|
-| Postgres per Node? | **Yes — that is where configuration lives.** The domain gets a directory, not a second configuration store |
+| Postgres per Node? | **Yes — that is where configuration lives.** And it is the only Postgres in the design |
+| Postgres per domain? | **No.** The directory is a Nomad Variable per Node plus an object per Node. Nothing to install, nothing to make highly available |
 | Why not SQLite? | Index and events need a real database anyway, so a second engine is pure cost |
 | How do Nodes sync? | One way, upward. Each Node is the only writer of its own rows |
 | What survives a domain outage? | Recording, playback, **and configuration edits made at the Node** |
-| What stops? | Creating a camera, rebalancing, cross-Node lookup, and issuing a new epoch — so failover cannot *complete* |
+| What stops? | Creating a camera, rebalancing, cross-Node lookup, issuing certificates to new services, and **restoring a dead Node — so failover cannot complete** |
+| Where does the directory live? | **The list in Nomad Variables, the restore point in an object store.** Chosen by shape: small and consistent, then large and opaque |
+| Where does the epoch come from? | **A Nomad Variable.** A fencing token must never go backwards, and a restored database hands out numbers it already issued |
+| Where does the CA key live? | **Not in any of the three stores.** Issued certificates are directory entries; the key that signed them is offline or in a token |
 | What happens when a server dies? | Nomad moves the Node; its cameras go with it; **ownership is never rewritten** |
 | Where does the domain end? | At the first network you would not bet recording on |
-| HA? | Matters much less now the domain is a directory — except for the epoch issuer, which is the load-bearing part |
+| HA? | **Not a question the design asks any more.** Nomad's raft is replicated for scheduling; object storage durability is its product. Nothing was made highly available *for this* |
 
-**Course changes.** М10 Lesson 20 builds **both** databases from the first lesson, and what М10 builds *is a Node* — so М11 relocates it rather than restructuring it. М11 Part A now carries what makes failover real: what must outlive a server, shared storage versus one-way replication, and fencing. Part B shrinks to the three things a Node cannot know about itself.
+**Course changes.** М10 Lesson 20 builds **one** database, owned by the Node, and what М10 builds *is a Node* — so М11 adds Nodes rather than restructuring anything. М11 Part A now carries what makes failover real: what must outlive a server, shared storage versus one-way replication, and fencing. Part B shrinks to the three things a Node cannot know about itself.
 
-**Product recommendation: the Node is the authority for its own configuration; the domain is a directory, a durable copy, and the issuer of epochs.** The last of those three is the one that must stay available, because a failover cannot complete without a new epoch — everything else in the domain can be down while the product keeps working.
+**Product recommendation: the Node is the authority for its own configuration and owns the only database; the domain is a Variable, an object, and a certificate authority.** Nothing in that list has to be available for the product to *record*; the directory has to be available for the product to *recover*. Five revisions of this record moved in one direction throughout — **every one of them took state out of a database** — and the last one removed the database.
 
 ---
 
@@ -213,5 +279,7 @@ Most events are never read. A filtered subset — alarms an operator must acknow
 - [`consul-and-openbao.md`](../М12_FederatedVMS/consul-and-openbao.md) — why Patroni's DCS requirement is a step backwards for this stack
 - [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) — camera lifecycle must survive a control-plane outage, which is the rule this record generalises
 - М10 Lesson 26 — replicate metadata, let footage be local
+- [`module-design.md`](module-design.md) — the epoch issuer, the fencing argument it comes from, and М11 Lesson 33's mTLS on the Node↔directory streams
+- [Nomad Variables](https://developer.hashicorp.com/nomad/api-docs/variables) — check-and-set against `ModifyIndex`, which is what makes the epoch monotonic without a second database
 
 *Written 5 September 2026.*
