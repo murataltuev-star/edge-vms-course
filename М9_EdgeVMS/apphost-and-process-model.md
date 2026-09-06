@@ -118,7 +118,7 @@ The instinct to put a supervisor in front of the camera processes is right. The 
 
 Adding a camera never touches Nomad. Adding *capacity* does — scale the job from 20 workers to 25. The orchestrator's state stays small, uniform and independent of the customer's camera count, which is what lets the same design serve an 8-camera site and an 8000-camera one.
 
-The controller is a reconciliation loop: desired state in Postgres, actual state reported by workers, and the controller closing the gap by assigning cameras to shards. Inside each worker a thin supervisor owns its pipelines, watches each one's `GstBus`, and restarts them individually with per-camera backoff.
+The controller is a reconciliation loop: desired state in Postgres, actual state reported by workers, and the controller closing the gap by assigning cameras to shards. **М11 sharpens this**: because a Node is a scheduler allocation with stable identity, a camera is assigned to a Node *once* and moves with it, so the controller places new cameras and rebalances on request rather than reassigning continuously. Inside each worker a thin supervisor owns its pipelines, watches each one's `GstBus`, and restarts them individually with per-camera backoff.
 
 ### Why not extend the process supervisor to cover cameras
 

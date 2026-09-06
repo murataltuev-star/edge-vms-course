@@ -1,10 +1,12 @@
 # М10_NodeVMS — Module Design
 
-**One node learns what it should be, and closes the gap itself.**
+**One Node learns what it should be, and closes the gap itself.**
 
-М8 built a VMS with no database — Kinesis held the configuration and the archive both. М9 made the box atomic and replaceable, but a box still only knows what was flashed onto it. This module is where a node learns **what it should be**: five lessons in which `INSERT INTO cameras` causes a camera to start recording, `DELETE` causes it to stop, and nothing sits in between but a loop the student wrote.
+М8 built a VMS with no database — Kinesis held the configuration and the archive both. М9 made the box atomic and replaceable, but a box still only knows what was flashed onto it. This module is where a Node learns **what it should be**: five lessons in which `INSERT INTO cameras` causes a camera to start recording, `DELETE` causes it to stop, and nothing sits in between but a loop the student wrote.
 
-> **Scope note.** This module has been assembled three times, and the last move is the one worth knowing. The course plan first had М10 as Postgres alone with the loop deferred to М11; the loop came back, because a database nothing acts on is not a working system. Then М9's multi-node half landed here — it is desired-state work, and М9 is supposed to be one box. It did not stay: a Nomad cluster and a domain controller turned out to be one arc cut in the wrong place, so scheduling went on to [М11](../М11_DomainVMS/module-design.md). What is left is one node, which is what the name promises.
+**What this module builds is a Node**, and the capital letter matters from М11 onward. A Node is not a server: it is a VMS instance that owns its own database, its own cameras and its own archive — and in М11 it becomes a scheduler allocation that moves between servers, carrying its cameras with it. Everything built here travels intact.
+
+> **Scope note.** This module has been assembled three times, and the last move is the one worth knowing. The course plan first had М10 as Postgres alone with the loop deferred to М11; the loop came back, because a database nothing acts on is not a working system. Then М9's multi-node half landed here — it is desired-state work, and М9 is supposed to be one box. It did not stay: a Nomad cluster and a domain controller turned out to be one arc cut in the wrong place, so scheduling went on to [М11](../М11_DomainVMS/module-design.md). What is left is one Node, which is what the name promises — and М11 takes that same Node, runs several of them, and moves them between servers without changing anything built here.
 
 ---
 

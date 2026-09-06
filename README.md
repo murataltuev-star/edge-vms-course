@@ -42,7 +42,7 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 15 lessons |
 | [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback | **Designed** · 4 lessons (16–19) |
 | [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — domain state<br>4 · AppHost — the loop that acts on it | **Designed** · 5 lessons (20–24) |
-| [**М11** — DomainVMS](./М11_DomainVMS) | 2 · Nomad + Podman — the scheduler<br>4 · Placement, leases, the API | **Designed** · 9 lessons (25–33) |
+| [**М11** — DomainVMS](./М11_DomainVMS) | 2 · Nomad + Podman — Nodes that move<br>4 · The directory above them | **Designed** · 9 lessons (25–33) |
 | [**М12** — FederatedVMS](./М12_FederatedVMS) | 5 · OpenBao — identity, trust, PKI<br>7 · Enrollment, inventory, version skew | **Designed** · 10 lessons (34–43) |
 | М13 — Observability | 6 · Prometheus + logs | Planned · ~4 (44–47) |
 
@@ -86,11 +86,15 @@ Its organising rule is that **desired state is persisted and actual state is der
 
 ## М11 — DomainVMS
 
-Nine lessons in two halves. **Part A** is the scheduler: a Nomad cluster, the VMS as a job on it, and a node pulled off the wall to watch work reschedule — with students made to argue why none of it belongs on a single appliance. **Part B** is what a scheduler never has to handle: contested ownership. The controller and a worker can disagree about who owns a camera, and a worker can be alive, unreachable and still writing. This is the only module where a mistake corrupts customer footage rather than stopping a service.
+Nine lessons, built on one decision taken up front: **a Node owns its own configuration.** A Node is not a server — it is a scheduler allocation with stable identity, so when a server dies the Node moves and its cameras go with it. Failover rewrites nothing, because ownership never changed.
 
-It is built backwards from one demo. Two hundred cameras across four workers; `kill -STOP` one of them — alive, holding its file handles, exactly what a hung disk looks like — and watch its cameras reappear elsewhere. Then `kill -CONT` it and let the zombie try to keep writing. **The archive is intact, and the student can prove it.**
+**Part A** makes that true: a Nomad cluster, the Node as an allocation, and the lesson most courses skip — *what it takes for a Node's state to be there when it arrives on a new server*. Then a server is pulled off the wall, its old instance wakes up, and the archive is proved intact. **Part B** is the small residue: the three things a Node cannot know about itself — where a camera is, which Node should get a new one, and how to move one. That is a directory, and it is allowed to be down.
 
-The answer is that fencing belongs at the archive rather than at the controller: the lease epoch is part of the segment path, so a stale writer cannot name the files it would otherwise corrupt. You cannot stop a zombie from writing — you can only make its writes harmless.
+The module opens by building the two obvious alternatives and breaking them, because the deciding fact is not obvious: **two writers to one video stream cannot be merged.** This is the only module where a mistake corrupts customer footage rather than stopping a service.
+
+It is built backwards from one demo. Four Nodes, two hundred cameras; pull the power on a server and watch Node 3 reappear elsewhere with its configuration intact. Then bring the dead server back and let its old instance of Node 3 try to keep writing. **The archive is intact, and the student can prove it.**
+
+The answer is that fencing belongs at the archive rather than at the controller: the epoch is part of the segment path, so the stale instance cannot name the files it would otherwise corrupt. You cannot stop a zombie from writing — you can only make its writes harmless.
 
 - [Module design](./М11_DomainVMS/module-design.md) — the cluster, node failover, the two-scheduler contract, placement stability, fencing, shadow mode, and what the API refuses
 - [Kubernetes vs Nomad](./М11_DomainVMS/kubernetes-vs-nomad.md) — why the orchestrator is Nomad, what it cost, and why neither belongs on one box

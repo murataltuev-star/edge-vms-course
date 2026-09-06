@@ -67,7 +67,7 @@ The cloud VMS spec forbade a database outright. The appliance needs one, and und
 - The reconcile loop, built against a fake actuator first: desired persisted, actual derived, `observed_revision >= revision` as the only test of applied
 - Fifty GStreamer pipelines in one Python process — the GIL boundary demonstrated, `watchdog` for stall detection, and where Python stops being the right answer
 
-### М11 — DomainVMS: the scheduler, and the controller above it · 9 lessons (25–33) · [designed](./М11_DomainVMS/module-design.md)
+### М11 — DomainVMS: Nodes that move, and the directory above them · 9 lessons (25–33) · [designed](./М11_DomainVMS/module-design.md)
 
 Where the course stops being about infrastructure and starts being about the product, and the only module where getting it wrong corrupts customer data rather than merely stopping a service. М10's loop already works on one box; this is everything that appears once there is more than one.
 

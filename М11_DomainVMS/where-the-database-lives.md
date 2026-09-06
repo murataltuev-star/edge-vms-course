@@ -2,17 +2,17 @@
 
 **A decision record for М10_NodeVMS and М11_DomainVMS.** Companion to [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) and [`consul-and-openbao.md`](../М12_FederatedVMS/consul-and-openbao.md), written in answer to *"a domain exists when its Postgres exists — so is Postgres installed on every host, and how do they sync?"*, and then revised in answer to a second question that corrected it: *if the host needs an event store and an index anyway, why not Postgres locally too?*
 
-The first question exposed a hole. М10 places Postgres on a single box and says exactly where; М11 then talks throughout about "desired state in Postgres" across many nodes and **never says where it lives.** The second question exposed a wrong answer in the first draft of this record, which is corrected below and left visible rather than quietly edited out.
+It has now been revised a third time, and that revision **inverts the second verdict below.** The question that did it: *the Node is a Nomad allocation, not a server — its configuration does not change when Nomad moves it from one server to another, so why does anything need to write ownership at all?* That is right, and the design changed because of it. Each revision is left visible rather than quietly edited out, because the sequence is the lesson.
 
 ---
 
 ## Verdict
 
-Four things, of which the third is the one that would have caused real damage.
+Four things. The second is the one this record got wrong twice before getting right.
 
-1. **Two databases, one engine.** A *domain database*, one per domain, and a *host database*, one per host. Both Postgres; almost nothing else about them is alike.
-2. **Hosts cache; they do not replicate.** There is exactly one writer of domain state, so the synchronisation problem the question implies does not exist.
-3. **A stale cache may keep recording forever, and must never delete anything.** Destructive operations expire; recording does not.
+1. **Two databases, one engine.** A *node database*, one per Node, and a *domain directory*, one per domain. Both Postgres; almost nothing else about them is alike.
+2. **The Node owns its configuration and replicates one way upward.** It does not cache someone else's. A Node is a Nomad allocation with stable identity, so when a server dies the Node moves and **its cameras go with it** — nothing rewrites ownership, because ownership never changed.
+3. **Destructive operations must never run from state whose authority is unreachable.** Recording continues; deletion does not.
 4. **A domain is the largest set of nodes sharing a reliable network.** That is what decides where domain boundaries fall, and it makes the whole Edge → Node → Domain → Federation progression physical rather than arbitrary.
 
 ---
@@ -31,28 +31,30 @@ None of these is needed, because hosts do not need the database.
 
 ---
 
-## Hosts cache; they do not replicate
+## The Node owns; the domain observes
 
-The distinction is the whole answer, and it is easy to miss because both words describe "the data is also over there".
+Two earlier drafts of this record had it the other way round — a domain database as the authority, hosts holding read-only caches of their slice. That works, and it is what most control planes do. It is also **strictly less available than it needs to be**, and the reason is worth stating precisely.
 
-| | Replication | Caching |
+**A Node is a Nomad allocation, not a server.** Its identity is stable; Nomad decides which hardware runs it. So camera 7 belongs to Node 3 *permanently*, and a dead server is not an ownership change — it is a relocation. Nothing has to write "Node 3 now lives on Server B" into a configuration store, because no camera moved.
+
+Once that is true, the case for a central configuration authority mostly evaporates:
+
+| | Domain-authoritative (earlier drafts) | **Node-authoritative** (this design) |
 |---|---|---|
-| Holds | the entire dataset | only the slice this node needs |
-| Write path | exists — hence conflicts, or an election | **none** |
-| Staleness | must be hidden | must be **known and bounded** |
-| Failure mode | divergence | a known-old view |
+| Who writes camera 7's config | the controller | **Node 3, the only writer** |
+| Editing while the domain is unreachable | impossible | **works — reach the Node** |
+| Ownership on failover | rewritten by the controller | **never rewritten** |
+| What the domain holds | everything | a directory and a durable copy |
 
-**A worker never writes to the domain database.** It reports actual state *through* the controller, which is the only writer. One writer means no merge, no conflict resolution, no election — the entire class of problem is designed out rather than solved.
+Both designs have exactly one writer per row, so neither has a merge problem. The difference is *where that writer sits*, and putting it at the Node keeps configuration next to the software that uses it.
 
-### What a host actually holds
+### What a Node actually holds
 
-Three things, and only the first is small:
-
-- **The desired-state cache** — its assignment, the opaque config for those cameras, its lease and epoch. Arrives on the watch stream from М11 Lesson 27
-- **The archive index** — which segment covers which camera over which time range. Written constantly
+- **Its configuration** — its cameras, their settings, its retention policy. **Owned, not cached.** Replicated one way upward for durability and lookup
+- **The archive index** — which segment covers which camera over which range. Written constantly; rebuildable by scanning
 - **Events** — motion, camera offline, analytics hits, operator actions. High volume, mostly never read
 
-> This does not contradict М10's rule that *desired state is persisted and actual state is derived*. The cached copy is not a second source of truth; it is a cache with an expiry, and a later section is about that expiry.
+> This does not contradict М10's rule that *desired state is persisted and actual state is derived*. The Node persists desired state because it *is* the authority for it; what stays derived is everything about what is actually running.
 
 ### One engine, two databases
 
@@ -186,17 +188,18 @@ Most events are never read. A filtered subset — alarms an operator must acknow
 
 | Criterion | Answer |
 |---|---|
-| Postgres per host? | **Yes — but a different database.** One domain database per domain, one host database per host |
-| Why not SQLite for the cache? | Because index and events need a real database anyway, so a second engine is pure cost |
-| How do hosts sync? | They do not. They cache a slice of domain state, read-only, from the one writer |
-| What survives a domain-database outage? | Recording, playback from the host holding the footage, and every existing assignment |
-| What stops? | Configuration changes, reassignment, and all deletion |
+| Postgres per Node? | **Yes — that is where configuration lives.** The domain gets a directory, not a second configuration store |
+| Why not SQLite? | Index and events need a real database anyway, so a second engine is pure cost |
+| How do Nodes sync? | One way, upward. Each Node is the only writer of its own rows |
+| What survives a domain outage? | Recording, playback, **and configuration edits made at the Node** |
+| What stops? | Creating a camera, rebalancing, cross-Node lookup, and issuing a new epoch — so failover cannot *complete* |
+| What happens when a server dies? | Nomad moves the Node; its cameras go with it; **ownership is never rewritten** |
 | Where does the domain end? | At the first network you would not bet recording on |
-| HA? | Optional, witness- or monitor-based, never consensus-store-based |
+| HA? | Matters much less now the domain is a directory — except for the epoch issuer, which is the load-bearing part |
 
-**Course changes.** М10 Lesson 20 builds **both** databases from the first lesson — on one box they share an instance, so М11 moves one rather than splitting one, and no schema changes when it does. Splitting a database in a later module would teach exactly the wrong instinct. Lesson 20 also gains the event schema and time partitioning; Lesson 23's retention becomes `DROP PARTITION`. М11 gains the cache-versus-replica distinction in Lesson 27, the stale-cache rule in Lesson 29, the event-forwarding rule in Lesson 31, and closes three open questions. **No module grows a lesson.**
+**Course changes.** М10 Lesson 20 builds **both** databases from the first lesson, and what М10 builds *is a Node* — so М11 relocates it rather than restructuring it. М11 Part A now carries what makes failover real: what must outlive a server, shared storage versus one-way replication, and fencing. Part B shrinks to the three things a Node cannot know about itself.
 
-**Product recommendation: two databases on one engine, detail local and summary forwarded, and retention that never runs from a stale cache.** The last is the one to write into the acceptance tests, because it is the only one whose absence stays invisible until a customer asks where their footage went.
+**Product recommendation: the Node is the authority for its own configuration; the domain is a directory, a durable copy, and the issuer of epochs.** The last of those three is the one that must stay available, because a failover cannot complete without a new epoch — everything else in the domain can be down while the product keeps working.
 
 ---
 
