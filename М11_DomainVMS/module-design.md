@@ -224,40 +224,97 @@ Lesson 25 argued an orchestrator is wrong for one appliance. This is the other h
 
 *A reconciler you write, above the one you were given. This is where the module gets hard.*
 
-Part A ends with a working cluster, and a student entitled to ask the obvious question: **you already have a scheduler and you already have a database — why is either one not enough?** Part B has to answer that before it builds anything, because adding a second of either is expensive and the naive design is genuinely tempting.
+Part A ends with a working cluster, and the student is entitled to ask the obvious question: **you already have a scheduler and you already have a database — why is either one not enough?**
 
-### There are two planes, and each needs its own pair
+Part B answers by building the wrong design three times, on purpose. All three are proposals a good engineer makes; none is naive; each fails differently and later than the last. Walking into the failures is worth far more than being handed the conclusion, and a student who has broken these will not build split-brain by accident.
+
+### Candidate 1 — put the cameras in Nomad
+
+You have a scheduler. It places things, it holds arbitrary state, it survives node failure. Why add a second one?
+
+- **Cardinality and churn.** An allocation is one of tens per node, changing when engineers deploy. A camera is one of thousands per site, changing when an operator clicks a button. Two orders of magnitude apart, on entirely different clocks
+- **State in the wrong place.** A thousand cameras' configuration in Nomad's raft makes every operator edit consensus traffic replicated to every server. Raft is for cluster state, not customer data
+- **Availability coupling.** If a camera is an allocation, adding one requires healthy Nomad servers. A VMS must accept configuration and keep recording through a control-plane outage — [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) treats this as disqualifying on its own
+- **No ownership primitive.** Allocations are *placed* and nothing contests them, so Nomad has never needed a lease or an epoch. Cameras are *owned*, and ownership must be fenced
+
+### Candidate 2 — one database per node, exactly one writer per row
+
+Much better. Every node owns its rows; nobody else may write them; other nodes subscribe one way and hold read-only copies. Postgres logical replication implements it directly. Integrity comes from the structure rather than from a protocol, there is no special node, nothing extra to back up, and a partitioned node keeps accepting writes for what it owns.
+
+It survives every objection to Candidate 1. Then ask it to fail over:
+
+1. Node A owns camera 7's row and is recording it
+2. Node A dies
+3. Camera 7 must move to node B
+4. **Who writes the row that says so?**
+
+Node B may not — it is not the owner. Node A cannot — it is dead. There is no third party. **Single-writer-per-node is correct for data whose owner never changes, and camera ownership changes precisely when a node dies** — which is the reason multi-node exists at all.
+
+Two more failures follow from the same gap: a domain-wide query returns 800 of 1000 cameras with **no way to distinguish deleted from unreachable** (the *orphaned* versus *unmanaged* distinction of Lesson 30, now unanswerable), and there is nowhere to issue a monotonic epoch, so the fencing in Lesson 29 has nothing to stand on.
+
+### Candidate 3 — do not store ownership, derive it
+
+The sharpest of the three, and it dissolves Candidate 2's objection completely. Don't write down who owns what — **compute it**: `owner = f(camera_id, membership)`. Every node runs the same function and reaches the same answer. Nobody writes anything. This is how the Dynamo family works.
+
+Push it further and it becomes genuinely coherent: take membership from a consensus source that already exists (**Nomad's raft already agrees which clients are up**), let the epoch be the membership generation number so it is derived too, and have each node **self-fence** — *if I have not confirmed membership within T, I stop writing.* A stops before B starts, with margins. No arbiter, no stored assignment.
+
+Where it breaks is one level further in. **"Everyone knows who owns what" is a claim about agreement, and ownership is derived, so every disagreement moves into the input:**
+
+- Node A is partitioned from B and C but alive, and still reaching its cameras
+- B and C compute membership `{B,C}` → camera 7 belongs to B → B starts recording
+- A computes membership `{A,…}` → camera 7 is still A's → A keeps recording
+- **Both write** — split-brain reached by two nodes each correctly applying the same function
+
+Derived ownership does not remove the problem. It relocates it from *who owns the object* to *who is in the cluster*, and membership disagrees exactly when failover is needed.
+
+Three further costs, of which the first would rule it out even with perfect membership:
+
+- **Ownership churns by construction.** If ownership is a function of membership, any membership change recomputes all of it. Add a node and cameras move — pipelines restart, archives gap. Lesson 28's rule is *only move a camera when you must*, and this violates it structurally. Consistent hashing is the usual mitigation and Lesson 28 explains why it is wrong here
+- **Constraints cannot live in a pure function.** A camera on an isolated VLAN is reachable from one node only. Make the function constraint-aware and it needs the constraint data — which is stored state, which needs an owner, and the design collapses back into the one it replaced
+- **It re-couples camera lifecycle to cluster health.** Membership from Nomad means camera ownership depends on Nomad being reachable, which is the coupling the split exists to prevent
+
+### The difference that actually decides it
+
+Dynamo-style systems tolerate two nodes briefly believing they own a key **because the data model reconciles** — last-write-wins, CRDTs, quorum reads.
+
+> **Two writers to one video stream cannot be merged. There is no reconciliation function for footage.**
+
+Derived ownership is a bet that transient double-ownership is survivable. For a key-value store it is. For an archive it is corruption — and that is why the epoch must be a **fencing token from a single issuer** rather than a number every node computes for itself.
+
+### Each candidate is right somewhere, which is the argument for the split
+
+None of these is discarded; each is used where its assumptions hold:
+
+| Candidate | Where it is correct |
+|---|---|
+| **1 — derived placement in a scheduler** | Workers onto nodes. Homogeneous, unconstrained, restart-tolerant — Nomad does exactly this internally |
+| **2 — one writer per node, one-way sync** | **The host database.** Each node owns its archive index and its events, and a rollup syncs upward. *Detail is local, summary is domain* |
+| **3 — ownership by agreement on membership** | Anywhere the data reconciles. Not here |
+
+Which is a third argument for two levels, arriving from a new direction: **the two planes want different ownership models, so no single mechanism serves both.**
+
+### The resolution
 
 | | Schedules | Its state lives in | Changes when | Must survive |
 |---|---|---|---|---|
 | **Infrastructure** | Nomad — workers onto nodes | Nomad's own raft | you ship a release | — |
 | **Domain** | the controller — cameras onto workers | the domain database | an operator clicks a button | the infrastructure plane being down |
 
-That last cell is the whole argument. Everything below follows from it.
+And note what is *not* happening: **no second database is being added.** М10 deliberately built two on one box — a domain database and a host database sharing an instance — so that this module **moves** one rather than splitting one. The domain database is promoted to domain scope; host databases stay exactly where they were. No schema changes. That is what building both in Lesson 20 was for.
 
-### Why not let Nomad schedule cameras?
+### The alternative this module does not take, which is a real product
 
-It can hold arbitrary state and it already places things. Four reasons it must not:
+**If a domain is one node, Candidate 2 is simply correct.** Everything is local, no arbiter, no consensus, no domain-scoped store — and you federate above it. The cost is exact and it is the only one: **no failover within a domain.**
 
-- **Cardinality and churn.** An allocation is one of tens per node, changing when engineers deploy. A camera is one of thousands per site, changing when an operator clicks. Two orders of magnitude apart, on completely different clocks
-- **State in the wrong place.** A thousand cameras' configuration in Nomad's raft means every operator edit becomes consensus traffic replicated to every server. Raft is for cluster state, not customer data
-- **Availability coupling — the decisive one.** If a camera is an allocation, adding a camera requires healthy Nomad servers. A VMS must accept configuration and keep recording through a control-plane outage, which [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) argues is disqualifying on its own
-- **Ownership.** Allocations are *placed* and nothing contests them. Cameras are *owned*, and ownership has to be fenced. Nomad has no lease or epoch for allocations because it has never needed one — which is exactly why Lesson 29 exists
+Real VMS products ship this — every server independent, the management layer only aggregating. It is the same trade Lesson 25 makes students argue about orchestrators, one level up. The course assumes intra-domain failover is wanted, and this is where that assumption should be stated as a choice rather than left as an omission.
 
-### Why not keep desired state in the host database?
+### What the second scheduler costs
 
-Because a host database has no single writer for domain state. Every node would hold its own opinion about who owns camera 7, and *agreement needs one authority.*
+Two systems to operate, two places a change can sit un-applied, and a student who must learn which plane a given failure lives in. None of that is free.
 
-**But note what is not happening here: you are not adding a second database.** М10 deliberately built two on one box — a domain database and a host database sharing an instance — precisely so that this module *moves* one rather than splitting one. The domain database is promoted to domain scope; host databases stay exactly where they were, holding each node's cache, its own archive index and its own events. No schema changes. That was the whole point of building both in Lesson 20.
-
-### What the second scheduler costs, stated plainly
-
-Two systems to operate, two places a change can sit un-applied, and a student who must learn which plane a given failure lives in. The course does not pretend this is free.
-
-What it buys is the thing that cannot be bought any other way: **camera lifecycle that survives the orchestrator**, and an ownership model precise enough to fence. Every remaining lesson in this module is only possible because ownership belongs to the controller rather than to Nomad.
+What it buys cannot be bought another way: **camera lifecycle that survives the orchestrator**, and an ownership model precise enough to fence. Every remaining lesson here is possible only because ownership belongs to the controller rather than to the scheduler.
 
 ---
-
 ### Lesson 27 — Two schedulers, and the contract between them
 
 - **The argument above, made as a lesson** — students should be able to defend the second scheduler against someone proposing to put cameras in Nomad, and to say what it costs
