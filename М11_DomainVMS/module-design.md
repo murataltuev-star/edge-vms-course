@@ -92,7 +92,7 @@ Which is why the epoch must be a **fencing token from a single issuer** rather t
 | Decision | Choice | Why |
 |---|---|---|
 | Camera ownership | **The Node owns it, permanently** | Failover moves the Node, so nothing rewrites ownership. Candidate 2 above. |
-| Node identity | **Stable, and issued by us — not by the scheduler** | Nomad's allocation index has had documented uniqueness bugs. Fine for convenience, never for correctness. |
+| Node identity | **Stable, carried in a Nomad Variable — never the allocation index** | Variables are built for exactly this and survive rescheduling. The allocation index has had documented uniqueness bugs: fine for a label, never for correctness. |
 | Configuration authority | **The Node, replicating one way upward** | Configuration stays next to the software using it, and survives the domain layer being down. |
 | Domain layer | **A directory, not a configuration store** | Lookup, creation and rebalance only. It may be unavailable without recording stopping. |
 | Fencing | **At the archive, not at the controller** | You cannot stop a zombie from writing. You can make its writes land where nobody reads. |
@@ -127,12 +127,17 @@ So exactly one thing must travel, and it is the smallest: **the Node's configura
 
 | | **2a — shared storage** | **2b — local storage, replicated** |
 |---|---|---|
-| Mechanism | the Node's database on a CSI volume that detaches and reattaches | local disk, configuration streamed one way to the domain |
+| Mechanism | the Node's database on a CSI volume | local disk; configuration streamed one way to the domain, pulled back on start |
 | Fencing | **the storage does it** — exclusive attachment means the old instance cannot write | needs a token issuer |
+| **Automatic failover** | **No — see below** | **Yes** |
 | Cost | a SAN or NAS: expensive, and a shared failure domain | a replication path, and a token issuer to build |
-| Fits | a datacentre that already has one | **an appliance, which is this course's target** |
+| Fits | a datacentre, with an operator on call | **an appliance, which is this course's target** |
 
-**The course teaches 2b** and shows 2a, because most VMS deployments have no SAN — and because 2a hides the fencing problem inside the storage layer, which makes it a worse teaching vehicle even where it is the better product answer.
+**2a does not fail over unattended, and this is worth checking before designing around it.** [Nomad issue #12118](https://github.com/hashicorp/nomad/issues/12118) — still open — reports that when a client holding a CSI volume dies, **the volume stays attached to the dead node.** Rescheduling fails with *"volume is already published on another node"*, Nomad's volume watcher cannot force-detach, and the documented workaround is detaching manually through the storage provider's console.
+
+So shared storage buys fencing and **loses** the automatic recovery it was adopted for. That inverts the usual advice: 2a is not the grown-up option that appliances cannot afford — for a box nobody visits it is the *wrong* option, because the failure it is meant to survive ends with a human logging into a SAN console at 3am.
+
+**The course teaches 2b**, and shows 2a as a cautionary comparison rather than an aspiration.
 
 ---
 
@@ -224,7 +229,9 @@ The reflexive answer, and wrong here: cameras are **not uniform** (4K at 8 Mbps 
 - Jobspec structure: `job` → `group` → `task`, written in HCL
 - **The Podman task driver** — the same images and runtime as Lesson 19. Translating a Quadlet unit into a Nomad task is a mapping, not a rewrite
 - The other drivers and why a VMS cares: `exec2` for a native process needing device access, `virt` for a VM. Kubernetes cannot do this at all
-- **Node identity, and why we issue it ourselves.** The Node must be the same Node after it moves. Nomad's allocation index looks like the answer and has had documented uniqueness bugs — two simultaneously-running allocations sharing an index, accepted and later fixed. Fine for a metrics label; **never for something archive correctness depends on**
+- **Node identity: where it comes from, and where it must not.** The Node must be the same Node after it moves. Nomad's *allocation index* looks like the answer and has had documented uniqueness bugs — two simultaneously-running allocations sharing an index, accepted and later fixed. Fine for a metrics label; **never for something archive correctness depends on**
+- **Nomad Variables are the right mechanism** — an encrypted, namespaced, ACL'd key-value store the scheduler delivers to a task. A Node reads *which Node am I, where is the directory, what is my epoch* from there. It is exactly what Variables are for, and it is why identity survives rescheduling without living on any disk
+- **And why configuration does *not* go there.** Variables cap at **16 KiB per entry, not configurable** — capped, in HashiCorp's own words, *"to reduce the potential performance impact of Variables on our raft store."* That is the maintainers stating this module's own objection to Candidate 1: the raft store is memory-resident and replicated to every server. A thousand cameras do not belong in it, and a key-value store cannot answer *which cameras have retention over 30 days* anyway
 - Storage reality: recordings stay local. **Do not put video bulk on replicated storage**
 - Placement constraints: cameras are not uniformly reachable from every server
 
@@ -237,8 +244,9 @@ The reflexive answer, and wrong here: cameras are **not uniform** (4K at 8 Mbps 
 The lesson the failover demo depends on, and the one most courses skip.
 
 - **What must travel and what must not**, from the table above: configuration travels, footage stays, the index is rebuilt, events are expendable
-- **2a — shared storage.** A CSI volume that detaches and reattaches. Exclusive attachment means the storage layer fences for you. Why a SAN is the wrong assumption for an appliance
-- **2b — local storage with one-way replication**, which the course builds: the Node streams its configuration upward, and a restarted Node pulls it back
+- **2a — shared storage, and why it is a trap here.** A CSI volume looks like the grown-up answer: exclusive attachment even fences for you. But Nomad cannot detach a volume from a dead client, so the allocation will not place and a human has to intervene at the storage provider. Students should read the open issue rather than take this on trust
+- **2b — local storage with one-way replication**, which the course builds. The Node publishes its configuration upward; a restarted Node starts with an empty database and pulls it back
+- **The rehydration sequence**, step by step: empty Postgres → identity from a scheduler variable → configuration from the domain copy → a new epoch → recording. And the staleness this introduces, because the domain copy may be several revisions behind the Node that died
 - Rebuilding the archive index by scanning segments, and how long that takes at scale
 - What the console must show while a Node's old footage is unreachable
 
@@ -349,11 +357,15 @@ Split by part, and the split is clean.
 
 ## Open questions
 
-1. **2a or 2b in the product?** The course builds 2b because appliances rarely have shared storage. A customer who has a SAN may be better served by 2a, and the fencing then comes free from the storage layer.
-2. **How is Node identity actually issued?** The module says "not by the scheduler" and leaves the mechanism open — a provisioning-time UUID is the obvious answer, but it interacts with М12's enrollment.
-3. **Rebalance trigger.** Operator-initiated only, or scheduled during a maintenance window? The module assumes the former.
-4. **How much retention policy is domain design rather than infrastructure?** Schedules, per-camera overrides and legal hold may deserve their own lessons.
-5. **Does the directory need HA?** It may be down without recording stopping, which is the point — but failover cannot *complete* without a new epoch, so the token issuer is more load-bearing than the rest of it.
+1. **Is 2a ever right?** The course builds 2b, and the CSI detach problem means 2a cannot fail over unattended — so 2a is only defensible where an operator is on call. Whether any VMS deployment meets that description is a product question, not a technical one.
+2. **Rebalance trigger.** Operator-initiated only, or scheduled during a maintenance window? The module assumes the former.
+3. **How much retention policy is domain design rather than infrastructure?** Schedules, per-camera overrides and legal hold may deserve their own lessons.
+4. **Does the directory need HA?** It may be down without recording stopping, which is the point — but failover cannot *complete* without a new epoch, so the token issuer is more load-bearing than the rest of it.
+
+**Resolved while designing the module:**
+
+- ~~How is Node identity issued?~~ — a **Nomad Variable**, which is what Variables are for. Never the allocation index, which has had uniqueness bugs
+- ~~Is shared storage the better product answer?~~ — no, and for a reason worth checking rather than assuming: Nomad cannot detach a CSI volume from a dead client, so 2a needs a human before it can fail over
 
 ---
 
@@ -365,6 +377,8 @@ Split by part, and the split is clean.
 - [Nomad rescheduling](https://developer.hashicorp.com/nomad/docs/job-declare/failure/reschedule) — restart versus reschedule
 - [Nomad production requirements](https://developer.hashicorp.com/nomad/docs/deploy/production/requirements) — server sizing, and the absence of single-node guidance
 - [`NOMAD_ALLOC_INDEX` uniqueness bug](https://github.com/hashicorp/nomad/issues/10727) — two simultaneously-running allocations sharing an index; accepted and later fixed. Also [#4264](https://github.com/hashicorp/nomad/issues/4264) and [#11628](https://github.com/hashicorp/nomad/issues/11628) on consistency
+- [Nomad CSI volumes do not recover from client failure without human intervention](https://github.com/hashicorp/nomad/issues/12118) — open; the volume stays attached to the dead node and must be detached manually
+- [Configurable max entry size for Nomad Variables](https://github.com/hashicorp/nomad/issues/14763) — 16 KiB, not configurable, capped to limit the impact on a memory-resident raft store
 - [Nomad Pack](https://developer.hashicorp.com/nomad/tools/nomad-pack) · [Nomad LICENSE](https://raw.githubusercontent.com/hashicorp/nomad/main/LICENSE)
 - [How to do distributed locking](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html) — fencing tokens, and why lease expiry must not depend on wall-clock time
 - [Eliminate Phase and simplify Conditions](https://github.com/kubernetes/kubernetes/issues/7856) — why phase enums were a mistake
