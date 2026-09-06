@@ -205,7 +205,7 @@ Moved here from М9, because "many sites" is where this module begins rather tha
 
 Every earlier module left a marker. This lesson collects them all.
 
-- М9's hand-provisioned AWS credentials; М10's database password; М11's unauthenticated API — each marked temporary where it appeared, each replaced here
+- Four markers, each named temporary where it appeared and each replaced here: **М9's** AWS credentials, **М10's** database password and its single hand-provisioned operator, and **М11's** per-Node credential
 - OpenBao: auth methods, policies, dynamic credentials, leases
 - **Where the vault lives**, from the section above, and why that dissolves the unsealing problem
 - Machine identity: how a service proves who it is to get a secret, now that the box has an LDevID to speak for it
