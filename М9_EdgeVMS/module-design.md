@@ -4,7 +4,7 @@
 
 Modules 1–7 built a VMS that runs when you type `make serve`. Four lessons turn it into an appliance: an operating system that can be replaced atomically and rolled back with nobody on site, and an application that survives that replacement.
 
-> **Revision note.** This module originally ran to nine lessons and carried a Part B on multi-node scheduling. That work moved to [М10](../М10_NodeVMS/module-design.md), where desired state is the subject and a scheduler is one of two answers to it. What is left here is one box, which is what the name promises. The orchestrator comparison that shaped Part B is still recorded in [`kubernetes-vs-nomad.md`](../М11_DomainVMS/kubernetes-vs-nomad.md), and its verdict now applies to М10.
+> **Revision note.** This module originally ran to nine lessons and carried a Part B on multi-node scheduling. That work moved to [М11](../М11_DomainVMS/module-design.md), where Nodes are scheduled across servers and made to survive one dying. What is left here is one box, which is what the name promises. The orchestrator comparison that shaped Part B is still recorded in [`kubernetes-vs-nomad.md`](../М11_DomainVMS/kubernetes-vs-nomad.md), and its verdict now applies to М10.
 
 ---
 

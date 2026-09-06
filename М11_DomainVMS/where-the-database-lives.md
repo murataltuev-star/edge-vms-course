@@ -17,17 +17,16 @@ Four things. The second is the one this record got wrong twice before getting ri
 
 ---
 
-## A domain is its database
+## A domain is not its database
 
-The question contained its own answer. A domain is defined by the desired state that describes it, so **one domain means one authoritative database**, and adding hosts to a domain does not add databases to it.
+The original question assumed it was, and two drafts of this record agreed. The answer is narrower: **a domain is a set of Nodes on a reliable network.** Configuration lives in the Nodes; the domain holds a directory of them.
 
-Putting Postgres on every host and synchronising would mean choosing one of:
+Putting Postgres on every Node and synchronising *bidirectionally* would still be wrong, and the reasons are worth keeping because they are what constrains the design:
 
-- **Multi-master** — and for a *desired state* store, conflicting writes are precisely the thing that must not happen. "Camera 7 belongs to worker A" and "camera 7 belongs to worker B", merged, is the split-brain М11 Lesson 29 exists to prevent
+- **Multi-master** — for a desired-state store, conflicting writes are precisely what must not happen. "Camera 7 belongs to Node A" and "camera 7 belongs to Node B", merged, is the split-brain Lesson 29 exists to prevent
 - **A consensus system** — which is what you would end up building, and Postgres is not one
-- **Primary with read replicas** — the sane version of the idea, and a legitimate option, but it is an availability choice rather than a way to make every host self-sufficient
 
-None of these is needed, because hosts do not need the database.
+What makes the design work is that **neither is needed, because every row has exactly one writer by construction.** A Node writes its own configuration and nothing else writes it. The synchronisation is one-way and therefore not synchronisation at all — it is publication.
 
 ---
 
@@ -58,17 +57,17 @@ Both designs have exactly one writer per row, so neither has a merge problem. Th
 
 ### One engine, two databases
 
-An earlier draft of this record said SQLite was plenty for the cache. That was answering a narrower question than the one the host actually poses: **the index and the events need a real database regardless**, so the host is running Postgres either way, and a second engine for a small cache buys nothing.
+An earlier draft of this record said SQLite was plenty for the cache. That was answering a narrower question than the one a Node actually poses: **the index and the events need a real database regardless**, so a Node is running Postgres either way, and a second engine for a small cache buys nothing.
 
-| | Domain database | Host database |
+| | Domain directory | Node database |
 |---|---|---|
-| Instances | one per domain | one per host |
-| Written by | the controller — one writer | this host only |
-| Holds | desired state, placement, people, retention policy, archive **rollup** | desired-state **cache**, archive **index**, events |
+| Instances | one per domain | **one per Node** |
+| Written by | the controller, plus each Node publishing upward | **this Node only** |
+| Holds | which Nodes exist, which cameras belong to which, a durable copy of each Node's config, and the epoch counter | **its own configuration**, archive **index**, events |
 | Size | small | large and always growing |
-| Write rate | rare — an operator changed something | ~100 rows/sec at a thousand cameras, plus events |
-| Backup | small, careful, essential | reconstructible by rescanning segments |
-| Losing it costs | configuration | a rescan |
+| Write rate | rare — an operator created or moved something | ~100 rows/sec at a thousand cameras, plus events |
+| Backup | small, and it is itself a backup of the Nodes | reconstructible by rescanning segments — except the configuration |
+| Losing it costs | creation, lookup, rebalance, **and new epochs, so failover cannot complete** | **that Node's configuration**, unless the domain copy survives |
 
 **Why Postgres locally rather than SQLite**, once index and events are in the picture:
 
@@ -79,9 +78,9 @@ An earlier draft of this record said SQLite was plenty for the cache. That was a
 
 ### The one thing that stays outside the database
 
-Putting the cache in Postgres puts Postgres in the boot path for recording. A few seconds of `After=postgresql.service` is fine. A data directory corrupted by power loss is not — the host would be unable to record at all, where a flat file would have carried on.
+Putting a Node's configuration in Postgres puts Postgres in the boot path for recording. A few seconds of `After=postgresql.service` is fine. A data directory corrupted by power loss is not — the Node would be unable to record at all, where a flat file would have carried on.
 
-So keep exactly one thing outside: a **last-known-assignment file**, a few hundred bytes, rewritten whenever the assignment changes. Not a database — a crash-recovery hint, so a worker can start recording while Postgres is still coming up or is broken. Everything queryable lives in Postgres; only the boot-path fallback does not.
+So keep exactly one thing outside: a **last-known-assignment file**, a few hundred bytes, rewritten whenever the configuration changes. Not a database — a crash-recovery hint, so a Node can start recording while Postgres is still coming up or is broken. Everything queryable lives in Postgres; only the boot-path fallback does not.
 
 ---
 
@@ -112,17 +111,22 @@ A cached desired state has an age. What is safe to do with an old one **depends 
 | Start recording something new | Questionable | The instruction may have been withdrawn; nothing is lost by waiting |
 | **Delete footage under the cached retention policy** | **No** | Irreversible, and the policy may have changed |
 
-The failure is concrete. An operator raises retention from 7 days to 30 on Monday. On Tuesday a host loses contact with the controller. On Wednesday it deletes everything older than 7 days, exactly as its cached policy instructs — correctly, obediently, and catastrophically.
+**Node-owned configuration removes the worst version of this failure**, and it is worth seeing why. Under a domain-authoritative design an operator raises retention from 7 days to 30 on Monday, the Node loses contact on Tuesday, and on Wednesday it deletes everything older than a week — obeying a policy that was superseded, *silently*, because the edit succeeded at the domain and simply never arrived. Under Node-owned configuration that edit **fails loudly**: the operator cannot reach the Node, so nothing was promised.
+
+The rule survives, relocated to the two places staleness can still occur:
+
+- **Anything a Node caches from above** — entitlement, licence state, placement decisions
+- **A Node restored from the domain's copy after failover**, where that copy may be several revisions behind the Node that died
 
 > **Destructive operations stop at the grace period. Recording does not.**
 
-A host that cannot confirm its retention policy keeps footage and reports that it is doing so. Disks fill; that is a visible, recoverable problem. Deleted footage is neither.
+A Node that cannot confirm its retention policy keeps footage and reports that it is doing so. Disks fill; that is a visible, recoverable problem. Deleted footage is neither.
 
 ---
 
 ## Where the domain boundary falls
 
-If a domain spans a network link you do not trust, its hosts depend on that link for configuration — and the property this whole design exists to protect is gone.
+Node-owned configuration means a Node no longer depends on the network for its *own* settings. But three things still cross it — creating a camera, rebalancing, and **issuing the epoch that lets a failover complete** — so a domain spanning a link you do not trust is a domain that cannot fail over.
 
 > **A domain is the largest set of nodes that share a reliable network.**
 
@@ -134,7 +138,7 @@ This settles two of М11's open questions at once: one controller per domain, an
 
 ## High availability of the domain database
 
-What does losing it actually cost? Not recording — hosts carry on. It costs configuration changes, reassignment after a host failure, and new placement decisions. That is an outage of *administration*, not of the product.
+What does losing it actually cost? Less than it used to. Recording continues, and so does editing a camera at its own Node. What stops is creating cameras, cross-Node lookup, rebalancing — and **issuing a new epoch, which means a failover in progress cannot complete.** That last one is the reason the directory cannot simply be treated as disposable.
 
 | Option | What it needs | Verdict |
 |---|---|---|
@@ -158,9 +162,9 @@ If the archive index lives in the domain database, then during a database outage
 
 So split it by who wrote it:
 
-- **The host that recorded the footage owns its index**, locally. Writing it never needs the network
-- **The domain database holds a rollup only** — *"host 3 has camera 7 for these time ranges"*
-- **Playback asks the domain *where*, then the host *what***
+- **The Node that recorded the footage owns its index**, locally. Writing it never needs the network
+- **The domain holds a rollup only** — *"Node 3 has camera 7 for these time ranges"*. Each entry also records which **server's** storage the segments are on, because the Node moves and the footage does not
+- **Playback asks the domain *where*, then the Node *what***
 
 Which extends the rule М10 Lesson 26 already teaches — *do not put video bulk on replicated storage; replicate metadata and let footage be local* — one level up: **replicate the summary, not the index.**
 
@@ -169,7 +173,7 @@ Which extends the rule М10 Lesson 26 already teaches — *do not put video bulk
 | Data | Local | Forwarded to the domain |
 |---|---|---|
 | Footage | every segment | nothing |
-| Archive index | every segment's time range | which host holds which camera, when |
+| Archive index | every segment's time range, and which server's disks hold it | which Node has which camera, when |
 | Events | every event | alarms needing acknowledgement, and counts |
 
 > **Detail is local; summary is domain.** Three data types, one rule — worth naming once rather than rediscovering per data type, because the fourth one will arrive eventually.
@@ -180,7 +184,7 @@ Events — motion, camera offline, analytics hits, operator actions — were not
 
 > **Events are product data: an operator searches them. Metrics are operational data: an engineer alarms on them.** Different consumers, different retention, different modules.
 
-Most events are never read. A filtered subset — alarms an operator must acknowledge — forwards to the domain so the console can show them without querying every host. The rest ages out of a partitioned table locally.
+Most events are never read. A filtered subset — alarms an operator must acknowledge — forwards to the domain so the console can show them without querying every Node. The rest ages out of a partitioned table locally.
 
 ---
 

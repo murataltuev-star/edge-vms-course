@@ -11,7 +11,7 @@ A shipped edge VMS is seven layers deep. The course builds them in dependency or
 | 1 | **RAUC** | What OS is this box running, and can I change it safely? | М9 | Designed |
 | 2 | **Nomad + Podman** | What workload is running, and where? | М9 (one box) · М11 Part A (many) | Designed |
 | 3 | **Postgres** | What does this system know about itself? | М10 | Designed |
-| 4 | **Domain controller** | Cameras, archives, detectors — the actual product | М10 (one node) · М11 (many) | Designed |
+| 4 | **Domain controller** | Cameras, archives, detectors — the actual product | М10 (one Node) · М11 (many) | Designed |
 | 5 | **OpenBao** | Who is allowed to know what, and how do they prove it? | М12 | Designed |
 | 6 | **Prometheus + logs** | Is it working, and how would I know? | М13 | Planned |
 | 7 | **Device management** | What do I have, where, on which version? | М12 | Designed |
@@ -20,7 +20,7 @@ Layers 1–2 are the two update planes М9 is built around: the OS underneath, t
 
 **Layers 5 and 7 turned out to be one layer.** They are both in М12. The plan had identity in layer 5 and device management in layer 7, three modules apart, and each asked the same question — *how does a machine prove who it is in order to get its first secret?* Enrollment is where identity and device management meet, and separating them meant neither owned it.
 
-**Layer 4 is split across two modules,** which is a change from this plan's first version. М10 builds the reconciliation loop on a single node, where both ends of it are visible at once; М11 handles what happens when ownership is contested. A database with nothing acting on it is not a working system, so М10 could not stop at Postgres.
+**Layer 4 is split across two modules,** which is a change from this plan's first version. М10 builds the reconciliation loop on a single Node, where both ends of it are visible at once; М11 handles what happens when ownership is contested. A database with nothing acting on it is not a working system, so М10 could not stop at Postgres.
 
 **Layer 2 moved out of М9 and into М11 Part A.** М9's own progression promises one box — *a box is whatever was flashed onto it* — and it cannot promise that while building a three-server cluster in its second half. It spent one revision in М10, on the grounds that scheduling is desired-state work; that is true, but it put the two-level idea in two modules and taught it twice. A cluster and the controller above it are one arc. Nomad's cross-site federation went further still, to М12, where many networks actually begin.
 
@@ -62,7 +62,7 @@ This is deliberate and follows the course's existing discipline — `camera_sim.
 The cloud VMS spec forbade a database outright. The appliance needs one, and understanding *why the answer flipped* is half the module: in the cloud, KVS held the configuration; on-prem, the box holds it. The other half is that a row saying a camera should be recording is a wish until something makes it true.
 
 - Schema for cameras, sites and retention; migrations as a shipped artifact that runs at boot on a box nobody visits
-- **Operator-owned columns versus controller-owned columns** — the distinction that keeps node placement out of the operator's hands
+- **Operator-owned columns versus controller-owned columns** — the distinction that keeps Node placement out of the operator's hands
 - **The critical one:** `PGDATA` lives on the data partition, so it survives A/B OS updates untouched. This is М9's three-way boundary with real consequences
 - The reconcile loop, built against a fake actuator first: desired persisted, actual derived, `observed_revision >= revision` as the only test of applied
 - Fifty GStreamer pipelines in one Python process — the GIL boundary demonstrated, `watchdog` for stall detection, and where Python stops being the right answer
@@ -144,7 +144,7 @@ Roughly **47 lessons**, or a full semester. Worth deciding deliberately rather t
 1. **The BUSL decision, taken once.** If Nomad is unacceptable in a shipped product, that changes М9 and everything above it. Decide before М11, not after М13
 2. **Does the vendor run a MASA?** BRSKI is unimplementable without one, and it is a permanent operational commitment — a signing service that must outlive every appliance shipped
 3. **М13's position** — before or after the domain controller, and now also sharpened by М12 being nine lessons long
-4. **Does the product ship a database HA option?** [`where-the-database-lives.md`](./М11_DomainVMS/where-the-database-lives.md) settles the architecture — one Postgres per domain, hosts cache, single-node by default — but whether HA is offered, and priced, is commercial
+4. **Does the product ship a database HA option?** [`where-the-database-lives.md`](./М11_DomainVMS/where-the-database-lives.md) settles the architecture — each Node owns its configuration, the domain keeps a directory — but whether HA is offered for the directory, and priced, is commercial
 
 **Resolved since the first version of this plan:**
 
@@ -153,7 +153,7 @@ Roughly **47 lessons**, or a full semester. Worth deciding deliberately rather t
 - ~~Lesson numbering~~ — М9 is 16–24, М10 is 25–29, М11 is 30–34, М12 is 35–43, М13 is 44–47
 - ~~Consul in or out~~ — out, and for a better reason than licensing alone ([`consul-and-openbao.md`](./М12_FederatedVMS/consul-and-openbao.md))
 - ~~Identity split across М12 and М14~~ — they were one layer; merged into М12
-- ~~Where the domain database lives, and whether hosts replicate it~~ — one per domain, hosts cache a read-only slice, and a domain is the largest set of nodes on a reliable network ([`where-the-database-lives.md`](./М11_DomainVMS/where-the-database-lives.md))
+- ~~Where the domain database lives, and whether hosts replicate it~~ — each **Node** owns its configuration and replicates one way upward; the domain holds a directory; a domain is the largest set of servers on a reliable network ([`where-the-database-lives.md`](./М11_DomainVMS/where-the-database-lives.md))
 
 ---
 

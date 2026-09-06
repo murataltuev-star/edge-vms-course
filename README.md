@@ -12,10 +12,20 @@ The module names are not decoration. They mark one idea getting harder three tim
 | ---------------------- | ------------------------------- | --------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
 | **М9 · EdgeVMS**       | what it *is*                    | in the image that booted                | nothing — a box is whatever was flashed onto it | replacing the OS underneath a running product without destroying the recordings    |
 | **М10 · NodeVMS** | what it *should be* | in a database on the box | desired state and actual state, inside one process | closing the gap — and never persisting the half that must be re-derived |
-| **М11 · DomainVMS**    | what *everyone* should be       | in a database that several nodes act on | nodes, with each other                          | agreeing who owns what, when dead and merely-unreachable look identical            |
+| **М11 · DomainVMS** | what it should be, *wherever it is running* | in each Node, with a directory above them | two instances of the same Node | surviving a server's death without two writers reaching one archive |
 | **М12 · FederatedVMS** | who it *is*, and what it may do | in a trust root above every domain      | domains, with the centre                        | staying correct while the centre is unreachable                                    |
 
-**Every boundary in that table is a network you stopped trusting.** A domain is the largest set of nodes sharing a reliable link; past that you federate rather than build a bigger domain. That is what makes the progression physical rather than a tidy-looking hierarchy.
+**Every boundary in that table is a network you stopped trusting.** A domain is the largest set of servers sharing a reliable link; past that you federate rather than build a bigger domain. That is what makes the progression physical rather than a tidy-looking hierarchy.
+
+### Three words the course keeps apart
+
+| | What it is | Who decides |
+|---|---|---|
+| **Node** | a VMS instance — its own database, its own cameras, its own archive index. From М11 it is a scheduler allocation with stable identity, and it **moves between servers** | an operator, when capacity is bought |
+| **Server** | a box with CPUs and disks. Runs whichever Nodes the scheduler puts on it | the scheduler, continuously |
+| **Site** | where cameras physically are. The only one of the three an operator names | the customer's building |
+
+**A Node is not a server**, and М10 builds exactly one Node without ever needing the distinction. It matters from М11 onward, where a server dying moves the Node rather than reassigning its cameras — which is why failover rewrites nothing.
 
 [**М8**](./М8_KVS_VMS) comes before the progression starts: it builds the product itself with no local truth at all, because Kinesis holds the configuration and the archive both. Everything after it is the consequence of the box having to hold its own.
 
@@ -27,7 +37,7 @@ The module names are not decoration. They mark one idea getting harder three tim
 
 **Every layer is allowed to be unavailable to the layer beneath it**, and the layer beneath caches what it needs to carry on. Workers keep recording when the controller is down; hosts keep recording when the domain database is down; domains keep operating when the centre is unreachable. FederatedVMS is where that stops being one decision among several and becomes a module's entire thesis — which is what makes this federation rather than hierarchy.
 
-The rule has a sharp edge, and it is the one worth carrying away: **a stale cache may keep recording forever, and must never delete anything.** An operator raises retention from 7 days to 30 on Monday; a host loses contact on Tuesday; on Wednesday it obediently deletes everything older than a week. Destructive operations expire. Recording does not.
+The rule has a sharp edge, and it is the one worth carrying away: **anything a layer caches from above may keep recording forever, and must never delete anything.** Destructive operations expire; recording does not. A Node owns its own retention policy, so it cannot go stale on that — but entitlement and placement come from above, and those can.
 
 **М13 is the one module that is not a new scope.** Observability is how you see the four you already have, which is why it comes last and why it does not get a VMS name.
 
@@ -67,7 +77,7 @@ Four lessons turning that cloud VMS into an appliance: A/B partitions, signed up
 
 Its spine is that a real edge product has **two independent update planes** — the operating system underneath, the workload on top — and both are visible on one box. Lesson 19 is where it bites: Podman's storage must be redirected to the data partition, because images and volumes left in a rootfs slot are destroyed by the next OS update. Conflate the planes and you build systems where a config change requires an OS flash.
 
-*The multi-node half of this module moved to М10, where desired state is the subject. A module called EdgeVMS should not build a raft cluster.*
+*The multi-node half of this module moved to М11, where Nodes are scheduled across servers. A module called EdgeVMS should not build a raft cluster.*
 
 - [Module design](./М9_EdgeVMS/module-design.md) — lesson plan, partition layout, verification strategy, ARM porting appendix
 - [RAUC alternatives](./М9_EdgeVMS/rauc-alternatives.md) — SWUpdate, Mender, bootc, systemd-sysupdate, and where each wins
@@ -96,9 +106,9 @@ It is built backwards from one demo. Four Nodes, two hundred cameras; pull the p
 
 The answer is that fencing belongs at the archive rather than at the controller: the epoch is part of the segment path, so the stale instance cannot name the files it would otherwise corrupt. You cannot stop a zombie from writing — you can only make its writes harmless.
 
-- [Module design](./М11_DomainVMS/module-design.md) — the cluster, node failover, the two-scheduler contract, placement stability, fencing, shadow mode, and what the API refuses
+- [Module design](./М11_DomainVMS/module-design.md) — the cluster, Nodes that outlive their servers, fencing, the directory above them, placement, shadow mode, and what the API refuses
 - [Kubernetes vs Nomad](./М11_DomainVMS/kubernetes-vs-nomad.md) — why the orchestrator is Nomad, what it cost, and why neither belongs on one box
-- [Where the databases live](./М11_DomainVMS/where-the-database-lives.md) — a domain database and a host database, why hosts cache rather than replicate, and the retention rule that protects customer footage
+- [Where the databases live](./М11_DomainVMS/where-the-database-lives.md) — a node database and a domain directory, why a Node owns its configuration rather than caching someone else's, and the retention rule that protects customer footage
 
 ## М12 — FederatedVMS
 

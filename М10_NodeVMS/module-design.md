@@ -50,13 +50,13 @@ If a lesson does not move that demo forward, it does not belong in this module.
 
 | Decision | Choice | Why |
 |---|---|---|
-| Scope | **One node, end to end** | The loop is the lesson, and it is far easier to see when both ends are in one terminal. Scheduling across nodes is М11's. |
+| Scope | **One Node, one server, end to end** | The loop is the lesson, and it is far easier to see when both ends are in one terminal. Scheduling Nodes across servers is М11's. |
 | Worker model | **N pipelines in one Python process** | The conclusion of [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md), now built. Container-per-camera is М9's world and stops being right near fifty. |
 | Actual state | **Derived, never persisted** | Kill the AppHost and it must rebuild its picture from Postgres plus observation. Anything it remembers across a restart is a bug. |
 | Change notification | **Poll on a timer, `LISTEN/NOTIFY` for latency** | NOTIFY is not durable — a listener that was disconnected misses it forever. Notify for speed, poll for correctness. Teaching only NOTIFY produces a system that silently stops converging. |
-| Node visibility | **Derived, never operator-set** | See below. The `cameras` table has no node column an operator can write. |
+| Node visibility | **Decided for the operator, never by them** | See below. The `cameras` table has no Node column a client may write. |
 | Language | **Python for the course; Go + C++ for the product** | Python teaches the loop and makes the language boundary visible. The product splits it — Go for the controller, C++ for the media worker — and Lesson 24 says why that split costs almost nothing. |
-| Databases | **Two, from the first lesson: a domain database and a host database** | On one box they share an instance, so М11 *moves* one rather than splitting one — and nothing in the schema changes when it does. See [`where-the-database-lives.md`](../М11_DomainVMS/where-the-database-lives.md). |
+| Databases | **Two, from the first lesson: a domain database and a node database** | On one box they share an instance, so М11 *moves* one rather than splitting one — and nothing in the schema changes when it does. See [`where-the-database-lives.md`](../М11_DomainVMS/where-the-database-lives.md). |
 | Database placement | **On the data partition, as a Quadlet unit** | М9's three-way boundary with consequences: `PGDATA` in a rootfs slot is destroyed by the next OS update. |
 | Local storage engine | **Postgres, not SQLite** | The archive index and the event stream need a real database regardless, so a second engine for a small cache is pure cost. Partitioning is the deciding feature. |
 | DB credentials | **Hand-provisioned, marked temporary** | Follows the course's existing discipline. М12 replaces this, and the replacement is the lesson — but the temporariness is stated here, not discovered there. |
@@ -145,20 +145,27 @@ That last row is the real argument for C++ in the media worker, and it is a bett
 
 ## What the operator never decides
 
-The instinct is right: an operator wants to assign cameras, not nodes. The useful part is knowing exactly where that stops being true.
+The instinct is right: an operator wants to assign cameras, not machines. The useful part is knowing exactly where that stops being true — and that needs two words kept apart, because the course uses them precisely from here on.
 
-**Node is derived, never chosen.** This has a schema consequence that Lesson 20 makes concrete: the `cameras` table has **no node column an operator can write**. Placement lives in a separate, controller-owned row with its own revision, and the API will not accept it from a client.
+| | What it is | Who decides |
+|---|---|---|
+| **Node** | a VMS instance — this module builds one. Its own database, its own cameras, its own archive index. From М11 it becomes a scheduler allocation with stable identity and **moves between servers** | an operator, when capacity is bought |
+| **Server** | a box with CPUs and disks, running whichever Nodes it is given | the scheduler, continuously |
 
-But the node is physical, and physics leaks in four places where hiding it would be a lie:
+This module has exactly one Node on exactly one server, so the distinction costs nothing here. It becomes load-bearing in М11, where a server dying **moves the Node** rather than reassigning its cameras — which is why failover there rewrites no ownership at all.
+
+**Which Node owns a camera is decided for the operator, never by them.** The schema consequence Lesson 20 makes concrete: the `cameras` table has **no Node column a client may write**. Placement is a separate, controller-owned row with its own revision, and the API refuses it.
+
+But servers are physical, and physics leaks in four places where hiding it would be a lie:
 
 | Where it surfaces | What the operator actually needs to know |
 |---|---|
-| **Capacity** | "You cannot add camera 1001." Expressed as *the system is full*, not *node 3 is full* — but the number has to come from somewhere real. |
-| **Storage locality** | Recordings live on the node that wrote them. If footage is not centralised, a dead node is unavailable footage, and that must be visible before the node dies. |
-| **Failure grouping** | When a node fails, two hundred cameras go red. The console must show one cause, not two hundred faults — which means grouping by failure domain, which means naming the node *at that moment*. |
-| **Reachability** | A camera on an isolated VLAN may be reachable from exactly one node. The operator expresses this as a **site**, and the controller turns it into a constraint. |
+| **Capacity** | "You cannot add camera 1001." Expressed as *the system is full*, not *Node 3 is full* — but the number has to come from somewhere real. |
+| **Storage locality** | Recordings live on the **server** that wrote them, and a Node moving does not move them. A dead server is unavailable footage until it returns, and that must be visible before it dies. |
+| **Failure grouping** | When a server fails, its Nodes move and two hundred cameras go red together. The console must show one cause, not two hundred faults — which means grouping by failure domain, which means naming the **server** at that moment. |
+| **Reachability** | A camera on an isolated VLAN may be reachable from only some servers. The operator expresses this as a **site**; the controller turns it into a constraint on where that Node may run. |
 
-> **Site is a first-class operator concept. Node is not.** Conflating them is the common mistake: sites are where cameras are, nodes are how many boxes it took.
+> **Site is a first-class operator concept. Server is not, and Node barely is.** Sites are where cameras are; Nodes are how the work is divided; servers are how much hardware it took.
 
 So: invisible in configuration, visible in diagnostics and capacity. The same relationship a filesystem has to disks — you do not assign files to spindles, and you certainly see the spindle when one fails.
 
@@ -166,14 +173,14 @@ So: invisible in configuration, visible in diagnostics and capacity. The same re
 
 ## Lessons
 
-*Five lessons, one node. The student writes the reconciler.*
+*Five lessons, one Node on one server. The student writes the reconciler.*
 
 ### Lesson 20 — The databases the cloud VMS didn't need
 
 - Why М8's spec forbade a database, and why the answer flips on-prem: in the cloud KVS held the configuration; on a box, the box holds it
-- **Two databases, one instance.** The *domain database* holds what an operator asked for; the *host database* holds what this box knows — its cached assignment, its archive index, and its events. On one box they share a Postgres instance, and М11 moves one of them to its own. Building one database now and splitting it in М11 would teach the wrong instinct
+- **Two databases, one instance.** The *domain database* holds what an operator asked for; the *node database* holds what this box knows — its cached assignment, its archive index, and its events. On one box they share a Postgres instance, and М11 moves one of them to its own. Building one database now and splitting it in М11 would teach the wrong instinct
 - Domain schema: cameras, streams, sites and retention policies
-- **Host schema:** the archive index (which segment covers which camera over which range, as a `tstzrange` with a GiST index — М8's timeline query, answered directly) and the event stream (motion, camera offline, operator actions, with a JSONB payload because detectors differ)
+- **Node schema:** the archive index (which segment covers which camera over which range, as a `tstzrange` with a GiST index — М8's timeline query, answered directly) and the event stream (motion, camera offline, operator actions, with a JSONB payload because detectors differ)
 - **Time partitioning from day one.** Both index and events are rolling windows taking on the order of a hundred rows a second at scale. Retention is `DROP PARTITION`, not `DELETE FROM` — Lesson 23 collects on this
 - **Events are not metrics.** An operator searches events; an engineer alarms on metrics. They look alike and belong in different modules — М13 has the second kind
 - **Operator-owned columns versus controller-owned columns.** `enabled`, `rtsp_url`, `retention_days`, `site_id` are written by people; `revision`, `assigned_worker`, `observed_revision`, `phase` are written by machines and never appear as form fields
@@ -233,7 +240,7 @@ Each failure mode reproduced on purpose, then handled.
 
 - The joined view: desired and observed in one query, so "is this camera actually recording?" is not three round trips
 - Status vocabulary for the UI: `converged`, `lagging`, `stalled`, `unreachable` as *positions*; licence, storage and reachability as **conditions** — reasons an object cannot converge, kept out of the phase enum
-- **The node conversation**, from the section above: what the operator is asked, and the four places the node has to surface anyway
+- **The Node-versus-server conversation**, from the section above: what the operator is asked, and the four places the server has to surface anyway
 - **The rewrite sidebar.** Three things end Python's case for the product: the per-process baseline `B` is larger than a compiled worker's, one segfault takes the whole shard, and any requirement for per-frame work in Python is fatal by the table above
 - **The split that follows from it.** **Go for the controller** — it is a gRPC-and-Postgres service, which is Go's centre of gravity, and its per-frame exposure is zero because the controller never touches a buffer. **C++ for the media worker** — GStreamer is a C library, so C++ calls it with no binding layer at all, and existing pipeline code can be reused rather than ported
 - **What the rewrite does *not* touch**, which is the point of having written it in Python first: the schema, the reconcile loop, the state machine, the backoff policy and the desired/actual contract are all language-independent. Only the actuator changes. Building it in Python proved the design cheaply; it did not waste the work
