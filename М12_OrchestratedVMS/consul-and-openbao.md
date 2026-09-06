@@ -1,6 +1,6 @@
 # Consul and OpenBao — Two Answers to mTLS
 
-**A decision record for М12_FederatedVMS.** Companion to [`kubernetes-vs-nomad.md`](../М11_DomainVMS/kubernetes-vs-nomad.md), [`rauc-alternatives.md`](../М9_EdgeVMS/rauc-alternatives.md) and [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md), written in answer to "Consul or OpenBao?" — which turns out to be the wrong question, in a useful way.
+**A decision record for М12_OrchestratedVMS.** Companion to [`kubernetes-vs-nomad.md`](../М11_DomainVMS/kubernetes-vs-nomad.md), [`rauc-alternatives.md`](../М9_EdgeVMS/rauc-alternatives.md) and [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md), written in answer to "Consul or OpenBao?" — which turns out to be the wrong question, in a useful way.
 
 ---
 

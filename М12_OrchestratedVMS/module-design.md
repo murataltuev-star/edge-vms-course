@@ -1,14 +1,24 @@
-# М12_FederatedVMS — Module Design
+# М12_OrchestratedVMS — Module Design
 
-**The first layer that is allowed to be unavailable.**
+**The layer that supplies what a domain cannot make for itself — and the first one allowed to be unavailable.**
 
 Edge, Node and Domain each widened the scope of truth and added a new class of disagreement. This module adds the last one: things that must be true **above** any single domain — who a box is, who a person is, what a customer is entitled to, and what the fleet actually consists of.
+
+It also supplies something no earlier layer could: **capacity.** This layer runs in a cloud — a public one, or the customer's own private one — and multiple domains operate through it. Because it can hand out allocations, a Node no longer has to run on hardware standing in the building the cameras are in.
+
+> **The consequence, and the thing the module is really about: a system can be built at the edge, in the cloud, or mixed — and it is the same system either way.** Edge and cloud stop being two products with two codebases and become a placement decision, taken per site, on numbers a student can compute.
+
+That closes the arc. **М8 rented a cloud VMS**: Kinesis held the configuration and the archive, and the student's software was a client of somebody else's service. Eleven modules later the same product exists with nothing rented — your Nodes, your archive, your allocations — and М9's hand-provisioned AWS credentials, the first stand-in the course ever left, are finally retired by not needing them.
 
 It is also the first layer that may be switched off without the product stopping, and that constraint shapes every decision in it.
 
 > **Scope note.** [`COURSE-PLAN.md`](../COURSE-PLAN.md) originally had these as two modules three apart: М12 for secrets and PKI, М14 for device management. They asked the same question twice — *"how does a machine prove who it is to get its first secret?"* and *"how does a box join and get an identity without someone typing secrets into it?"* — and neither owned it. They are merged here. The seven-layer model had identity as layer 5 and device management as layer 7; building it revealed they are one layer, and enrollment is where they meet.
 
-> **One word, two planes.** Lesson 36 teaches Nomad *federation* — regions joined by gossip, sharing no state. That is the **workload** plane spanning sites. Everything after it is the **product** plane: trust, identity and entitlement spanning domains. The module deliberately teaches them adjacently, because the distinction is the same one М9 drew between the OS and the workload, and students who meet the two federations a module apart tend to merge them.
+> **Two words that each mean two things, and the course keeps them apart.**
+>
+> **Orchestration.** М11 calls Nomad *the orchestrator* — it places allocations on servers inside one domain. This module is *OrchestratedVMS* because it decides something one level up: **which domain, and whose hardware, a workload lands on at all.** Nomad still does the placing; this layer decides what there is to place on. Same verb, two scopes — exactly like Node and Server, and the module says so on its first page rather than letting students merge them.
+>
+> **Federation.** Lesson 36 teaches Nomad *federation* — regions joined by gossip, sharing no state. That is the **workload** plane spanning sites. The product plane — trust, identity and entitlement spanning domains — is a different federation, and the module teaches them adjacently on purpose, because students who meet the two a module apart tend to merge them.
 
 ---
 
@@ -16,9 +26,21 @@ It is also the first layer that may be switched off without the product stopping
 
 > **Everything below this layer must keep working when this layer is unreachable.**
 
-A site records video whether or not the centre answers. The node converges. The domain places cameras. The federation supplies identity, trust and entitlement — and every consumer of those must **cache them and degrade on a grace period**, never block on them.
+A site records video whether or not the centre answers. The node converges. The domain places cameras. This layer supplies identity, trust, entitlement and capacity — and every consumer of the first three must **cache them and degrade on a grace period**, never block on them.
 
 This is what makes the arrangement a federation rather than a hierarchy, and it is not a nicety. A VMS whose cameras stop recording because a certificate service is down has failed at the only job it has.
+
+### The objection this raises, and its answer
+
+If this layer hands out the allocations a domain runs on, how can it also be allowed to be down?
+
+**Because it supplies capacity once, and authority continuously — and only the second is a runtime dependency.** A cloud-hosted domain has its own Nomad servers, its own directory, its own CA, and its own Nodes owning their own configuration; it is a domain in every sense М11 defined, and the only difference is who owns the hardware invoice. Losing this layer means you cannot *provision* a new domain or move one. It does not mean an existing domain stops.
+
+The definition М11 arrived at already covers the cloud case without amendment:
+
+> **A domain is the largest set of servers sharing a network you would bet recording on.**
+
+Rented servers in one cloud region share such a network. So they can be a domain. Servers in a building share such a network. So they can be a domain. **A site's cameras and a cloud Node do not** — the uplink is exactly the link the whole course says you must not bet recording on — which is why the interesting configuration is not "cloud" but *mixed*, and why the next section is arithmetic rather than opinion.
 
 The rule produces three consequences that this module spends nine lessons on:
 
@@ -34,9 +56,40 @@ The rule produces three consequences that this module spends nine lessons on:
 
 A box arrives at a site in a cardboard carton. Nobody types a secret into it. It is powered on and given a network, and within minutes it has proved who it is, received a certificate, fetched its configuration, joined its domain and started recording.
 
-Then the uplink is cut for **thirty days**. It keeps recording. Service certificates renew from inside the domain. Entitlement holds on its grace period. When the link returns, inventory catches up, version skew is reported, and nothing was lost.
+**A second site has no box at all.** Its six cameras stream to Nodes running on rented instances, provisioned from the same console, and an operator watching both sites cannot tell from the console which is which — because there is nothing to tell.
+
+Then the first site's uplink is cut for **thirty days**. It keeps recording. Service certificates renew from inside the domain. Entitlement holds on its grace period. When the link returns, inventory catches up, version skew is reported, and nothing was lost. The cloud site, meanwhile, is down for the duration — **and the module says why that is the correct outcome rather than a defect**, because a site that chose not to buy hardware chose its uplink as its failure mode.
 
 Finally the box is marked stolen, and loses access on a schedule the student can state in advance.
+
+---
+
+## Edge, cloud, or mixed — and the number that decides
+
+The module's second claim is that these are one product. The student proves it by deploying the same Node three ways and finding the software identical. What is *not* identical is what crosses the uplink, and that is a calculation, not a preference.
+
+| | Where Nodes run | What crosses the uplink | Fails when |
+|---|---|---|---|
+| **Edge** | on hardware at the site | status, config publications, alarms — kilobytes | never, for recording. The site is autonomous |
+| **Cloud** | on rented servers in a region | **every camera's full bitrate, continuously** | the uplink hiccups. There is no local copy |
+| **Mixed** | at the site, with the domain's operation in the cloud | the same kilobytes, plus whatever the operator is watching right now | nothing that matters. **This is the default** |
+
+**The arithmetic that rules out pure cloud for most sites**, and students should compute it before reading the answer:
+
+```
+50 cameras × 4 Mbps  =  200 Mbps sustained upstream, 24/7
+                     =  ~2 TB per day leaving the building
+```
+
+Sites with that upstream exist. Most retail stores, schools and small industrial sites do not have it, cannot buy it, and would not like the bill if they could. So:
+
+- **Cloud Nodes are for small sites** — a handful of cameras, no hardware to install, no one on site to install it. A real product need, and the reason this is not an edge-only course
+- **Edge Nodes are for everything else**, and М9–М11 already built them
+- **Mixed is the shape a real deployment takes**: recording stays where the cameras are, and everything an operator *does* — the console, placement, identity, entitlement — comes from the cloud
+
+**What must be true for this to be one product rather than two:** a Node cannot know where it is running. It reads its configuration, records, publishes upward, and renews its certificate identically on a rack in a warehouse and on a rented instance. That property was not added for this module — it is what М10's reconciler and М11's Node-owned configuration have been buying all along, and this is where the course collects on it.
+
+**The honest residue:** a cloud Node still needs the camera's stream to reach it, and a camera behind a customer's NAT with no local Node is a connectivity problem this module does not solve. Either something at the site pushes (which is an appliance, and now you are mixed), or the camera itself does (which is a camera capability, not a design choice you get to make).
 
 ---
 
@@ -44,7 +97,10 @@ Finally the box is marked stolen, and loses access on a schedule the student can
 
 | Decision | Choice | Why |
 |---|---|---|
-| Availability | **The federated layer may be down** | Stated first because everything else follows from it. |
+| Availability | **The orchestration layer may be down** | Stated first because everything else follows from it. |
+| Deployment model | **Edge, cloud or mixed — one codebase, a placement decision per site** | A Node that cannot tell where it is running is the payoff for М10's reconciler and М11's Node-owned configuration. |
+| Default shape | **Mixed: record at the edge, operate from the cloud** | Bandwidth decides, and for most sites it decides against streaming every camera upstream. |
+| Where this layer runs | **A cloud — public, or the customer's private one** | Multi-tenancy is a business decision; the design must work either way, which is what keeps it deployable on-premises for customers who require it. |
 | Device identity | **Hardware-rooted where possible, approved-registration otherwise** | The A/B image is byte-identical on every appliance, so nothing device-specific can live in it. |
 | Bootstrap model | **BRSKI as the reference, TOFU-with-approval as the shipped fallback** | The standard exists and is worth teaching. Whether the vendor runs the service it requires is a business decision, not a technical one. |
 | CA topology | **Offline root, one intermediate per domain** | The structural move that makes offline tolerance possible: routine issuance never leaves the site. |
@@ -61,8 +117,8 @@ Finally the box is marked stolen, and loses access on a schedule the student can
 
 - **М9 Lesson 19** — credentials are provisioned at commissioning, never baked into an image that ships identically to every device. This module finally answers *how*.
 - **М9 Lesson 17** — the RAUC signing chain, built with real `openssl`. The PKI lessons here are the same skill, one scope up.
-- **М10 Lesson 20** — the hand-provisioned database password, marked temporary. Cashed in at Lesson 40.
-- **М11 Lesson 32** — the deliberately unauthenticated API. Also cashed in at Lesson 40.
+- **М10 Lesson 20** — the hand-provisioned database password, marked temporary. Cashed in at Lesson 41.
+- **М11 Lesson 32** — the deliberately unauthenticated API. Also cashed in at Lesson 41.
 - **М11 Lesson 33** — mTLS on the Node↔directory streams, from a self-signed domain CA. Lesson 38 replaces the root and leaves everything under it alone.
 - **М11 entire** — opaque config and revision ordering are what make version skew survivable, and Lesson 43 collects on that.
 - **М11 Part A** — Nomad clusters and jobs. Lesson 36 extends that to regions; the rest of the module does not depend on it.
@@ -135,7 +191,7 @@ It has a clean answer, and it falls straight out of the thesis:
 
 > **If the appliance needs a vault to boot, the vault is not allowed to be unavailable — which contradicts the rule this layer is built on. So the appliance does not run a vault.**
 
-The vault is central. The appliance holds its device certificate — in the TPM where there is one, never in the clear on disk — and caches short-lived credentials issued by its own domain's intermediate. Unsealing then stops being an edge problem and becomes an ordinary datacentre problem at the centre, where cloud KMS and HSMs are available and the question has a boring answer.
+The vault is central — it runs in this layer's cloud, alongside everything else here. The appliance holds its device certificate — in the TPM where there is one, never in the clear on disk — and caches short-lived credentials issued by its own domain's intermediate. Unsealing then stops being an edge problem and becomes an ordinary datacentre problem at the centre, where a KMS or an HSM is available and the question has a boring answer. **A customer running this layer privately inherits that problem rather than escaping it**, which is a real cost of the private-cloud option and belongs in the sales conversation, not just the architecture.
 
 **The honest residue:** something must still survive first boot and be usable without a human. That is the device's private key, and hardware is the only place it genuinely belongs. This is much smaller than a whole vault at every site, but it is not nothing, and the module says so.
 
@@ -146,7 +202,8 @@ The vault is central. The appliance holds its device certificate — in the TPM 
 ### Lesson 35 — The layer that is allowed to be down
 
 - The thesis, and what it demands of every layer beneath it
-- What the federated database actually holds: trust roots, device identities, people and the domains they can see, entitlements, inventory
+- **The two jobs of this layer, kept apart:** it holds *authority* — trust, identity, entitlement — which every layer below caches and degrades on; and it supplies *capacity* — allocations a domain can be built from, which is a provisioning-time dependency and not a runtime one. Conflating them is what produces a cloud that cameras stop recording without
+- What the orchestrating database actually holds: trust roots, device identities, people and the domains they can see, entitlements, inventory
 - Why this is federation and not hierarchy — domains stay authoritative for their own operation
 - **Not Nomad's federation.** The two planes, named explicitly
 - Designing for absence: what each lower layer caches, for how long, and what it does when the cache expires
@@ -155,20 +212,36 @@ The vault is central. The appliance holds its device certificate — in the TPM 
 
 ---
 
-### Lesson 36 — Many sites: regions and federation
+### Lesson 36 — Many sites: regions, and one of them is a cloud
 
 Moved here from М9, because "many sites" is where this module begins rather than where the appliance module ends.
 
 - Regions are **fully independent** — they share no jobs, clients or state, and nothing replicates between them
 - They are loosely coupled by a **gossip protocol**, so a job can be submitted to any region, or any region's state queried, transparently; requests are forwarded to the right regional servers
 - Why "independent regions, loosely coupled" suits camera sites better than one stretched cluster: a site that loses its uplink keeps recording
-- Namespaces and node pools for separating tenants and hardware classes
+- **A cloud region is just a region.** Rented servers on one provider network satisfy М11's definition of a domain exactly as a rack in a building does, and Nomad cannot tell the difference. That is the whole mechanism behind "edge, cloud or mixed" — there is no second system
+- Namespaces and node pools for separating tenants and hardware classes — and node pools are how *edge* and *cloud* hardware are kept apart within one region when a deployment is mixed
 
-**Deliverable:** two federated regions, each running the VMS, both reachable from one CLI.
+**Deliverable:** two federated regions — one on local hardware, one on rented instances — each running the VMS, both reachable from one CLI.
 
 ---
 
-### Lesson 37 — Secure introduction
+### Lesson 37 — A Node that does not know where it is
+
+The lesson that makes the deployment triangle real rather than a slide.
+
+- **Deploy М10's Node three ways** — on a local server, on a rented instance, and split so a site's Nodes are local while the console and directory are not — and diff the artifacts. **They are identical.** If they are not, this lesson has found a bug in М10 or М11, which is the point of running it
+- **The bandwidth calculation**, done before the demo rather than after: cameras × bitrate against the site's actual upstream, and the retention cost of storing in a cloud versus on a disk you own
+- **What legitimately differs by placement**, and it is a short list: storage class and its cost curve, how the camera's stream reaches the Node, and who is paged when the hardware dies
+- **What must never differ:** configuration ownership, the fencing epoch, the certificate chain, the update mechanism. A cloud deployment that quietly skips fencing because "the cloud does not lose servers" is the bug this lesson exists to prevent
+- **Retrofitting М8.** The cloud VMS the course started with rented Kinesis for configuration *and* archive. Rebuild that shape on this layer — your Nodes, your object storage — and name what is genuinely lost by not renting: someone else's on-call rota, and a managed service's durability guarantee
+- **Cost as a design input, stated honestly.** Egress pricing is what makes pure-cloud video expensive, and it is not a detail: a student who cannot estimate it will design a product that loses money per camera
+
+**Deliverable:** the same Node running at the edge and in a cloud, both recording, both visible in one console — and a written bandwidth-and-cost estimate for a fifty-camera site that says which one it should be.
+
+---
+
+### Lesson 38 — Secure introduction
 
 - The constraint М9 imposed: an identical image on every unit
 - The four approaches and how each fails
@@ -180,7 +253,7 @@ Moved here from М9, because "many sites" is where this module begins rather tha
 
 ---
 
-### Lesson 38 — A root, and an intermediate per domain
+### Lesson 39 — A root, and an intermediate per domain
 
 **М11 already runs a CA in every domain**, issuing short-lived certificates to its own Nodes from a self-signed root it hand-provisioned. This lesson does not introduce domain PKI. It replaces that root's *authority* with a delegated one, and demonstrates that nothing inside the domain has to change for it.
 
@@ -194,7 +267,7 @@ Moved here from М9, because "many sites" is where this module begins rather tha
 
 ---
 
-### Lesson 39 — Lifetimes, renewal, and revocation that works offline
+### Lesson 40 — Lifetimes, renewal, and revocation that works offline
 
 - The tension, and the split-by-job resolution above
 - The arithmetic: tolerable outage equals lifetime minus renewal margin
@@ -206,7 +279,7 @@ Moved here from М9, because "many sites" is where this module begins rather tha
 
 ---
 
-### Lesson 40 — Secrets, and the debts from three modules
+### Lesson 41 — Secrets, and the debts from three modules
 
 Every earlier module left a marker. This lesson collects them all.
 
@@ -219,9 +292,9 @@ Every earlier module left a marker. This lesson collects them all.
 
 ---
 
-## Part B — Operating the federation
+## Part B — Operating the fleet
 
-### Lesson 41 — People, roles, and scope across domains
+### Lesson 42 — People, roles, and scope across domains
 
 - An operator who can watch three sites and administer one — which is the half of this that only exists above a domain
 - **Authorization is deliberately scattered, and М11 explains why.** Grants live in each Node so they can be enforced with the domain unreachable. What this module adds is not a central check but **one Alice**: a federated identity the grants refer to, so she is not N separate records that can disagree about who she is
@@ -233,7 +306,7 @@ Every earlier module left a marker. This lesson collects them all.
 
 ---
 
-### Lesson 42 — Inventory: reported, never commanded
+### Lesson 43 — Inventory: reported, never commanded
 
 - М10's rule at fleet scope: inventory is *observation*, and nothing in it is authoritative over a device
 - What a box reports, how often, and how much of a thin uplink that may consume
@@ -244,7 +317,7 @@ Every earlier module left a marker. This lesson collects them all.
 
 ---
 
-### Lesson 43 — Version skew is the normal state
+### Lesson 44 — Version skew is the normal state
 
 - A fleet on mixed versions is not a failure to be eliminated. You cannot update everything at once, so the only question is whether the design admits it
 - **The compatibility rule:** the controller-to-worker contract must tolerate N−1, and preferably N−2. This is where М11's opaque config and revision ordering pay off — a controller that never parses worker config cannot be broken by a worker that is a version behind
@@ -255,7 +328,7 @@ Every earlier module left a marker. This lesson collects them all.
 
 ---
 
-### Lesson 44 — hawkBit, and closing both update planes
+### Lesson 45 — hawkBit, and closing both update planes
 
 The capstone.
 
@@ -278,17 +351,19 @@ The capstone.
 - OpenBao in a container: auth methods, policies, dynamic credentials, leases
 - Inventory reconciliation, the entitlement comparison, and the N−1 compatibility tests — all ordinary software, testable against fake workers in the style of Lessons 11–15
 
-**Track 2 — needs real hardware.** Three things: **TPM 2.0**, which cannot be faked in any way worth teaching; **two federated Nomad regions** for Lesson 36; and hawkBit driving real appliances. BRSKI can be walked through end to end with a simulated MASA, but a student without a TPM is reading rather than running Lesson 37's second half, and the lesson should say which paragraph that starts at.
+**Track 2 — needs real hardware.** Three things: **TPM 2.0**, which cannot be faked in any way worth teaching; **two federated Nomad regions** for Lesson 36; and hawkBit driving real appliances. BRSKI can be walked through end to end with a simulated MASA, but a student without a TPM is reading rather than running Lesson 38's second half, and the lesson should say which paragraph that starts at.
 
 ---
 
 ## Open questions
 
 1. **Does the vendor run a MASA?** BRSKI is unimplementable without one, and it is a permanent operational commitment. A business decision the module can frame but not take.
-2. **Where does the federated database live** — vendor cloud, customer datacentre, or one per customer? It decides whether this layer is multi-tenant, which changes the schema and most of Lesson 41.
-3. **Are air-gapped sites a supported configuration?** A site that never reaches the centre cannot renew an intermediate, and the thirty-day answer becomes a one-year answer or a manual one.
-4. **М13's position**, still open from the course plan and sharpened by the merge: this is now a nine-lesson module, and observability might reasonably come before it rather than after. The counter-argument stands — "never log a secret" is easier to teach once students know what a secret is.
-5. **Cross-domain archive search.** Federated search over footage is the obvious next thing this layer enables and is currently out of scope. Worth deciding deliberately rather than by omission.
+2. **Where does this layer run** — vendor cloud, customer datacentre, or one per customer? It decides whether it is multi-tenant, which changes the schema and most of Lesson 42. Now sharper than before: a layer that only holds authority can be small and shared; a layer that also supplies capacity is a hosting business, with the margins, on-call and compliance surface of one.
+3. **Is the vendor in the hosting business, or the software business?** "Provide allocations in the cloud" is the sentence that decides it. Reselling compute at a markup, running someone else's video through your egress, and being paged when an instance dies are commitments of a different kind from shipping software — and the module can frame the choice but not take it.
+4. **Does a cloud Node get the same fencing story?** It must, and the module asserts it, but the failure mode differs: a partitioned rented instance may keep running longer than a powered-off server, which makes the epoch *more* load-bearing in the cloud, not less. Worth testing rather than assuming.
+5. **Are air-gapped sites a supported configuration?** A site that never reaches the centre cannot renew an intermediate, and the thirty-day answer becomes a one-year answer or a manual one.
+6. **М13's position**, still open from the course plan and sharpened twice over: this is now an eleven-lesson module, and three of its lessons lean on instrumentation it has not taught — the thirty-day outage cannot be *demonstrated* without metrics, and a self-halting canary is an alert rule. The recorded counter-argument ("never log a secret" is easier once students know what a secret is) is one rule, teachable in a sentence.
+7. **Cross-domain archive search.** Search over footage spanning domains is the obvious next thing this layer enables — and a mixed deployment makes it arrive sooner, because one customer now routinely has footage in two places. Currently out of scope. Worth deciding deliberately rather than by omission.
 
 ---
 

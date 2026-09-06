@@ -16,6 +16,8 @@ Two more that are easy to blur:
 |---|---|
 | **Domain** | The largest set of servers sharing a network you would bet recording on. One domain, one directory. Past that boundary you federate rather than build a bigger domain. |
 | **Federation** | Independent domains cooperating under a shared trust root. **Not** Nomad's "federation", which joins scheduler regions — a different plane, and М12 says so on its first page. |
+| **Orchestration** | Two scopes, kept apart. Nomad *orchestrates* within a domain: it places allocations on servers. М12 **OrchestratedVMS** orchestrates above domains: it decides which domain and whose hardware there is to place on at all. |
+| **Edge / cloud / mixed** | Where a domain's servers physically are — at the site, rented in a cloud region, or both in one system. A placement decision per site, not three products: a Node cannot tell which it is running on. |
 
 ---
 

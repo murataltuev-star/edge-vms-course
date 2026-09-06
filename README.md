@@ -4,7 +4,7 @@ Course material for building a video management system, shipping it as an applia
 
 ---
 
-## Edge → Node → Domain → Federation
+## Edge → Node → Domain → Orchestration
 
 The module names are not decoration. They mark one idea getting harder three times, and the course is arranged around it: **where the truth about the system lives, and how many things are able to disagree about it.**
 
@@ -13,9 +13,9 @@ The module names are not decoration. They mark one idea getting harder three tim
 | **М9 · EdgeVMS**       | what it *is*                    | in the image that booted                | nothing — a box is whatever was flashed onto it | replacing the OS underneath a running product without destroying the recordings    |
 | **М10 · NodeVMS** | what it *should be* | in a database on the box | desired state and actual state, inside one process | closing the gap — and never persisting the half that must be re-derived |
 | **М11 · DomainVMS** | what it should be, *wherever it is running* | in each Node, with a directory above them | two instances of the same Node | surviving a server's death without two writers reaching one archive |
-| **М12 · FederatedVMS** | who it *is*, and what it may do | in a trust root above every domain      | domains, with the centre                        | staying correct while the centre is unreachable                                    |
+| **М12 · OrchestratedVMS** | who it *is*, what it may do, **and where it may run** | in a trust root above every domain, in a cloud | domains, with the centre | staying correct while the centre is unreachable — and making edge and cloud one product rather than two |
 
-**Every boundary in that table is a network you stopped trusting.** A domain is the largest set of servers sharing a reliable link; past that you federate rather than build a bigger domain. That is what makes the progression physical rather than a tidy-looking hierarchy.
+**Every boundary in that table is a network you stopped trusting.** A domain is the largest set of servers sharing a reliable link; past that you federate rather than build a bigger domain. That is what makes the progression physical rather than a tidy-looking hierarchy — and it is also why **rented servers in one cloud region are a domain like any other**, which is what lets М12 offer edge, cloud and mixed deployments from one codebase.
 
 ### Three words the course keeps apart
 
@@ -35,7 +35,7 @@ The module names are not decoration. They mark one idea getting harder three tim
 
 **DomainVMS is where the second box appears, and it teaches one idea twice on purpose.** First a production reconciler — a Nomad cluster, the VMS as a job on it, a node pulled off the wall — because a jobspec *is* desired state and a scheduler *is* the loop. Then the pivot: **Nomad's allocations belong to whoever placed them, and nothing argues.** A camera is *owned*, two workers can claim it, and a paused process is indistinguishable from a dead one. That is why М11 is the only module where a mistake corrupts customer footage instead of stopping a service.
 
-**Every layer is allowed to be unavailable to the layer beneath it**, and the layer beneath caches what it needs to carry on. Workers keep recording when the controller is down; Nodes keep recording — and keep being edited — when the domain is unreachable; domains keep operating when the centre is unreachable. FederatedVMS is where that stops being one decision among several and becomes a module's entire thesis — which is what makes this federation rather than hierarchy.
+**Every layer is allowed to be unavailable to the layer beneath it**, and the layer beneath caches what it needs to carry on. Workers keep recording when the controller is down; Nodes keep recording — and keep being edited — when the domain is unreachable; domains keep operating when the centre is unreachable. OrchestratedVMS is where that stops being one decision among several and becomes a module's entire thesis — which is what makes this federation rather than hierarchy.
 
 The rule has a sharp edge, and it is the one worth carrying away: **anything a layer caches from above may keep recording forever, and must never delete anything.** Destructive operations expire; recording does not. A Node owns its own retention policy, so it cannot go stale on that — but entitlement and placement come from above, and those can.
 
@@ -53,8 +53,8 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback | **Designed** · 4 lessons (16–19) |
 | [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — domain state<br>4 · AppHost — the loop that acts on it | **Designed** · 5 lessons (20–24) |
 | [**М11** — DomainVMS](./М11_DomainVMS) | 2 · Nomad + Podman — Nodes that move<br>4 · A directory that is not a database, and the domain's own CA | **Designed** · 10 lessons (25–34) |
-| [**М12** — FederatedVMS](./М12_FederatedVMS) | 5 · OpenBao — identity, the trust root above every domain<br>7 · Enrollment, inventory, version skew | **Designed** · 10 lessons (35–44) |
-| М13 — Observability | 6 · Prometheus + logs | Planned · ~4 (45–48) |
+| [**М12** — OrchestratedVMS](./М12_OrchestratedVMS) | 5 · OpenBao — identity, the trust root above every domain<br>7 · Enrollment, inventory, version skew<br>+ capacity: allocations, so a Node can run anywhere | **Designed** · 11 lessons (35–45) |
+| М13 — Observability | 6 · Prometheus + logs | Planned · ~4 (46–49) |
 
 **[GLOSSARY.md](./GLOSSARY.md)** defines every term the course uses precisely — Node versus Server, desired versus actual state, epoch and fencing, and the acronyms it would otherwise leave unexplained.
 
@@ -114,16 +114,20 @@ Because the Node is the writer, it is also the thing that has to be reachable an
 - [Kubernetes vs Nomad](./М11_DomainVMS/kubernetes-vs-nomad.md) — why the orchestrator is Nomad, what it cost, and why neither belongs on one box
 - [Where the databases live](./М11_DomainVMS/where-the-database-lives.md) — five revisions ending with one database in the whole design, why a Node owns its configuration rather than caching someone else's, and the retention rule that protects customer footage
 
-## М12 — FederatedVMS
+## М12 — OrchestratedVMS
 
-Ten lessons on what has to be true above any single domain: who a box is, who a person is, what a customer is entitled to, and what the fleet actually consists of. Merged from two modules that were three apart and asked the same question twice — *how does a machine prove who it is to get its first secret?* — with neither owning it.
+Eleven lessons on what has to be true above any single domain — who a box is, who a person is, what a customer is entitled to, what the fleet consists of — and on the thing only this layer can supply: **capacity.** It runs in a cloud, public or the customer's own, and many domains operate through it.
 
-The demo: a box arrives in a carton, nobody types a secret into it, and minutes later it is recording. Then the uplink is cut for thirty days and it keeps working, because routine certificate issuance never leaves the site. Then it is marked stolen and loses access on a schedule stated in advance.
+Because it can hand out allocations, **a Node no longer has to run in the building the cameras are in.** Edge and cloud stop being two products and become a placement decision taken per site, on numbers the student computes: fifty cameras at 4 Mbps is 200 Mbps of sustained upstream, which most sites do not have — so recording stays at the edge, operation moves to the cloud, and *mixed* is what a real deployment looks like. The Node cannot tell the difference, and Lesson 37 proves it by diffing the artifacts.
+
+That also closes the arc. **М8 rented a cloud VMS**; Kinesis held the configuration and the archive both. Eleven modules later the same product exists with nothing rented, and М9's hand-provisioned AWS credentials are retired by no longer being needed.
+
+The demo: a box arrives in a carton, nobody types a secret into it, and minutes later it is recording — while a second site with no box at all runs on rented instances, indistinguishable in the console. Then the first site's uplink is cut for thirty days and it keeps working, because routine certificate issuance never leaves the site. The cloud site goes down for the duration, and the module says why that is the right outcome. Then a box is marked stolen and loses access on a schedule stated in advance.
 
 It does not introduce the domain CA — М11 already built one. What this module supplies is its *authority*: an offline root, an intermediate delegated to each domain, and the swap performed under a running system. **A CA can be delegated; a vault cannot** — an intermediate is a bounded piece of the root handed down once a year, whereas a copy of a secret in every domain is N places to steal it from. That asymmetry is also the answer to the problem the course plan had flagged as having none. Unattended unsealing at 3am: **if the appliance needs a vault to boot, the vault is not allowed to be unavailable** — which contradicts the layer's own thesis. So the appliance holds certificates and does not run a vault.
 
-- [Module design](./М12_FederatedVMS/module-design.md) — secure introduction, the root above every domain, lifetimes against offline tolerance, inventory and version skew
-- [Consul and OpenBao](./М12_FederatedVMS/consul-and-openbao.md) — two answers to mTLS, and why the product needs only one
+- [Module design](./М12_OrchestratedVMS/module-design.md) — allocations and the edge/cloud/mixed triangle, secure introduction, the root above every domain, lifetimes against offline tolerance, inventory and version skew
+- [Consul and OpenBao](./М12_OrchestratedVMS/consul-and-openbao.md) — two answers to mTLS, and why the product needs only one
 
 ## М13 — not yet started
 

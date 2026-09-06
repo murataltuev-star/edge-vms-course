@@ -45,7 +45,7 @@ Three of seven layers under IBM's BUSL, in a product that is *shipped to custome
 
 That leaves **Nomad as the only unavoidable BUSL dependency**, and no fork of it exists — unlike Terraform (OpenTofu) and Vault (OpenBao). If that single dependency is unacceptable, the decision is to teach Kubernetes instead, and it should be taken now rather than at М13.
 
-**This is now settled**, in [`consul-and-openbao.md`](./М12_FederatedVMS/consul-and-openbao.md). The short version: Consul and OpenBao are not alternatives — they overlap on exactly one thing, mTLS between services — and Consul's mesh CA turns out to be the *same* root → per-locality intermediate → short-leaf design М12 arrives at independently. The decision turns on scope instead: no service mesh issues an identity to a device that has never been on the network, so the product runs a PKI regardless, and a second certificate hierarchy buys nothing. The accepted cost is health-check-filtered discovery, which Nomad's native discovery does not provide.
+**This is now settled**, in [`consul-and-openbao.md`](./М12_OrchestratedVMS/consul-and-openbao.md). The short version: Consul and OpenBao are not alternatives — they overlap on exactly one thing, mTLS between services — and Consul's mesh CA turns out to be the *same* root → per-locality intermediate → short-leaf design М12 arrives at independently. The decision turns on scope instead: no service mesh issues an identity to a device that has never been on the network, so the product runs a PKI regardless, and a second certificate hierarchy buys nothing. The accepted cost is health-check-filtered discovery, which Nomad's native discovery does not provide.
 
 ### 2. Secrets arrive three modules before the module that manages them
 
@@ -79,9 +79,9 @@ Where the course stops being about infrastructure and starts being about the pro
 
 **Detectors resolve an open question rather than needing a lesson:** attaching one creates another object of another worker class with its own opaque config, and the controller does not change. Where inference runs is therefore a *deployment* question, answered by worker class and placement constraints.
 
-### М12 — FederatedVMS: identity, trust and the fleet · 10 lessons (35–44) · [designed](./М12_FederatedVMS/module-design.md)
+### М12 — OrchestratedVMS: identity, trust and the fleet · 10 lessons (35–44) · [designed](./М12_OrchestratedVMS/module-design.md)
 
-**Merged from the old М12 and М14**, which asked the same question twice, and given Nomad's cross-site federation from М9. The fourth and last scope level: things that must be true above any single domain.
+**Merged from the old М12 and М14**, which asked the same question twice, and given Nomad's cross-site federation from М9. The fourth and last scope level: things that must be true above any single domain — and, since the rename from FederatedVMS, the layer that supplies capacity as well as authority.
 
 Its thesis is a constraint: **everything below this layer must keep working when this layer is unreachable.** A site records video whether or not the centre answers, so identity, trust and entitlement are cached and degrade on a grace period rather than blocking.
 
@@ -91,9 +91,12 @@ Its thesis is a constraint: **everything below this layer must keep working when
 - **The unsealing problem, resolved rather than lamented.** If the appliance needs a vault to boot, the vault is not allowed to be unavailable — which contradicts the thesis. So the appliance does not run one; the vault is central and the box holds a hardware-rooted certificate
 - **People and scope across domains** — the authorisation model М11 deliberately left out
 - **Inventory, reported never commanded**, and **version skew as the normal state** — the N−1 contract rule that М11's opaque config and revision ordering pay for
+- **Capacity, not just authority.** This layer runs in a cloud — public, or the customer's private one — and hands out allocations, so a Node can run on hardware at the site or on a rented instance. **Edge, cloud and mixed become a placement decision rather than three products**, and Lesson 37 proves the artifacts are identical
+- **The bandwidth arithmetic that decides it:** fifty cameras at 4 Mbps is 200 Mbps of sustained upstream and ~2 TB a day. Most sites cannot buy that, so recording stays at the edge and operation moves to the cloud — mixed is the default shape, not a compromise
+- **Closing the arc with М8.** The course opened renting a cloud VMS from Kinesis and ends building one, retiring М9's hand-provisioned AWS credentials by not needing them
 - **hawkBit**, closing both update planes with a control plane that finally spans sites
 
-### М13 — Observability: Prometheus and logs · ~4 lessons (45–48)
+### М13 — Observability: Prometheus and logs · ~4 lessons (46–49)
 
 - Metrics from Nomad, Podman and the domain controller
 - What to actually alarm on for a VMS: fragment write rate, camera offline, disk fill rate, time skew. Not CPU graphs
@@ -111,7 +114,7 @@ The order is dependency-driven, not layer-numbered:
 - **М11 before М12** — secrets management is abstract until there are services worth protecting
 - **М12 before М13** — so that "never log a secret" is a rule students already understand
 
-**One defensible alternative:** move observability (М13) earlier, on the grounds that you cannot operate what you cannot see, and М11's reconciliation loop is much easier to debug with metrics in front of you. The cost is teaching monitoring before there is much worth monitoring.
+**One defensible alternative, and it has strengthened:** move observability (М13) before М12. You cannot operate what you cannot see, М11's reconciliation loop is far easier to debug with metrics in front of you, and **three of М12's lessons now lean on instrumentation it has not taught** — the thirty-day outage can only be asserted without it, and a self-halting canary is an alert rule. The cost is teaching monitoring slightly before there is much worth monitoring.
 
 ---
 
@@ -123,10 +126,10 @@ The order is dependency-driven, not layer-numbered:
 | М9 — EdgeVMS | 4 | 19 |
 | М10 — NodeVMS | 5 | 24 |
 | М11 — DomainVMS | 10 | 34 |
-| М12 — FederatedVMS | 10 | 44 |
-| М13 — Observability | ~4 | ~48 |
+| М12 — OrchestratedVMS | 11 | 45 |
+| М13 — Observability | ~4 | ~49 |
 
-Roughly **48 lessons**, or a full semester. Worth deciding deliberately rather than discovering at М12: this is a large course, and М10–М13 are each a genuine module rather than an appendix.
+Roughly **49 lessons**, or a full semester. Worth deciding deliberately rather than discovering at М12: this is a large course, and М10–М13 are each a genuine module rather than an appendix.
 
 ---
 
@@ -150,8 +153,8 @@ Roughly **48 lessons**, or a full semester. Worth deciding deliberately rather t
 
 - ~~Where inference runs~~ — a deployment question, not a schema one. Opaque worker config means the controller is unchanged whether inference runs on the appliance, at the camera or in the cloud (М11)
 - ~~Where the write API belongs~~ — built in М11, unauthenticated and marked as such; authentication arrives with OpenBao in М12
-- ~~Lesson numbering~~ — М9 is 16–24, М10 is 25–29, М11 is 30–34, М12 is 35–43, М13 is 44–47
-- ~~Consul in or out~~ — out, and for a better reason than licensing alone ([`consul-and-openbao.md`](./М12_FederatedVMS/consul-and-openbao.md))
+- ~~Lesson numbering~~ — **superseded twice by restructuring.** Current: М9 is 16–19, М10 is 20–24, М11 is 25–34, М12 is 35–45, М13 is 46–49
+- ~~Consul in or out~~ — out, and for a better reason than licensing alone ([`consul-and-openbao.md`](./М12_OrchestratedVMS/consul-and-openbao.md))
 - ~~Identity split across М12 and М14~~ — they were one layer; merged into М12
 - ~~Where the domain database lives, and whether hosts replicate it~~ — **there is no domain database.** Each **Node** owns its configuration in its own Postgres and publishes one way upward; the domain's directory is a Nomad Variable per Node plus an object per Node; a domain is the largest set of servers on a reliable network ([`where-the-database-lives.md`](./М11_DomainVMS/where-the-database-lives.md))
 
