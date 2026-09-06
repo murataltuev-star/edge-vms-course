@@ -67,7 +67,9 @@ Two more that are easy to blur:
 | **Authentication** | Proving *who* a subject is. Federated in М12, so there is one Alice across every Node and domain. |
 | **Authorization** | Deciding what that subject may *do*. Deliberately **not** centralised: grants live in each Node so they can be checked with the domain unreachable, and carry an expiry that bounds the revocation window. |
 | **PKI** — public key infrastructure | The certificate authorities, certificates and revocation machinery that let parties prove who they are. |
-| **CA** — certificate authority | What signs certificates. М12 uses an offline root and one intermediate per domain, so routine issuance never leaves the site. |
+| **CA** — certificate authority | What signs certificates. Each domain runs one (М11); М12 replaces its self-signed root with an intermediate delegated from an offline root, so routine issuance never leaves the site. |
+| **Trust anchor** | The certificate a party has decided to trust without further proof — the top of any chain it will accept. Delegating one downward is possible; delegating a secret is not, which is why domains run a CA and not a vault. |
+| **Cross-signing** | Issuing a second certificate for the same key from a different CA, so a chain validates under both the old and the new anchor at once. How a trust anchor is replaced without a flag day. |
 | **mTLS** — mutual TLS | Both ends of a connection present certificates, so the server authenticates the client as well as the reverse. |
 | **CRL / OCSP** | Certificate revocation list / Online Certificate Status Protocol — the two ways to ask whether a certificate has been revoked. Both assume you can reach something, which is why М12 prefers short lifetimes at the edge. |
 | **TPM** — Trusted Platform Module | A chip holding a key that cannot be exported, and able to attest what software booted. The strongest answer to *how does a box with no secret get one*. |

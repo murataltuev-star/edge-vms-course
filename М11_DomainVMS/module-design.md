@@ -51,6 +51,7 @@ Node 3 reappears on another server with its configuration intact and resumes its
 | Orchestrator | **Nomad** | Non-container workloads, Podman kept as the runtime, far smaller operational surface. See [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md). |
 | Single-server deployments | **No orchestrator at all** | М9's Quadlet stack is better on one box, and Lesson 25 makes students argue that rather than assert it. |
 | Convergence token | **Monotonic revision**, not token equality | Ordering expresses *distance*; equality only *difference*. See below. |
+| Transport | **mTLS, from a self-signed domain CA marked temporary** | The Node↔directory streams carry configuration, grants and status. A credential says who is calling; it says nothing about the channel. М12 replaces the self-signed root with a delegated intermediate. |
 | Authentication | **A hand-provisioned credential per Node, marked temporary** | The course's existing discipline: the stand-in is named where it appears. М12 replaces it with a federated identity. |
 | Authorization | **Node-local grants carrying an expiry** | Enforcement must survive the domain being down, so it cannot be a lookup. Expiry is what bounds the revocation window. |
 | Status model | **Positions and reasons kept apart** | Kubernetes shipped a phase enum and then documented why it was a mistake. |
@@ -382,6 +383,7 @@ The course's own convention — the stand-in before the real thing — at the to
 Lesson 32 built a write API on every Node. That is **N endpoints where there used to be one**, and the module has to say what protects them before it moves on.
 
 - **The surface, counted honestly.** Node-owned configuration is why an operator can edit a camera while the domain is unreachable — and it is also why the thing to protect is now per-Node. This is a real cost of the design, and it belongs next to the benefit rather than three modules later
+- **The channel, before the caller.** Every stream in this module — configuration upward, grants downward, status both ways — runs **mTLS**, from a **self-signed domain CA, hand-provisioned here and marked temporary**. The certificate names the **Node**, never the server it happens to be running on: failover relocates the Node, and a hostname-shaped name would have to be reissued on every move. Certificates are short-lived and renewed against the domain's own CA, so renewal never reaches outside the domain — which is what lets the whole channel keep working while the layer above is down. М12 replaces the self-signed root with an intermediate delegated from a real one; **the CA changes, and nothing else here does**
 - **Authentication, hand-provisioned and marked temporary.** A credential per Node, exactly as М9 hand-provisions AWS keys and М10 a database password. М12 replaces it with a federated identity, and the replacement is the lesson
 - **Grants are Node-local.** Each Node stores *subject X may do Y here*. Enforcement is a local query — no lookup, no token exchange — which is the only way authorization survives the domain being down. It also **partitions privilege**: a compromised Node can only grant rights on itself, where a central store compromised is total
 
@@ -398,7 +400,7 @@ Configuration staleness is benign and self-announcing. Revocation staleness is s
 #### Expiry is the revocation mechanism
 
 - A grant carries `valid_until`, renewed on the same upward stream that already carries configuration. A Node that cannot renew lets its grants lapse
-- That converts an unbounded window into **a number the product states**, exactly like certificate lifetime and the RPO from Lesson 27
+- That converts an unbounded window into **a number the product states**, exactly like the certificate lifetime this lesson already picked, and the RPO from Lesson 27
 - **The tension, and it has no clean answer:** short renewal revokes fast and locks an operator out of their own site during a long outage; long renewal is the reverse. The lesson makes students pick a number and defend it
 - Rights are therefore not special — they are one more thing *cached from above with an expiry*, governed by the rule this module already applies to entitlement and placement
 

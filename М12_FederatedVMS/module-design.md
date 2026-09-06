@@ -48,6 +48,7 @@ Finally the box is marked stolen, and loses access on a schedule the student can
 | Device identity | **Hardware-rooted where possible, approved-registration otherwise** | The A/B image is byte-identical on every appliance, so nothing device-specific can live in it. |
 | Bootstrap model | **BRSKI as the reference, TOFU-with-approval as the shipped fallback** | The standard exists and is worth teaching. Whether the vendor runs the service it requires is a business decision, not a technical one. |
 | CA topology | **Offline root, one intermediate per domain** | The structural move that makes offline tolerance possible: routine issuance never leaves the site. |
+| PKI, split by scope | **Issuance is domain-level; the root and the delegation are federation-level** | A CA can be delegated, a vault cannot. М11 builds and runs the domain CA; this module supplies its authority. |
 | Revocation | **Short lifetimes, not revocation lists** | CRL and OCSP both assume you can reach something. At the edge you frequently cannot. |
 | Vault placement | **Central. The appliance does not run one** | Resolves the unsealing problem by dissolving it — see below. |
 | Inventory | **Reported, never commanded** | М10's rule at fleet scope: desired state is persisted, actual state is observed. |
@@ -61,9 +62,10 @@ Finally the box is marked stolen, and loses access on a schedule the student can
 - **М9 Lesson 19** — credentials are provisioned at commissioning, never baked into an image that ships identically to every device. This module finally answers *how*.
 - **М9 Lesson 17** — the RAUC signing chain, built with real `openssl`. The PKI lessons here are the same skill, one scope up.
 - **М10 Lesson 20** — the hand-provisioned database password, marked temporary. Cashed in at Lesson 40.
-- **М11 Lesson 31** — the deliberately unauthenticated API. Also cashed in at Lesson 40.
+- **М11 Lesson 32** — the deliberately unauthenticated API. Also cashed in at Lesson 40.
+- **М11 Lesson 33** — mTLS on the Node↔directory streams, from a self-signed domain CA. Lesson 38 replaces the root and leaves everything under it alone.
 - **М11 entire** — opaque config and revision ordering are what make version skew survivable, and Lesson 43 collects on that.
-- **М10 Part B** — Nomad clusters and jobs. Lesson 36 extends that to regions; the rest of the module does not depend on it.
+- **М11 Part A** — Nomad clusters and jobs. Lesson 36 extends that to regions; the rest of the module does not depend on it.
 
 ---
 
@@ -108,7 +110,7 @@ There is no lifetime that is good at both, so stop looking for one and **split t
 |---|---|---|---|
 | Root | Years, offline | Ceremony | — |
 | **Domain intermediate** | ~1 year | The centre | **Once a year** |
-| Service-to-service, inside a domain | Hours to days | The domain's own intermediate | **Never** |
+| Service-to-service, inside a domain | Hours to days | The domain's own intermediate — **built in М11** | **Never** |
 | Device identity (LDevID) | Long | The centre | On enrollment, and on renewal |
 
 **Delegating an intermediate CA to each domain is the structural move that makes the thesis true.** Routine issuance and renewal happen inside the site, at whatever frequency good hygiene wants, and the only thing that ever needs the centre is the intermediate's own annual renewal.
@@ -180,12 +182,15 @@ Moved here from М9, because "many sites" is where this module begins rather tha
 
 ### Lesson 38 — A root, and an intermediate per domain
 
+**М11 already runs a CA in every domain**, issuing short-lived certificates to its own Nodes from a self-signed root it hand-provisioned. This lesson does not introduce domain PKI. It replaces that root's *authority* with a delegated one, and demonstrates that nothing inside the domain has to change for it.
+
 - CA hierarchy, built with `openssl` exactly as Lesson 17 built the RAUC chain
-- **Why delegate to the domain** — the move that keeps routine issuance inside the site
-- Naming: certificates for services that move between nodes, and why the name must not be the hostname
+- **Why delegate to the domain** — the move that keeps routine issuance inside the site, and why the same move is impossible for a vault: **an intermediate is a bounded piece of the root's authority, transferred once a year; a secret has no such operation, and a copy in every domain is N places to steal it from**
+- **Naming was already settled in М11** — the certificate names the Node, not the server it runs on. It is worth restating only because at fleet scope the temptation to name hosts returns
+- Swapping the trust anchor under a running domain: cross-signing, or an overlap window, and why a flag day is not available to you
 - Protecting the root: offline, and what a signing ceremony is for
 
-**Deliverable:** a working chain, and a service certificate issued *with the centre unplugged*.
+**Deliverable:** a working chain, a service certificate issued *with the centre unplugged*, and М11's Node↔directory mTLS still up across the swap — the domain's issuance loop unchanged, only its trust anchor replaced.
 
 ---
 
@@ -205,7 +210,7 @@ Moved here from М9, because "many sites" is where this module begins rather tha
 
 Every earlier module left a marker. This lesson collects them all.
 
-- Four markers, each named temporary where it appeared and each replaced here: **М9's** AWS credentials, **М10's** database password and its single hand-provisioned operator, and **М11's** per-Node credential
+- Five markers, each named temporary where it appeared: **М9's** AWS credentials, **М10's** database password and its single hand-provisioned operator, and **М11's** per-Node credential and self-signed domain CA. Four are replaced here; the CA was replaced two lessons ago, which is the point — **trust anchors delegate downward, secrets do not**
 - OpenBao: auth methods, policies, dynamic credentials, leases
 - **Where the vault lives**, from the section above, and why that dissolves the unsealing problem
 - Machine identity: how a service proves who it is to get a secret, now that the box has an LDevID to speak for it
