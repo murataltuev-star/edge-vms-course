@@ -52,8 +52,8 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 15 lessons |
 | [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback | **Designed** · 4 lessons (16–19) |
 | [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — domain state<br>4 · AppHost — the loop that acts on it | **Designed** · 5 lessons (20–24) |
-| [**М11** — DomainVMS](./М11_DomainVMS) | 2 · Nomad + Podman — Nodes that move<br>4 · The directory above them | **Designed** · 10 lessons (25–34) |
-| [**М12** — FederatedVMS](./М12_FederatedVMS) | 5 · OpenBao — identity, trust, PKI<br>7 · Enrollment, inventory, version skew | **Designed** · 10 lessons (35–44) |
+| [**М11** — DomainVMS](./М11_DomainVMS) | 2 · Nomad + Podman — Nodes that move<br>4 · The directory above them, and the domain's own CA | **Designed** · 10 lessons (25–34) |
+| [**М12** — FederatedVMS](./М12_FederatedVMS) | 5 · OpenBao — identity, the trust root above every domain<br>7 · Enrollment, inventory, version skew | **Designed** · 10 lessons (35–44) |
 | М13 — Observability | 6 · Prometheus + logs | Planned · ~4 (45–48) |
 
 **[GLOSSARY.md](./GLOSSARY.md)** defines every term the course uses precisely — Node versus Server, desired versus actual state, epoch and fencing, and the acronyms it would otherwise leave unexplained.
@@ -102,13 +102,15 @@ Ten lessons, built on one decision taken up front: **a Node owns its own configu
 
 **Part A** makes that true: a Nomad cluster, the Node as an allocation, and the lesson most courses skip — *what it takes for a Node's state to be there when it arrives on a new server*. Then a server is pulled off the wall, its old instance wakes up, and the archive is proved intact. **Part B** is the small residue: the three things a Node cannot know about itself — where a camera is, which Node should get a new one, and how to move one. That is a directory, and it is allowed to be down.
 
-The module opens by building the two obvious alternatives and breaking them, because the deciding fact is not obvious: **two writers to one video stream cannot be merged.** This is the only module where a mistake corrupts customer footage rather than stopping a service.
+It states that decision rather than arriving at it, and then spends the module earning it — because the deciding fact is not obvious: **two writers to one video stream cannot be merged.** Nothing above can arbitrate after the fact, which is why this is the only module where a mistake corrupts customer footage rather than stopping a service.
 
 It is built backwards from one demo. Four Nodes, two hundred cameras; pull the power on a server and watch Node 3 reappear elsewhere with its configuration intact. Then bring the dead server back and let its old instance of Node 3 try to keep writing. **The archive is intact, and the student can prove it.**
 
 The answer is that fencing belongs at the archive rather than at the controller: the epoch is part of the segment path, so the stale instance cannot name the files it would otherwise corrupt. You cannot stop a zombie from writing — you can only make its writes harmless.
 
-- [Module design](./М11_DomainVMS/module-design.md) — the cluster, Nodes that outlive their servers, fencing, the directory above them, placement, shadow mode, and what the API refuses
+Because the Node is the writer, it is also the thing that has to be reachable and protected: Lesson 33 gives every Node↔directory stream **mTLS from the domain's own CA**, hand-provisioned and marked temporary. Certificates are issued *inside* the domain, so renewal never depends on the layer above — the same reason grants live in each Node and carry an expiry rather than being looked up.
+
+- [Module design](./М11_DomainVMS/module-design.md) — the cluster, Nodes that outlive their servers, fencing, the directory above them, placement, shadow mode, and who may call the API
 - [Kubernetes vs Nomad](./М11_DomainVMS/kubernetes-vs-nomad.md) — why the orchestrator is Nomad, what it cost, and why neither belongs on one box
 - [Where the databases live](./М11_DomainVMS/where-the-database-lives.md) — a node database and a domain directory, why a Node owns its configuration rather than caching someone else's, and the retention rule that protects customer footage
 
@@ -118,9 +120,9 @@ Ten lessons on what has to be true above any single domain: who a box is, who a 
 
 The demo: a box arrives in a carton, nobody types a secret into it, and minutes later it is recording. Then the uplink is cut for thirty days and it keeps working, because routine certificate issuance never leaves the site. Then it is marked stolen and loses access on a schedule stated in advance.
 
-It also resolves the problem the course plan had flagged as having no clean answer. Unattended unsealing at 3am: **if the appliance needs a vault to boot, the vault is not allowed to be unavailable** — which contradicts the layer's own thesis. So the appliance does not run one.
+It does not introduce the domain CA — М11 already built one. What this module supplies is its *authority*: an offline root, an intermediate delegated to each domain, and the swap performed under a running system. **A CA can be delegated; a vault cannot** — an intermediate is a bounded piece of the root handed down once a year, whereas a copy of a secret in every domain is N places to steal it from. That asymmetry is also the answer to the problem the course plan had flagged as having none. Unattended unsealing at 3am: **if the appliance needs a vault to boot, the vault is not allowed to be unavailable** — which contradicts the layer's own thesis. So the appliance holds certificates and does not run a vault.
 
-- [Module design](./М12_FederatedVMS/module-design.md) — secure introduction, per-domain intermediate CAs, lifetimes against offline tolerance, inventory and version skew
+- [Module design](./М12_FederatedVMS/module-design.md) — secure introduction, the root above every domain, lifetimes against offline tolerance, inventory and version skew
 - [Consul and OpenBao](./М12_FederatedVMS/consul-and-openbao.md) — two answers to mTLS, and why the product needs only one
 
 ## М13 — not yet started

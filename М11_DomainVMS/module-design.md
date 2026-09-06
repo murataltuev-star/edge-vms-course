@@ -8,7 +8,7 @@ The organising decision, taken up front because everything depends on it: **a No
 
 Two things follow, and they shape the two halves of the module. **A Node must carry its configuration to whatever server it lands on** — Part A. **And three questions remain that a Node cannot answer about itself** — Part B.
 
-> **Scope note.** These lessons were briefly М9's Part B and then briefly М10's Part B before landing here. The last move happened because a cluster and the layer above it are one arc, and splitting them meant teaching the two-level idea twice. Nomad's cross-site federation went further still, to [М12](../М12_FederatedVMS/module-design.md), where many networks actually begin. The write API is built here and is **deliberately unauthenticated**; М12 replaces it, the same way М10's hand-provisioned database password is replaced.
+> **Scope note.** These lessons were briefly М9's Part B and then briefly М10's Part B before landing here. The last move happened because a cluster and the layer above it are one arc, and splitting them meant teaching the two-level idea twice. Nomad's cross-site federation went further still, to [М12](../М12_FederatedVMS/module-design.md), where many networks actually begin. The write API is built **deliberately unauthenticated** in Lesson 32 and given a channel and a credential in Lesson 33 — both hand-provisioned, both marked temporary, exactly as М10's database password was.
 
 ---
 
