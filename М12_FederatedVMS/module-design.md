@@ -8,7 +8,7 @@ It is also the first layer that may be switched off without the product stopping
 
 > **Scope note.** [`COURSE-PLAN.md`](../COURSE-PLAN.md) originally had these as two modules three apart: М12 for secrets and PKI, М14 for device management. They asked the same question twice — *"how does a machine prove who it is to get its first secret?"* and *"how does a box join and get an identity without someone typing secrets into it?"* — and neither owned it. They are merged here. The seven-layer model had identity as layer 5 and device management as layer 7; building it revealed they are one layer, and enrollment is where they meet.
 
-> **One word, two planes.** Lesson 35 teaches Nomad *federation* — regions joined by gossip, sharing no state. That is the **workload** plane spanning sites. Everything after it is the **product** plane: trust, identity and entitlement spanning domains. The module deliberately teaches them adjacently, because the distinction is the same one М9 drew between the OS and the workload, and students who meet the two federations a module apart tend to merge them.
+> **One word, two planes.** Lesson 36 teaches Nomad *federation* — regions joined by gossip, sharing no state. That is the **workload** plane spanning sites. Everything after it is the **product** plane: trust, identity and entitlement spanning domains. The module deliberately teaches them adjacently, because the distinction is the same one М9 drew between the OS and the workload, and students who meet the two federations a module apart tend to merge them.
 
 ---
 
@@ -60,10 +60,10 @@ Finally the box is marked stolen, and loses access on a schedule the student can
 
 - **М9 Lesson 19** — credentials are provisioned at commissioning, never baked into an image that ships identically to every device. This module finally answers *how*.
 - **М9 Lesson 17** — the RAUC signing chain, built with real `openssl`. The PKI lessons here are the same skill, one scope up.
-- **М10 Lesson 20** — the hand-provisioned database password, marked temporary. Cashed in at Lesson 39.
-- **М11 Lesson 31** — the deliberately unauthenticated API. Also cashed in at Lesson 39.
-- **М11 entire** — opaque config and revision ordering are what make version skew survivable, and Lesson 42 collects on that.
-- **М10 Part B** — Nomad clusters and jobs. Lesson 35 extends that to regions; the rest of the module does not depend on it.
+- **М10 Lesson 20** — the hand-provisioned database password, marked temporary. Cashed in at Lesson 40.
+- **М11 Lesson 31** — the deliberately unauthenticated API. Also cashed in at Lesson 40.
+- **М11 entire** — opaque config and revision ordering are what make version skew survivable, and Lesson 43 collects on that.
+- **М10 Part B** — Nomad clusters and jobs. Lesson 36 extends that to regions; the rest of the module does not depend on it.
 
 ---
 
@@ -141,7 +141,7 @@ The vault is central. The appliance holds its device certificate — in the TPM 
 
 ## Part A — Many networks, and who may be trusted across them
 
-### Lesson 34 — The layer that is allowed to be down
+### Lesson 35 — The layer that is allowed to be down
 
 - The thesis, and what it demands of every layer beneath it
 - What the federated database actually holds: trust roots, device identities, people and the domains they can see, entitlements, inventory
@@ -153,7 +153,7 @@ The vault is central. The appliance holds its device certificate — in the TPM 
 
 ---
 
-### Lesson 35 — Many sites: regions and federation
+### Lesson 36 — Many sites: regions and federation
 
 Moved here from М9, because "many sites" is where this module begins rather than where the appliance module ends.
 
@@ -166,7 +166,7 @@ Moved here from М9, because "many sites" is where this module begins rather tha
 
 ---
 
-### Lesson 36 — Secure introduction
+### Lesson 37 — Secure introduction
 
 - The constraint М9 imposed: an identical image on every unit
 - The four approaches and how each fails
@@ -178,7 +178,7 @@ Moved here from М9, because "many sites" is where this module begins rather tha
 
 ---
 
-### Lesson 37 — A root, and an intermediate per domain
+### Lesson 38 — A root, and an intermediate per domain
 
 - CA hierarchy, built with `openssl` exactly as Lesson 17 built the RAUC chain
 - **Why delegate to the domain** — the move that keeps routine issuance inside the site
@@ -189,7 +189,7 @@ Moved here from М9, because "many sites" is where this module begins rather tha
 
 ---
 
-### Lesson 38 — Lifetimes, renewal, and revocation that works offline
+### Lesson 39 — Lifetimes, renewal, and revocation that works offline
 
 - The tension, and the split-by-job resolution above
 - The arithmetic: tolerable outage equals lifetime minus renewal margin
@@ -201,7 +201,7 @@ Moved here from М9, because "many sites" is where this module begins rather tha
 
 ---
 
-### Lesson 39 — Secrets, and the debts from three modules
+### Lesson 40 — Secrets, and the debts from three modules
 
 Every earlier module left a marker. This lesson collects them all.
 
@@ -216,18 +216,19 @@ Every earlier module left a marker. This lesson collects them all.
 
 ## Part B — Operating the federation
 
-### Lesson 40 — People, roles, and scope across domains
+### Lesson 41 — People, roles, and scope across domains
 
-- An operator who can watch three sites and administer one
-- Authorization at the boundary rather than scattered through the domain — М11 deliberately left this out, and this is where it belongs
+- An operator who can watch three sites and administer one — which is the half of this that only exists above a domain
+- **Authorization is deliberately scattered, and М11 explains why.** Grants live in each Node so they can be enforced with the domain unreachable. What this module adds is not a central check but **one Alice**: a federated identity the grants refer to, so she is not N separate records that can disagree about who she is
+- Replacing М11's hand-provisioned per-Node credential with that identity — the debt named in Lesson 33 and paid here
 - Why identity for people and identity for machines share a trust root but not a lifecycle
 - Delegated administration: the customer's own administrator, and what the vendor can and cannot see
 
-**Deliverable:** a role model enforced at the API, with a test that a scoped operator cannot read a domain they were not granted.
+**Deliverable:** one identity that authenticates against three Nodes in two domains, with a test that a scoped operator cannot read a domain they were not granted — and that revoking the identity ends access on every Node within the window Lesson 33 states.
 
 ---
 
-### Lesson 41 — Inventory: reported, never commanded
+### Lesson 42 — Inventory: reported, never commanded
 
 - М10's rule at fleet scope: inventory is *observation*, and nothing in it is authoritative over a device
 - What a box reports, how often, and how much of a thin uplink that may consume
@@ -238,7 +239,7 @@ Every earlier module left a marker. This lesson collects them all.
 
 ---
 
-### Lesson 42 — Version skew is the normal state
+### Lesson 43 — Version skew is the normal state
 
 - A fleet on mixed versions is not a failure to be eliminated. You cannot update everything at once, so the only question is whether the design admits it
 - **The compatibility rule:** the controller-to-worker contract must tolerate N−1, and preferably N−2. This is where М11's opaque config and revision ordering pay off — a controller that never parses worker config cannot be broken by a worker that is a version behind
@@ -249,7 +250,7 @@ Every earlier module left a marker. This lesson collects them all.
 
 ---
 
-### Lesson 43 — hawkBit, and closing both update planes
+### Lesson 44 — hawkBit, and closing both update planes
 
 The capstone.
 
@@ -272,14 +273,14 @@ The capstone.
 - OpenBao in a container: auth methods, policies, dynamic credentials, leases
 - Inventory reconciliation, the entitlement comparison, and the N−1 compatibility tests — all ordinary software, testable against fake workers in the style of Lessons 11–15
 
-**Track 2 — needs real hardware.** Three things: **TPM 2.0**, which cannot be faked in any way worth teaching; **two federated Nomad regions** for Lesson 35; and hawkBit driving real appliances. BRSKI can be walked through end to end with a simulated MASA, but a student without a TPM is reading rather than running Lesson 36's second half, and the lesson should say which paragraph that starts at.
+**Track 2 — needs real hardware.** Three things: **TPM 2.0**, which cannot be faked in any way worth teaching; **two federated Nomad regions** for Lesson 36; and hawkBit driving real appliances. BRSKI can be walked through end to end with a simulated MASA, but a student without a TPM is reading rather than running Lesson 37's second half, and the lesson should say which paragraph that starts at.
 
 ---
 
 ## Open questions
 
 1. **Does the vendor run a MASA?** BRSKI is unimplementable without one, and it is a permanent operational commitment. A business decision the module can frame but not take.
-2. **Where does the federated database live** — vendor cloud, customer datacentre, or one per customer? It decides whether this layer is multi-tenant, which changes the schema and most of Lesson 40.
+2. **Where does the federated database live** — vendor cloud, customer datacentre, or one per customer? It decides whether this layer is multi-tenant, which changes the schema and most of Lesson 41.
 3. **Are air-gapped sites a supported configuration?** A site that never reaches the centre cannot renew an intermediate, and the thirty-day answer becomes a one-year answer or a manual one.
 4. **М13's position**, still open from the course plan and sharpened by the merge: this is now a nine-lesson module, and observability might reasonably come before it rather than after. The counter-argument stands — "never log a secret" is easier to teach once students know what a secret is.
 5. **Cross-domain archive search.** Federated search over footage is the obvious next thing this layer enables and is currently out of scope. Worth deciding deliberately rather than by omission.

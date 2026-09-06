@@ -64,6 +64,8 @@ Two more that are easy to blur:
 
 | | |
 |---|---|
+| **Authentication** | Proving *who* a subject is. Federated in М12, so there is one Alice across every Node and domain. |
+| **Authorization** | Deciding what that subject may *do*. Deliberately **not** centralised: grants live in each Node so they can be checked with the domain unreachable, and carry an expiry that bounds the revocation window. |
 | **PKI** — public key infrastructure | The certificate authorities, certificates and revocation machinery that let parties prove who they are. |
 | **CA** — certificate authority | What signs certificates. М12 uses an offline root and one intermediate per domain, so routine issuance never leaves the site. |
 | **mTLS** — mutual TLS | Both ends of a connection present certificates, so the server authenticates the client as well as the reverse. |

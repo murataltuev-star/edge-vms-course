@@ -101,6 +101,8 @@ Which is why the epoch must be a **fencing token from a single issuer** rather t
 | Orchestrator | **Nomad** | Non-container workloads, Podman kept as the runtime, far smaller operational surface. See [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md). |
 | Single-server deployments | **No orchestrator at all** | М9's Quadlet stack is better on one box, and Lesson 25 makes students argue that rather than assert it. |
 | Convergence token | **Monotonic revision**, not token equality | Ordering expresses *distance*; equality only *difference*. See below. |
+| Authentication | **A hand-provisioned credential per Node, marked temporary** | The course's existing discipline: the stand-in is named where it appears. М12 replaces it with a federated identity. |
+| Authorization | **Node-local grants carrying an expiry** | Enforcement must survive the domain being down, so it cannot be a lookup. Expiry is what bounds the revocation window. |
 | Status model | **Positions and reasons kept apart** | Kubernetes shipped a phase enum and then documented why it was a mistake. |
 
 ---
@@ -407,7 +409,42 @@ The course's own convention — the stand-in before the real thing — at the to
 
 ---
 
-### Lesson 33 — Packaging, delivery, and the licence
+### Lesson 33 — Who may call it
+
+Lesson 32 built a write API on every Node. That is **N endpoints where there used to be one**, and the module has to say what protects them before it moves on.
+
+- **The surface, counted honestly.** Node-owned configuration is why an operator can edit a camera while the domain is unreachable — and it is also why the thing to protect is now per-Node. This is a real cost of the design, and it belongs next to the benefit rather than three modules later
+- **Authentication, hand-provisioned and marked temporary.** A credential per Node, exactly as М9 hand-provisions AWS keys and М10 a database password. М12 replaces it with a federated identity, and the replacement is the lesson
+- **Grants are Node-local.** Each Node stores *subject X may do Y here*. Enforcement is a local query — no lookup, no token exchange — which is the only way authorization survives the domain being down. It also **partitions privilege**: a compromised Node can only grant rights on itself, where a central store compromised is total
+
+#### The asymmetry that makes rights different from configuration
+
+| If the write does not reach the Node | Result | Visible? |
+|---|---|---|
+| A camera edit | records the old way | **Yes** — you can see it |
+| A **grant** | the operator cannot get in | Yes — they complain |
+| A **revoke** | **the removed administrator keeps the site** | **No** — and they have every incentive not to mention it |
+
+Configuration staleness is benign and self-announcing. Revocation staleness is silent and adversarial, and worse, its window is **unbounded** — it lasts until someone successfully reaches that Node, which may be weeks.
+
+#### Expiry is the revocation mechanism
+
+- A grant carries `valid_until`, renewed on the same upward stream that already carries configuration. A Node that cannot renew lets its grants lapse
+- That converts an unbounded window into **a number the product states**, exactly like certificate lifetime and the RPO from Lesson 27
+- **The tension, and it has no clean answer:** short renewal revokes fast and locks an operator out of their own site during a long outage; long renewal is the reverse. The lesson makes students pick a number and defend it
+- Rights are therefore not special — they are one more thing *cached from above with an expiry*, governed by the rule this module already applies to entitlement and placement
+
+#### What the domain can and cannot tell you
+
+The directory aggregates grants for review, never for enforcement. And when a Node is unreachable, the answer to *"what can Alice access?"* is **incomplete** — the console must say so rather than render a short list, because a short list read as complete is how an access review misses something.
+
+**Identity itself is not Node-local.** Alice is an employee of the customer and exists whether or not any Node does; storing her *in* Node 3 would create N Alices whose records can disagree about who she is. Nodes store grants against a subject; М12 supplies the subject.
+
+**Deliverable:** grant an operator rights on a Node, then revoke them while that Node is unreachable — and state, in advance and then by measurement, exactly when their access ends.
+
+---
+
+### Lesson 34 — Packaging, delivery, and the licence
 
 - **Nomad Pack**: templating, variables and registries; per-site differences without per-site forks
 - **The honest GitOps gap.** Fleet is pull-based — a site catches up by itself. Nomad Pack driven from CI is push-based; your pipeline must reach each region. For flaky edge links that is materially worse, and the module says so rather than glossing it. hawkBit in М12 restores it on the OS plane
@@ -427,6 +464,7 @@ Split by part, and the split is clean.
 - **Fencing is fully testable with a filesystem and no cameras at all.** `kill -STOP`, restart the Node elsewhere, `kill -CONT`, assert on the directory tree. The correctness property has nothing to do with video
 - **Placement** is a pure function — property tests are the natural fit: adding a Node moves nothing; every camera lands on exactly one; no constraint violated
 - The lease state machine, the divergence taxonomy, one-way replication and revision handling, resume tokens, idempotency
+- **Grant expiry and the revocation window** — pure logic; Lesson 33's measurement needs a clock and a fake Node, no cameras at all
 - Streaming behaviour against a fake Node, in the style of Lessons 11–15
 
 **Track 2 — needs the real bench.** All of Part A's scheduling: cluster formation, `nomad job validate`, Nomad Pack rendering, CSI attach/detach, and the power-pull exercise. Plus anything with real GStreamer and real cameras. Part A lessons carry explicit *expected output* blocks so a deviation is recognisable rather than mysterious.
@@ -439,7 +477,8 @@ Split by part, and the split is clean.
 2. **Rebalance trigger.** Operator-initiated only, or scheduled during a maintenance window? The module assumes the former.
 3. **How much retention policy is domain design rather than infrastructure?** Schedules, per-camera overrides and legal hold may deserve their own lessons.
 4. **Can a task write Variables under workload identity, or does the directory need an operator token?** The Variables API documentation does not say, and it decides how the directory authenticates. Check before building.
-5. **Does the directory need high availability (HA)?** Less than it looked. Most of it is rebuildable — every Node republishes its own configuration — and the epoch, the one thing that could not be rebuilt, now lives in Nomad's raft rather than in the directory. What remains is a lookup service whose loss is an inconvenience.
+5. **How short should a grant's lifetime be?** Lesson 33 makes students pick a number and defend it; the product must pick one too, trading an operator locked out during an outage against a revoked administrator retaining access.
+6. **Does the directory need high availability (HA)?** Less than it looked. Most of it is rebuildable — every Node republishes its own configuration — and the epoch, the one thing that could not be rebuilt, now lives in Nomad's raft rather than in the directory. What remains is a lookup service whose loss is an inconvenience.
 
 **Resolved while designing the module:**
 

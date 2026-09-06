@@ -67,7 +67,7 @@ The cloud VMS spec forbade a database outright. The appliance needs one, and und
 - The reconcile loop, built against a fake actuator first: desired persisted, actual derived, `observed_revision >= revision` as the only test of applied
 - Fifty GStreamer pipelines in one Python process — the GIL boundary demonstrated, `watchdog` for stall detection, and where Python stops being the right answer
 
-### М11 — DomainVMS: Nodes that move, and the directory above them · 9 lessons (25–33) · [designed](./М11_DomainVMS/module-design.md)
+### М11 — DomainVMS: Nodes that move, and the directory above them · 10 lessons (25–34) · [designed](./М11_DomainVMS/module-design.md)
 
 Where the course stops being about infrastructure and starts being about the product, and the only module where getting it wrong corrupts customer data rather than merely stopping a service. М10's loop already works on one box; this is everything that appears once there is more than one.
 
@@ -79,7 +79,7 @@ Where the course stops being about infrastructure and starts being about the pro
 
 **Detectors resolve an open question rather than needing a lesson:** attaching one creates another object of another worker class with its own opaque config, and the controller does not change. Where inference runs is therefore a *deployment* question, answered by worker class and placement constraints.
 
-### М12 — FederatedVMS: identity, trust and the fleet · 10 lessons (34–43) · [designed](./М12_FederatedVMS/module-design.md)
+### М12 — FederatedVMS: identity, trust and the fleet · 10 lessons (35–44) · [designed](./М12_FederatedVMS/module-design.md)
 
 **Merged from the old М12 and М14**, which asked the same question twice, and given Nomad's cross-site federation from М9. The fourth and last scope level: things that must be true above any single domain.
 
@@ -93,7 +93,7 @@ Its thesis is a constraint: **everything below this layer must keep working when
 - **Inventory, reported never commanded**, and **version skew as the normal state** — the N−1 contract rule that М11's opaque config and revision ordering pay for
 - **hawkBit**, closing both update planes with a control plane that finally spans sites
 
-### М13 — Observability: Prometheus and logs · ~4 lessons (44–47)
+### М13 — Observability: Prometheus and logs · ~4 lessons (45–48)
 
 - Metrics from Nomad, Podman and the domain controller
 - What to actually alarm on for a VMS: fragment write rate, camera offline, disk fill rate, time skew. Not CPU graphs
@@ -122,11 +122,11 @@ The order is dependency-driven, not layer-numbered:
 | М8 — Cloud VMS | 15 | 15 |
 | М9 — EdgeVMS | 4 | 19 |
 | М10 — NodeVMS | 5 | 24 |
-| М11 — DomainVMS | 9 | 33 |
-| М12 — FederatedVMS | 10 | 43 |
-| М13 — Observability | ~4 | ~47 |
+| М11 — DomainVMS | 10 | 34 |
+| М12 — FederatedVMS | 10 | 44 |
+| М13 — Observability | ~4 | ~48 |
 
-Roughly **47 lessons**, or a full semester. Worth deciding deliberately rather than discovering at М12: this is a large course, and М10–М13 are each a genuine module rather than an appendix.
+Roughly **48 lessons**, or a full semester. Worth deciding deliberately rather than discovering at М12: this is a large course, and М10–М13 are each a genuine module rather than an appendix.
 
 ---
 
