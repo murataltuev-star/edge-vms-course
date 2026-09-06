@@ -29,6 +29,7 @@ Two more that are easy to blur:
 | **Revision** | A monotonic, controller-assigned integer per object. *Applied* means `observed_revision >= revision`. |
 | **Epoch** | A fencing token: increments on every ownership change, never decreases, issued by exactly one authority. Part of the archive path, so a stale writer cannot name the files it would otherwise corrupt. |
 | **Fencing** | Making a stale writer's writes harmless rather than trying to stop them. You cannot stop a zombie from writing. |
+| **CAS** — check-and-set | An update that succeeds only if the value has not changed since you read it. Nomad Variables compare against `ModifyIndex` and return 409 on conflict; it is how the course issues epochs. A **lock** without a fencing token is not a substitute. |
 | **Split-brain** | Two writers both believing they own the same object. For a key-value store, survivable. For video, corruption — footage has no merge function. |
 | **Quorum** | The majority a consensus group needs to agree. Why an odd number of servers, and why a witness node exists. |
 

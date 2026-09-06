@@ -96,6 +96,8 @@ Which is why the epoch must be a **fencing token from a single issuer** rather t
 | Configuration authority | **The Node, replicating one way upward** | Configuration stays next to the software using it, and survives the domain layer being down. |
 | Domain layer | **A directory, not a configuration store** | Lookup, creation and rebalance only. It may be unavailable without recording stopping. |
 | Fencing | **At the archive, not at the controller** | You cannot stop a zombie from writing. You can make its writes land where nobody reads. |
+| Epoch issuer | **A Nomad Variable with check-and-set** | Atomic, monotonic and raft-replicated, so it survives losing a server. Nomad's *variable lock* is the trap: its lock ID is an opaque UUID, not a fencing token. |
+| Directory storage | **Postgres — the third use of one engine** | Not because it suits a few thousand rows, but because a second engine is pure cost. The same argument М10 made against SQLite. |
 | Orchestrator | **Nomad** | Non-container workloads, Podman kept as the runtime, far smaller operational surface. See [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md). |
 | Single-server deployments | **No orchestrator at all** | М9's Quadlet stack is better on one box, and Lesson 25 makes students argue that rather than assert it. |
 | Convergence token | **Monotonic revision**, not token equality | Ordering expresses *distance*; equality only *difference*. See below. |
@@ -206,6 +208,26 @@ Lease expiry must not depend on wall-clock time; Redlock's flaw was exactly this
 
 The holder stopping is a purely local decision requiring no coordination, which is precisely why it is the part that can be trusted.
 
+### Where the token actually comes from
+
+The epoch has to come from **one issuer**, and the obvious candidates are worth walking, because the wrong one looks right.
+
+**Not a Nomad variable lock.** Nomad has a lock primitive — acquire, renew, release, TTL between ten seconds and twenty-four hours — and it is exactly what a student will reach for. But **the lock ID is an opaque UUID: there is no monotonically increasing index.** That is precisely the lock Kleppmann's argument is about. It would reintroduce the zombie writer while appearing to have solved it, which makes it the most instructive wrong answer in the module.
+
+**A Nomad Variable with check-and-set.** The Variables API takes a `cas` parameter compared against the variable's `ModifyIndex` and returns **409** on conflict:
+
+```
+GET  var domain/epoch        → { value: 41, ModifyIndex: 8123 }
+PUT  var domain/epoch {42}  cas=8123
+       200 → nobody else wrote      409 → re-read and retry
+```
+
+Atomic, single-issuer, monotonic. Simpler still: `ModifyIndex` is itself raft-assigned and monotonic, so a write of anything yields a usable epoch — fencing needs *increase*, not density.
+
+**Why this beats a Postgres sequence in the directory.** A sequence works, but the directory's Postgres can be restored from scratch, and a sequence that restarts at 1 issues epochs that collide with ones already written into archive paths — silent corruption produced by the recovery procedure. Nomad's raft is replicated to every server; you cannot lose the counter without losing the cluster, and if the cluster is gone there are no allocations to fail over. **And it adds no coupling**: failover already requires Nomad, because Nomad is what reschedules the allocation.
+
+> **Nomad Variables for identity, bootstrap and coordination — small, rare, cluster-critical. Postgres for configuration, index and events — large, frequent, queryable.** Configuration no, coordination yes.
+
 ---
 
 ## Why ordering beats equality
@@ -259,7 +281,7 @@ The reflexive answer, and wrong here: cameras are **not uniform** (4K at 8 Mbps 
 - The other drivers and why a VMS cares: `exec2` for a native process needing device access, `virt` for a VM. Kubernetes cannot do this at all
 - **Node identity: where it comes from, and where it must not.** The Node must be the same Node after it moves. Nomad's *allocation index* looks like the answer and has had documented uniqueness bugs — two simultaneously-running allocations sharing an index, accepted and later fixed. Fine for a metrics label; **never for something archive correctness depends on**
 - **Nomad Variables are the right mechanism** — an encrypted, namespaced, ACL'd key-value store the scheduler delivers to a task. A Node reads *which Node am I, where is the directory, what is my epoch* from there. It is exactly what Variables are for, and it is why identity survives rescheduling without living on any disk
-- **And why configuration does *not* go there.** Variables cap at **16 KiB per entry, not configurable** — capped, in HashiCorp's own words, *"to reduce the potential performance impact of Variables on our raft store."* That is the maintainers stating this module's own objection to Candidate 1: the raft store is memory-resident and replicated to every server. A thousand cameras do not belong in it, and a key-value store cannot answer *which cameras have retention over 30 days* anyway
+- **And why configuration does *not* go there.** Variables cap at **64 KiB per entry** — originally 16 KiB, raised since, and capped at all because, in HashiCorp's own words, the limit exists *"to reduce the potential performance impact of Variables on our raft store."* That is the maintainers stating this module's own objection to Candidate 1: the raft store is memory-resident and replicated to every server. A thousand cameras do not fit in 64 KiB either, and a key-value store cannot answer *which cameras have retention over 30 days* anyway
 - Storage reality: recordings stay local. **Do not put video bulk on replicated storage**
 - Placement constraints: cameras are not uniformly reachable from every server
 
@@ -312,6 +334,7 @@ Server A dies
 - **Restart versus reschedule.** Restart retries on the same server; reschedule places on a different one. Service jobs default to unlimited attempts
 - **The `disconnect` block, and why its default is wrong for a VMS.** By default a client missing heartbeats has its allocations marked lost and replaced *while the client keeps running its tasks* — so a partitioned server keeps recording while a replacement starts elsewhere. `lost_after`, `replace`, `stop_on_client_after`, and the four `reconcile` strategies. The exercise is the argument: for a recorder, is two servers recording the same camera for a minute better or worse than neither?
 - **Fencing**, from the section above: the epoch in the archive path, monotonic clocks, and the two margins
+- **Where the epoch comes from, and the wrong answer first.** Have students reach for Nomad's variable lock, then read the API and find the lock ID is an opaque UUID with no monotonic index — the exact lock Kleppmann warns about. Then build the right one: a Nomad Variable with `cas`, which is atomic, monotonic and survives losing the server that issued the last epoch
 - **Planned failover.** Draining a client before an OS update, and returning it to service — the same mechanism, with a human choosing the moment. This is where М9's two update planes meet the scheduler
 - What does not fail over: the footage
 
@@ -326,6 +349,8 @@ Server A dies
 ### Lesson 29 — What the domain knows that a Node cannot
 
 - The directory: which Nodes exist, which cameras belong to which, and how far behind each Node's replica is
+- **What it runs on: Postgres again** — the third use of one engine in the course. Not because it suits a few thousand rows, but because a second engine means a second backup story and a second thing to debug. The argument М10 made against SQLite, one scope up
+- **What is *not* in it: the epoch.** That lives in a Nomad Variable, so the directory can be restored from scratch without the fencing tokens ever going backwards
 - **Why it is small, and why that matters.** It is not a configuration store — it may be unavailable while recording continues and while an operator edits a camera on its own Node
 - The contract: **streams, not callbacks.** A server-streaming watch and a client-streaming report mean a Node is never required to be addressable, which is what makes this work behind a customer's NAT
 - **Why ordering beats equality**, from the section above
@@ -413,7 +438,8 @@ Split by part, and the split is clean.
 1. **Is 2a ever right?** The course builds 2b, and the CSI detach problem means 2a cannot fail over unattended — so 2a is only defensible where an operator is on call. Whether any VMS deployment meets that description is a product question, not a technical one.
 2. **Rebalance trigger.** Operator-initiated only, or scheduled during a maintenance window? The module assumes the former.
 3. **How much retention policy is domain design rather than infrastructure?** Schedules, per-camera overrides and legal hold may deserve their own lessons.
-4. **Does the directory need high availability (HA)?** It may be down without recording stopping, which is the point — but failover cannot *complete* without a new epoch, so the token issuer is more load-bearing than the rest of it.
+4. **Can a task write Variables under workload identity, or does the directory need an operator token?** The Variables API documentation does not say, and it decides how the directory authenticates. Check before building.
+5. **Does the directory need high availability (HA)?** Less than it looked. Most of it is rebuildable — every Node republishes its own configuration — and the epoch, the one thing that could not be rebuilt, now lives in Nomad's raft rather than in the directory. What remains is a lookup service whose loss is an inconvenience.
 
 **Resolved while designing the module:**
 
@@ -431,7 +457,9 @@ Split by part, and the split is clean.
 - [Nomad production requirements](https://developer.hashicorp.com/nomad/docs/deploy/production/requirements) — server sizing, and the absence of single-node guidance
 - [`NOMAD_ALLOC_INDEX` uniqueness bug](https://github.com/hashicorp/nomad/issues/10727) — two simultaneously-running allocations sharing an index; accepted and later fixed. Also [#4264](https://github.com/hashicorp/nomad/issues/4264) and [#11628](https://github.com/hashicorp/nomad/issues/11628) on consistency
 - [Nomad CSI volumes do not recover from client failure without human intervention](https://github.com/hashicorp/nomad/issues/12118) — open; the volume stays attached to the dead node and must be detached manually
-- [Configurable max entry size for Nomad Variables](https://github.com/hashicorp/nomad/issues/14763) — 16 KiB, not configurable, capped to limit the impact on a memory-resident raft store
+- [Nomad Variables HTTP API](https://developer.hashicorp.com/nomad/api-docs/variables/variables) — the `cas` parameter compared against `ModifyIndex`, 409 on conflict, and the 64 KiB item limit
+- [Nomad Variable Locks](https://developer.hashicorp.com/nomad/api-docs/variables/locks) — acquire/renew/release with a TTL, and an **opaque lock ID rather than a fencing token**
+- [Configurable max entry size for Nomad Variables](https://github.com/hashicorp/nomad/issues/14763) — why a limit exists at all: the impact of Variables on a memory-resident raft store
 - [Nomad Pack](https://developer.hashicorp.com/nomad/tools/nomad-pack) · [Nomad LICENSE](https://raw.githubusercontent.com/hashicorp/nomad/main/LICENSE)
 - [How to do distributed locking](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html) — fencing tokens, and why lease expiry must not depend on wall-clock time
 - [Eliminate Phase and simplify Conditions](https://github.com/kubernetes/kubernetes/issues/7856) — why phase enums were a mistake
