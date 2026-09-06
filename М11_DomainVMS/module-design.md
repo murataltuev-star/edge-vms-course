@@ -139,6 +139,34 @@ So shared storage buys fencing and **loses** the automatic recovery it was adopt
 
 **The course teaches 2b**, and shows 2a as a cautionary comparison rather than an aspiration.
 
+### The directory is each Node's off-box backup
+
+That is the mental model, and it explains the whole arrangement in one line: **a Node publishes its own configuration upward whenever it changes; the directory stores the latest revision per Node and never writes back.**
+
+- **One-way, because a backup does not write back.** There is no merge, no conflict, no election
+- **The domain may be down during normal operation**, because you do not need a backup in order to *run*
+- **It is required to fail over**, because that is a restore
+- **And it has an RPO** — the publication interval — which is a number the product states rather than a surprise it discovers
+
+### The acknowledgement problem
+
+Here is the gap that framing exposes, and it is the honest cost of the availability this design buys. **What is the operator told when they save a camera?**
+
+If the Node acknowledges on local commit and dies before publishing, the operator was told *saved* and the change is gone.
+
+| | Cost |
+|---|---|
+| Acknowledge only after publishing | Configuration edits now require the directory — the offline-edit advantage is destroyed |
+| Acknowledge on local commit, say nothing | Silent data loss on failover |
+| **Acknowledge on local commit, and show durability** | The operator sees *saved · not yet replicated* until it lands |
+
+The third needs no new machinery. The module already has `observed_revision >= revision` and a directory that knows how far behind each Node is; the console shows the same thing for configuration that it shows for everything else, and a Node that has been unable to publish for N minutes raises a condition.
+
+### Two gaps that stay open by design
+
+- **A Node the directory has never seen** — brand new, or its first publish never landed — has nothing to restore. It must **not invent a configuration**: it comes up empty, reports *unconfigured*, and waits for an operator or for М12's enrollment
+- **The archive index does not come back.** It is large and constantly written, so it is never published upward; only the rollup is. After a failover the Node knows *"camera 7 has footage for these ranges, on Server A's storage"* and nothing finer until Server A returns. Playback of old footage is coarse, not lost
+
 ---
 
 ## The zombie writer
@@ -245,12 +273,37 @@ The lesson the failover demo depends on, and the one most courses skip.
 
 - **What must travel and what must not**, from the table above: configuration travels, footage stays, the index is rebuilt, events are expendable
 - **2a — shared storage, and why it is a trap here.** A CSI volume looks like the grown-up answer: exclusive attachment even fences for you. But Nomad cannot detach a volume from a dead client, so the allocation will not place and a human has to intervene at the storage provider. Students should read the open issue rather than take this on trust
-- **2b — local storage with one-way replication**, which the course builds. The Node publishes its configuration upward; a restarted Node starts with an empty database and pulls it back
-- **The rehydration sequence**, step by step: empty Postgres → identity from a scheduler variable → configuration from the domain copy → a new epoch → recording. And the staleness this introduces, because the domain copy may be several revisions behind the Node that died
+- **2b — the directory as an off-box backup**, which the course builds
+
+#### The rehydration sequence
+
+Walk it explicitly, because "it pulls its configuration back" hides every interesting decision:
+
+```
+Server A dies
+  └─ Nomad reschedules Node 3's allocation → Server B
+       1. empty Postgres; migrations run
+       2. read identity from a Nomad Variable — "I am Node 3, the directory is at X"
+       3. ask the directory for Node 3's last published configuration
+       4. restore it; check the revision it came back with
+       5. request a new epoch
+       6. begin recording into epoch-N+1
+```
+
+- **Step 2 is why identity cannot live on disk.** The disk is on the dead server
+- **Step 4 is where the RPO becomes visible.** The revision that comes back may be behind the one the operator last saw acknowledged
+- **Step 5 is why the directory must be reachable to fail over**, even though it is not needed to run
+
+#### The mechanism, and what not to build
+
+**Not Postgres logical replication.** The Node's report channel from Lesson 29 already streams upward; configuration revisions ride on it beside status. One mechanism, two uses, and no second piece of infrastructure to operate.
+
+- **The acknowledgement rule**, from the section above: acknowledge on local commit, and show *saved · not yet replicated* until the directory confirms. Never acknowledge a write whose durability you cannot vouch for, and never block the write on it either
+- **A Node the directory has never seen** comes up *unconfigured*, and does not invent anything
 - Rebuilding the archive index by scanning segments, and how long that takes at scale
 - What the console must show while a Node's old footage is unreachable
 
-**Deliverable:** kill a Node, bring it back on another server, and prove its configuration is intact and its index rebuilt.
+**Deliverable:** two proofs. First, kill a Node and bring it back on another server with its configuration intact. Then **measure the RPO**: edit a camera, kill the Node in the window before it publishes, and show exactly what the operator was told and what actually survived — then reduce the window and show the number move.
 
 ---
 
