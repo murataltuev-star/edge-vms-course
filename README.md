@@ -56,6 +56,8 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | [**М12** — FederatedVMS](./М12_FederatedVMS) | 5 · OpenBao — identity, trust, PKI<br>7 · Enrollment, inventory, version skew | **Designed** · 10 lessons (34–43) |
 | М13 — Observability | 6 · Prometheus + logs | Planned · ~4 (44–47) |
 
+**[GLOSSARY.md](./GLOSSARY.md)** defines every term the course uses precisely — Node versus Server, desired versus actual state, epoch and fencing, and the acronyms it would otherwise leave unexplained.
+
 **[COURSE-PLAN.md](./COURSE-PLAN.md)** carries the full reasoning: why the modules run in this order, what each contains, and two structural decisions worth taking before М11 — a licensing concentration (Nomad, Consul and Vault are all BUSL under IBM) and the fact that secrets appear three modules before the module that manages them.
 
 ---

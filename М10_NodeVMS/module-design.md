@@ -212,7 +212,7 @@ The `camera_sim.py` move, applied to control: build the loop before the thing it
 Swap the `print()` for GStreamer. This is the module's technical centre; see *How the shard is actually organised* above.
 
 - Building pipelines from Python with PyGObject rather than a shell string
-- **The GIL boundary**, demonstrated rather than asserted: add a buffer pad probe, watch the worker fall over, remove it
+- **The global interpreter lock (GIL) boundary**, demonstrated rather than asserted: add a buffer pad probe, watch the worker fall over, remove it
 - Draining buses from asyncio without a `GLib.MainLoop`
 - The per-camera state machine, and where backoff lives
 - **The `watchdog` element** — stall detection in C, delivered on the bus

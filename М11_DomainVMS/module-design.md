@@ -146,7 +146,7 @@ That is the mental model, and it explains the whole arrangement in one line: **a
 - **One-way, because a backup does not write back.** There is no merge, no conflict, no election
 - **The domain may be down during normal operation**, because you do not need a backup in order to *run*
 - **It is required to fail over**, because that is a restore
-- **And it has an RPO** — the publication interval — which is a number the product states rather than a surprise it discovers
+- **And it has a recovery point objective (RPO)** — the publication interval, and therefore the most recent configuration change an outage may lose — which is a number the product states rather than a surprise it discovers
 
 ### The acknowledgement problem
 
@@ -246,7 +246,7 @@ The reflexive answer, and wrong here: cameras are **not uniform** (4K at 8 Mbps 
 - **Why an orchestrator is the wrong answer for a single appliance.** Students should leave able to argue this, not assert it. On one box the scheduler has nothing to schedule — "place N workers" is a systemd template unit. Nomad's production guidance suggests 4–8+ cores and 16–32 GB+ for *servers* and says nothing about single-node deployments. And HashiCorp publishes a support note on orphaned Podman containers after an agent restart, which is a poor trade for no scheduling benefit
 - Nomad's model: **servers** accept jobs and place work, **clients** register and execute it; raft per region, three or five servers
 - Build a cluster: three servers, two clients
-- **Break container-per-camera on purpose.** Run [`shard-memory-probe.py`](../М10_NodeVMS/reference/shard-memory-probe.py), measure the per-process baseline against the per-pipeline increment, and derive the shard size. Teach PSS versus RSS — summing RSS across processes double-counts every shared library page
+- **Break container-per-camera on purpose.** Run [`shard-memory-probe.py`](../М10_NodeVMS/reference/shard-memory-probe.py), measure the per-process baseline against the per-pipeline increment, and derive the shard size. Teach **proportional set size (PSS)** versus **resident set size (RSS)** — summing RSS across processes double-counts every shared library page, because it counts each shared page once per process
 
 **Deliverable:** a working cluster, a measured shard size, and a written justification for why this deployment needed one.
 
@@ -272,7 +272,7 @@ The reflexive answer, and wrong here: cameras are **not uniform** (4K at 8 Mbps 
 The lesson the failover demo depends on, and the one most courses skip.
 
 - **What must travel and what must not**, from the table above: configuration travels, footage stays, the index is rebuilt, events are expendable
-- **2a — shared storage, and why it is a trap here.** A CSI volume looks like the grown-up answer: exclusive attachment even fences for you. But Nomad cannot detach a volume from a dead client, so the allocation will not place and a human has to intervene at the storage provider. Students should read the open issue rather than take this on trust
+- **2a — shared storage, and why it is a trap here.** A Container Storage Interface (CSI) volume looks like the grown-up answer: exclusive attachment even fences for you. But Nomad cannot detach a volume from a dead client, so the allocation will not place and a human has to intervene at the storage provider. Students should read the open issue rather than take this on trust
 - **2b — the directory as an off-box backup**, which the course builds
 
 #### The rehydration sequence
@@ -386,7 +386,7 @@ The course's own convention — the stand-in before the real thing — at the to
 
 - **Nomad Pack**: templating, variables and registries; per-site differences without per-site forks
 - **The honest GitOps gap.** Fleet is pull-based — a site catches up by itself. Nomad Pack driven from CI is push-based; your pipeline must reach each region. For flaky edge links that is materially worse, and the module says so rather than glossing it. hawkBit in М12 restores it on the OS plane
-- **Reading the licence you just built on.** Nomad Community Edition is BUSL, Licensor IBM; production use is granted provided the work is not offered to third parties on a hosted or *embedded* basis to compete with IBM's paid versions; the Change Date is four years per version, converting to MPL 2.0. Full analysis in [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md)
+- **Reading the licence you just built on.** Nomad Community Edition is under the **Business Source License (BUSL)**, a source-available licence whose grant converts to an open-source one after a Change Date. Licensor IBM; production use is granted provided the work is not offered to third parties on a hosted or *embedded* basis to compete with IBM's paid versions; the Change Date is four years per version, converting to MPL 2.0. Full analysis in [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md)
 - Acceptance criteria for the module
 
 **Deliverable:** one pack, three simulated sites, per-site differences — plus a written analysis of what breaks when a site is offline for a day.
@@ -413,7 +413,7 @@ Split by part, and the split is clean.
 1. **Is 2a ever right?** The course builds 2b, and the CSI detach problem means 2a cannot fail over unattended — so 2a is only defensible where an operator is on call. Whether any VMS deployment meets that description is a product question, not a technical one.
 2. **Rebalance trigger.** Operator-initiated only, or scheduled during a maintenance window? The module assumes the former.
 3. **How much retention policy is domain design rather than infrastructure?** Schedules, per-camera overrides and legal hold may deserve their own lessons.
-4. **Does the directory need HA?** It may be down without recording stopping, which is the point — but failover cannot *complete* without a new epoch, so the token issuer is more load-bearing than the rest of it.
+4. **Does the directory need high availability (HA)?** It may be down without recording stopping, which is the point — but failover cannot *complete* without a new epoch, so the token issuer is more load-bearing than the rest of it.
 
 **Resolved while designing the module:**
 
