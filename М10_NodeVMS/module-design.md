@@ -220,8 +220,9 @@ Swap the `print()` for GStreamer. This is the module's technical centre; see *Ho
 - The per-camera state machine, and where backoff lives
 - **The `watchdog` element** — stall detection in C, delivered on the bus
 - Re-run the М9 probe against the real worker; add thread count to what it reports
+- **The spool becomes the archive.** М9 wrote segments to `/data/spool` to survive an uplink outage and deleted each one on acknowledgement. Here the same `splitmuxsink` writes the same files and **nothing deletes them** — an index row is written instead, and the uploader becomes optional. *The pipeline barely changes; what changed is who owns the footage.* Point at it, because it is the module's thesis in one diff
 
-**Deliverable:** insert a row, get a recording. Delete the row, the recording stops. Fifty cameras in one process, with measured memory and thread counts.
+**Deliverable:** insert a row, get a recording. Delete the row, the recording stops. Fifty cameras in one process, with measured memory and thread counts — and a `git diff` against М9's pipeline that fits on one screen.
 
 ---
 
@@ -231,7 +232,7 @@ Each failure mode reproduced on purpose, then handled.
 
 - **Camera offline** → exponential backoff **with jitter**. Two hundred cameras reconnecting in lockstep after a switch reboot is a self-inflicted outage, and the jitter is the whole fix
 - **Stalled stream, socket still open** → `watchdog` fires, that one pipeline restarts, the other forty-nine never notice
-- **Disk full** → retention enforcement degrades by policy. The deletion loop must be conservative: never delete what it cannot prove is superseded. With Lesson 20's partitioning this is `DROP PARTITION` and a segment unlink, not a scan — which is what makes it fast enough to run under pressure
+- **Disk full** → retention enforcement degrades by policy, and this is М9's spool-bound question returning with the answer changed: there, a full disk meant choosing between dropping the oldest and stopping recording, because the footage was in transit. Here it is *the archive*, so retention decides and the choice is the customer's, written down. The deletion loop must be conservative: never delete what it cannot prove is superseded. With Lesson 20's partitioning this is `DROP PARTITION` and a segment unlink, not a scan — which is what makes it fast enough to run under pressure
 - **The AppHost dies** → systemd restarts it, state is re-derived, and the segment discipline bounds the loss
 - **The fencing rule, introduced small:** on restart, never resume the previous segment — open a new one. Leases and epochs are М11's problem; the rule that makes them necessary lands here
 

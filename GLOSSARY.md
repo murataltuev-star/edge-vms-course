@@ -43,7 +43,7 @@ Two more that are easy to blur:
 |---|---|
 | **HA** — high availability | Keeping a service running through the failure of one of its parts, normally with a standby ready to take over. In М11 the question is whether the *directory* needs one. |
 | **Failover** | Moving work off something that failed. In this course it happens at two levels: the scheduler moves a **Node** to a healthy server; the domain reassigns **cameras** only when an operator rebalances. |
-| **RPO** — recovery point objective | How much recently written data an outage may lose, measured in time. Here it is the interval between a Node changing its configuration and publishing it upward. A number the product states, not a surprise it discovers. |
+| **RPO** — recovery point objective | How much recently written data an outage may lose, measured in time. Every boundary in this course is crossed the same way — **a one-way publication with a stated RPO** — whether what crosses is footage (М9's spool), configuration (М11) or status. A number the product states, not a surprise it discovers. |
 | **RTO** — recovery time objective | How long recovery is allowed to take. In М11's deliverable it is the seconds between pulling the power and recording resuming. |
 | **TTL** — time to live | How long a lease is valid before it expires and the object may be granted to someone else. |
 | **Witness / monitor node** | A member of a database cluster holding no data, present only to break ties and prevent split-brain. |
@@ -54,6 +54,7 @@ Two more that are easy to blur:
 
 | | |
 |---|---|
+| **Spool** | Segments recorded locally and waiting to be uploaded, deleted only on acknowledgement. Introduced in М9 so an uplink outage costs visibility rather than footage; М10 puts an index over the same files and they become the archive. |
 | **RSS** — resident set size | Memory a process has in RAM. Counts a shared library page once **per process**, so summing it across processes double-counts and inflates the answer. |
 | **PSS** — proportional set size | The same, but each shared page is divided by the number of processes mapping it. **The only honest way** to compare one process holding N pipelines against N processes holding one each. |
 | **GIL** — global interpreter lock | CPython's lock ensuring one thread runs Python bytecode at a time. Released around C calls, which is why fifty GStreamer pipelines in one Python process work — and re-acquired in every callback, which is why a per-buffer callback does not. |

@@ -19,6 +19,8 @@ There are **two independent update planes** in any real edge product, and the wh
 
 Students routinely conflate these, then build systems where a config change requires an OS flash, or where an OS update silently destroys recordings. The module's spine is: **the OS is atomic and replaceable; the app is a container; the data is neither and must outlive both.**
 
+That third clause is the one students nod at and then violate, so Lesson 19 makes it expensive to get wrong. **Footage recorded but not yet uploaded is data**, and an appliance that keeps it anywhere an OS update can reach has not understood the sentence.
+
 Both planes are fully visible on one box, which is why this module needs only one box. Lesson 19 is where the distinction bites: Podman's storage must be redirected to the data partition, because container images and volumes left in a rootfs slot are destroyed by the next OS update. That single configuration line is the thesis made concrete.
 
 **М10 adds a scheduler above this**, not instead of it. Podman remains the runtime there — Nomad's Podman task driver means the scheduler sits on top of what students already know rather than replacing it. One runtime, one mental model, from a single appliance onward.
@@ -30,7 +32,9 @@ Both planes are fully visible on one box, which is why this module needs only on
 | Decision | Choice | Why |
 |---|---|---|
 | Target platform | x86-64, UEFI + GRUB | How a VMS appliance actually ships. Testable end-to-end in QEMU before touching metal. |
-| Payload | M1–7 app, **KVS retained** | The edge box becomes a managed gateway that still publishes to AWS. No media-layer rewrite; deployment and lifecycle are the new skill. |
+| Payload | M1–7 app, **KVS retained** | The edge box becomes a managed gateway that still publishes to AWS. Deployment and lifecycle are the new skill. |
+| Uplink loss | **Spool to the data partition, then upload** | The one media change this module makes, and it is forced: you cannot buffer behind `kvssink`, and an appliance that loses footage whenever the link blinks is not an appliance. Segments are written locally and uploaded by a separate process. |
+| Those segments | **Become the archive in М10** | They are written here as a buffer and never thrown away: М10 puts an index over the same files, М12 makes the upload optional. The first thing in the course a later module *upgrades* rather than replaces. |
 | Scope | **One appliance** | Scheduling, clustering and multi-site delivery moved to М10 and М12. A module called EdgeVMS should not build a raft cluster. |
 | Bundle delivery | Plain HTTP(S) | `rauc install https://…` keeps the focus on the update mechanism. **Eclipse hawkBit** is the production answer and now matters more than it did: it restores pull-based OS updates, partly offsetting the reconciliation lost with Fleet. Candidate for promotion out of a footnote. |
 
@@ -58,14 +62,14 @@ New assumed knowledge: none.
 
 - Mutable vs. atomic systems; why "update in place" is the thing being replaced
 - A/B (dual-slot) design: two complete root filesystems, one active, one being written
-- The partition layout, and why the data partition is the most important decision in it
+- The partition layout, and why the data partition is the most important decision in it — **size it for the spool**, because how long the box survives an uplink outage is decided here, three lessons before anyone mentions it
 - Build the QEMU x86-64 UEFI bench and boot it
 
 ```
 /dev/sda1   ESP        vfat    ~512M   GRUB + grubenv      ← persistent, NOT redundant
 /dev/sda2   rootfs.0   ext4    ~8G     bootname=A
 /dev/sda3   rootfs.1   ext4    ~8G     bootname=B
-/dev/sda4   data       ext4    rest    config, container storage, recordings
+/dev/sda4   data       ext4    rest    config, container storage, spool/recordings
 ```
 
 **Deliverable:** a VM that boots, with both slots present and manually selectable.
@@ -91,7 +95,7 @@ The payoff lesson, and the one that must be *seen*, not described.
 
 **Deliverable:** a written record of three induced failures and the observed recovery.
 
-### Lesson 19 — Podman, Quadlet, and the three-way boundary
+### Lesson 19 — Podman, Quadlet, the three-way boundary, and the spool
 
 - Quadlet: `.container`, `.volume`, `.network`, `.pod` files that systemd turns into services
 - Unit locations: `/etc/containers/systemd/` for root, `~/.config/containers/systemd/` for rootless
@@ -101,7 +105,29 @@ The payoff lesson, and the one that must be *seen*, not described.
 - Where AWS credentials live on an appliance: not in the image (both slots ship identical), but provisioned at commissioning onto the data partition — Lesson 13's rule, now with teeth
 - `podman-auto-update`, and why an appliance might *not* want it
 
-**Deliverable:** the VMS running under systemd on the appliance, surviving reboot, publishing to KVS.
+#### The failure the module would otherwise ship
+
+Do this before building anything: **run the appliance, pull the network cable for ten minutes, plug it back in, and go looking for those ten minutes of video.** They are not anywhere. `kvssink` publishes straight to AWS with nothing behind it, so an uplink blink is not a visibility problem, it is data loss — and a student who has *watched* footage disappear will build the rest of this correctly.
+
+That is the argument for the one media-layer change this module makes. **You cannot buffer behind `kvssink`**: the pipeline has to write segments locally and hand them to something that uploads them.
+
+```
+capture ──▶ splitmuxsink ──▶ /data/spool/<camera>/<ts>.mp4
+                                     │
+                             uploader (separate process)
+                                     │  on success: delete
+                                     ▼
+                                    KVS
+```
+
+- **The spool is the third thing on the data partition**, beside container storage and configuration — and it is the one with the worst failure mode. Images in a rootfs slot are destroyed by an OS update and can be pulled again; **footage cannot be pulled again**. This is the module's thesis with something irreplaceable behind it
+- **Delete on acknowledgement, never on send.** The upload is not complete when the write returns; it is complete when the far side says so. Everything else in the course will repeat this shape — М11 acknowledges configuration on local commit and shows *not yet replicated* until the domain confirms
+- **The spool needs a bound, and hitting it is a decision the student makes, not the disk.** When the partition fills: drop the oldest, or stop recording? Both are defensible and they are different products. Pick one, write it down, and make the appliance say which it did rather than failing silently
+- **Catch-up is its own outage if you let it be.** Ten minutes of backlog from every camera arrives the instant the link returns, competing with live upload — and the live stream is the one someone is watching. Rate-limit the drain, prioritise live over backlog, and know how long full recovery takes. A recovery that saturates the uplink for an hour has turned a ten-minute fault into a seventy-minute one
+
+> **Why this is not premature.** The spool exists here because the link can fail here. **М10 does not throw it away** — it puts an index over the same files and they become the archive. **М12 makes the upload conditional**: an on-prem Node has nobody to upload to, and a cloud Node *is* the destination. Same segments, three meanings.
+
+**Deliverable:** the VMS running under systemd on the appliance, surviving reboot, publishing to KVS — and then the uplink pulled for ten minutes with **nothing lost**, plus a stated number for how long the spool can survive an outage before the policy you chose takes effect.
 
 **Sidebar (context, not taught):** RAUC is not the only atomic-update approach, and for a product shipping on x86-64 UEFI it may not be the best one — **bootc** ships the OS itself as an OCI image, through the same registry and signing chain as the containers above. RAUC is kept here because A/B slots are legible, its signature verification is unconditional, and its bootloader coverage means these lessons port to ARM. Alternatives compared in [`rauc-alternatives.md`](rauc-alternatives.md).
 
@@ -119,6 +145,7 @@ Modules 1–15 held to a rule: every step shows a real, observed result, and not
 - `system.conf` and bundle manifest structure, parsed and checked
 - Quadlet unit files checked with `systemd-analyze verify` (systemd 255 is present)
 - Partition arithmetic and any shell logic
+- **The spool, in full.** Segments on disk, an uploader, delete-on-acknowledgement, the bound and its policy, and the rate-limited drain — all of it is files and a queue, testable against a fake uploader that can be told to fail. The ten-minute-outage deliverable runs here with the network fault simulated rather than a cable pulled
 
 **Track 2 — verified on real hardware, by you or a student.** Booting either slot, an actual rollback, and RAUC installing a bundle end to end. Each lesson carries an explicit *expected output* block so a deviation is recognizable rather than mysterious.
 
@@ -184,7 +211,7 @@ This does not port. Each vendor has its own stack:
 
 **The mitigation worth teaching:** GStreamer selects decoders by *rank*, and `GST_PLUGIN_FEATURE_RANK` re-ranks them at runtime. A portable appliance can ship **one pipeline description plus one environment variable per SoC**, instead of per-platform pipeline code.
 
-**Why this doesn't bite the course yet:** the M1–7 pipeline is pure pass-through — `filesrc ! qtdemux ! h264parse ! kvssink`, no decode, no encode. Add real cameras with transcoding, or analytics needing decoded frames, and this becomes the dominant porting cost — larger than RAUC by a wide margin.
+**Why this doesn't bite the course yet:** the pipeline is pure pass-through — `filesrc ! qtdemux ! h264parse ! splitmuxsink`, mux only, no decode and no encode. Add real cameras with transcoding, or analytics needing decoded frames, and this becomes the dominant porting cost — larger than RAUC by a wide margin.
 
 ### Storage cautions on ARM
 

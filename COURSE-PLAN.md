@@ -16,7 +16,7 @@ A shipped edge VMS is seven layers deep. The course builds them in dependency or
 | 6 | **Prometheus + logs** | Is it working, and how would I know? | М13 | Planned |
 | 7 | **Device management** | What do I have, where, on which version? | М12 | Designed |
 
-Layers 1–2 are the two update planes М9 is built around: the OS underneath, the workload on top — both visible on a single box, which is all М9 needs. Layers 3–4 are the product. Layers 5–7 are what turns one working box into a fleet somebody can operate.
+Layers 1–2 are the two update planes М9 is built around: the OS underneath, the workload on top — both visible on a single box, which is all М9 needs. М9 also owns the **third** thing on that box, which is neither: the data. A spool of recorded-but-not-yet-uploaded segments outlives both planes, and the segments it writes are what М10 turns into the archive. Layers 3–4 are the product. Layers 5–7 are what turns one working box into a fleet somebody can operate.
 
 **Layers 5 and 7 turned out to be one layer.** They are both in М12. The plan had identity in layer 5 and device management in layer 7, three modules apart, and each asked the same question — *how does a machine prove who it is in order to get its first secret?* Enrollment is where identity and device management meet, and separating them meant neither owned it.
 
