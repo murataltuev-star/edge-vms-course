@@ -4,7 +4,9 @@
 
 М10 built one Node: a database holding what it should be, and a loop making it so. This module runs several, makes each one outlive the server it happens to be on, and then adds the small layer that has to sit above them.
 
-The organising decision, taken up front because everything depends on it: **a Node owns its own configuration.** Nomad moves the Node; the cameras go with it; nothing rewrites who owns what. That choice is argued below against the two obvious alternatives, and it is what makes failover teachable in Part A instead of deferred.
+The organising decision, taken up front because everything depends on it: **a Node owns its own configuration.** Nomad moves the Node; the cameras go with it; nothing rewrites who owns what. It is what makes failover teachable in Part A instead of deferred: there is no ownership to reassign, so a dead server is a relocation rather than a decision.
+
+Two things follow, and they shape the two halves of the module. **A Node must carry its configuration to whatever server it lands on** — Part A. **And three questions remain that a Node cannot answer about itself** — Part B.
 
 > **Scope note.** These lessons were briefly М9's Part B and then briefly М10's Part B before landing here. The last move happened because a cluster and the layer above it are one arc, and splitting them meant teaching the two-level idea twice. Nomad's cross-site federation went further still, to [М12](../М12_FederatedVMS/module-design.md), where many networks actually begin. The write API is built here and is **deliberately unauthenticated**; М12 replaces it, the same way М10's hand-provisioned database password is replaced.
 
@@ -35,63 +37,11 @@ Node 3 reappears on another server with its configuration intact and resumes its
 
 ---
 
-## Three ways to own a camera
-
-Every design in this space is a different answer to *who owns camera 7*. Three are worth building; one is the module's choice; the discarded two fail late enough to be worth walking into.
-
-### Candidate 1 — the cameras are Nomad allocations
-
-You already have a scheduler that places things, holds state and survives node failure. Rejected on four counts:
-
-- **Cardinality and churn.** An allocation is one of tens per node, changing when engineers deploy. A camera is one of thousands per site, changing when an operator clicks
-- **State in the wrong place.** A thousand cameras in Nomad's raft makes every operator edit consensus traffic replicated to every server
-- **Availability coupling.** Adding a camera would require healthy Nomad servers. A VMS must accept configuration and keep recording through a control-plane outage
-- **No ownership primitive.** Allocations are *placed* and nothing contests them, so Nomad has never needed a lease or an epoch
-
-### Candidate 2 — the Node owns its cameras · **the module's choice**
-
-Each Node holds its own configuration in its own database, is the only writer of those rows, and replicates them one way upward. The camera→Node mapping is written once, when the camera is created, and never rewritten — **because the thing that moves during failover is the Node, not the camera.**
-
-It inherits М10 exactly: what М10 built on one box *is* a Node. It keeps configuration next to the software that uses it. And it is strictly more available than a central configuration store — an operator who can reach Node N can edit camera 7 while the domain layer is unreachable.
-
-**Its residue, named honestly.** Three things a Node cannot know about itself, which is what Part B builds:
-
-| | Why a Node cannot answer it |
-|---|---|
-| **Lookup** — where is camera 7? | Asking every Node cannot distinguish *deleted* from *unreachable* |
-| **Creation** — which Node gets a new camera? | Capacity and reachability across Nodes is domain knowledge by definition |
-| **Rebalance** — move camera 7 from N to M | Two single-writer databases, no coordinator, no transaction |
-
-That is a **directory**, not a configuration store. Small, and it may be down without recording or configuration stopping.
-
-### Candidate 3 — do not store ownership, derive it
-
-`owner = f(camera_id, membership)`. Every node computes the same answer; nothing is written. This is how the Dynamo family works, and pushed further it is coherent: take membership from Nomad's raft, let the epoch be the membership generation, have each node self-fence on staleness.
-
-It breaks one level in. **"Everyone knows who owns what" is a claim about agreement**, and since ownership is derived, every disagreement moves into the input:
-
-- Node A is partitioned but alive and still reaching its cameras
-- B and C compute membership `{B,C}` → camera 7 is B's → B records
-- A computes `{A,…}` → camera 7 is still A's → A records
-- **Both write** — split-brain reached by two nodes each applying the same function correctly
-
-Three further costs: ownership **churns by construction** (any membership change recomputes all of it, violating Lesson 30's *only move a camera when you must*); **constraints cannot live in a pure function** (a camera on an isolated VLAN needs stored constraint data, which needs an owner, and the design collapses back); and it **re-couples camera lifecycle to cluster health.**
-
-### The difference that decides it
-
-Dynamo-style systems tolerate two nodes briefly believing they own a key **because the data model reconciles.**
-
-> **Two writers to one video stream cannot be merged. There is no reconciliation function for footage.**
-
-Which is why the epoch must be a **fencing token from a single issuer** rather than a number each node computes — and why Candidate 3 is not available to a VMS however elegant it looks.
-
----
-
 ## Decisions taken
 
 | Decision | Choice | Why |
 |---|---|---|
-| Camera ownership | **The Node owns it, permanently** | Failover moves the Node, so nothing rewrites ownership. Candidate 2 above. |
+| Camera ownership | **The Node owns it, permanently** | Failover moves the Node, so nothing rewrites ownership — a dead server is a relocation, not a decision. |
 | Node identity | **Stable, carried in a Nomad Variable — never the allocation index** | Variables are built for exactly this and survive rescheduling. The allocation index has had documented uniqueness bugs: fine for a label, never for correctness. |
 | Configuration authority | **The Node, replicating one way upward** | Configuration stays next to the software using it, and survives the domain layer being down. |
 | Domain layer | **A directory, not a configuration store** | Lookup, creation and rebalance only. It may be unavailable without recording stopping. |
@@ -175,11 +125,19 @@ The third needs no new machinery. The module already has `observed_revision >= r
 
 ## The zombie writer
 
-The correctness core, and under Candidate 2 the story is sharper than the usual telling, because **both writers are the same Node.**
+The correctness core, and here the story is sharper than the usual telling, because **both writers are the same Node.**
 
 Node N runs on Server A, writing camera 7's archive. Server A is partitioned — not dead, still reaching its cameras and its disks. Nomad concludes N is lost and starts N′ on Server B. Both are Node 3. Both hold N's configuration. Both believe they own camera 7.
 
 **Nothing can tell dead from partitioned from paused.** That is not a gap to close with a better heartbeat; it is the fundamental limitation, and the design must be correct without resolving it.
+
+### Why this cannot be solved by agreement
+
+Some systems tolerate two nodes briefly believing they own the same object, because the data model reconciles — last-write-wins, CRDTs, quorum reads. That option is not available here:
+
+> **Two writers to one video stream cannot be merged. There is no reconciliation function for footage.**
+
+Which is why the epoch has to be a fencing token from a **single issuer**, rather than a value each Node computes for itself from what it believes about the cluster.
 
 ### Why a lock is not enough
 
@@ -246,7 +204,7 @@ Configuration replicates one way from each Node upward, and the domain must be a
 
 ## Placement that does not churn
 
-Under Candidate 2 placement happens **twice in a camera's life** — when it is created, and if an operator rebalances — and never in between. That makes the rule easy to state and easy to violate:
+Placement happens **twice in a camera's life** — when it is created, and if an operator rebalances — and never in between. That makes the rule easy to state and easy to violate:
 
 > **Only place a camera when you must.** Two triggers: the camera is new, or an operator asked for a rebalance. A dead server is *not* a trigger, because the Node moves and the camera goes with it.
 
@@ -283,7 +241,7 @@ The reflexive answer, and wrong here: cameras are **not uniform** (4K at 8 Mbps 
 - The other drivers and why a VMS cares: `exec2` for a native process needing device access, `virt` for a VM. Kubernetes cannot do this at all
 - **Node identity: where it comes from, and where it must not.** The Node must be the same Node after it moves. Nomad's *allocation index* looks like the answer and has had documented uniqueness bugs — two simultaneously-running allocations sharing an index, accepted and later fixed. Fine for a metrics label; **never for something archive correctness depends on**
 - **Nomad Variables are the right mechanism** — an encrypted, namespaced, ACL'd key-value store the scheduler delivers to a task. A Node reads *which Node am I, where is the directory, what is my epoch* from there. It is exactly what Variables are for, and it is why identity survives rescheduling without living on any disk
-- **And why configuration does *not* go there.** Variables cap at **64 KiB per entry** — originally 16 KiB, raised since, and capped at all because, in HashiCorp's own words, the limit exists *"to reduce the potential performance impact of Variables on our raft store."* That is the maintainers stating this module's own objection to Candidate 1: the raft store is memory-resident and replicated to every server. A thousand cameras do not fit in 64 KiB either, and a key-value store cannot answer *which cameras have retention over 30 days* anyway
+- **And why configuration does *not* go there.** Variables cap at **64 KiB per entry** — originally 16 KiB, raised since, and capped at all because, in HashiCorp's own words, the limit exists *"to reduce the potential performance impact of Variables on our raft store."* That is the maintainers stating this module's own reason for keeping camera configuration out of the scheduler: the raft store is memory-resident and replicated to every server. A thousand cameras do not fit in 64 KiB either, and a key-value store cannot answer *which cameras have retention over 30 days* anyway
 - Storage reality: recordings stay local. **Do not put video bulk on replicated storage**
 - Placement constraints: cameras are not uniformly reachable from every server
 
@@ -347,6 +305,16 @@ Server A dies
 ## Part B — The domain above the Nodes
 
 *The three things a Node cannot know about itself. Small, and allowed to be down.*
+
+A Node owning its own configuration answers almost everything, which raises the fair question of what is left for a domain layer at all. Exactly three things:
+
+| | Why a Node cannot answer it |
+|---|---|
+| **Lookup** — where is camera 7? | Asking every Node cannot distinguish *deleted* from *unreachable* |
+| **Creation** — which Node gets a new camera? | Capacity and reachability across Nodes is domain knowledge by definition |
+| **Rebalance** — move camera 7 from N to M | Two single-writer databases, no coordinator, no transaction |
+
+That is a **directory**, not a configuration store — which is why it may be down while recording continues and while an operator edits a camera at its own Node.
 
 ### Lesson 29 — What the domain knows that a Node cannot
 
