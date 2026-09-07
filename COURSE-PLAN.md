@@ -12,7 +12,7 @@ A shipped edge VMS is seven layers deep. The course builds them in dependency or
 | 2 | **Nomad + Podman** | What workload is running, and where? | М9 (one box) · М11 Part A (many) | Designed |
 | 3 | **Postgres** | What does this system know about itself? | М10 | Designed |
 | 4 | **Domain controller** | Cameras, archives, detectors — the actual product | М10 (one Node) · М11 (many) | Designed |
-| 5 | **OpenBao** | Who is allowed to know what, and how do they prove it? | М12 | Designed |
+| 5 | **OpenBao** | Who is allowed to know what, and how do they prove it? *(smaller than it looks — see below)* | М13 | Designed |
 | 6 | **Prometheus + logs** | Is it working, and how would I know? | М13 | Planned |
 | 7 | **Device management** | What do I have, where, on which version? | М12 | Designed |
 
@@ -74,9 +74,19 @@ Each BUSL release converts to **MPL 2.0 four years after it is published** — 1
 
 **This is now settled**, in [`consul-and-openbao.md`](./М13_OrchestratedVMS/consul-and-openbao.md). The short version: Consul and OpenBao are not alternatives — they overlap on exactly one thing, mTLS between services — and Consul's mesh CA turns out to be the *same* root → per-locality intermediate → short-leaf design М12 arrives at independently. The decision turns on scope instead: no service mesh issues an identity to a device that has never been on the network, so the product runs a PKI regardless, and a second certificate hierarchy buys nothing. The accepted cost is health-check-filtered discovery, which Nomad's native discovery does not provide.
 
+#### A vault is not what removes most of these secrets
+
+Worth recording because it inverts the layer table above. Auditing the course's five stand-in secrets against what actually resolves each one: object-store access becomes **workload identity**; the local database password becomes **certificate auth**; the operator account is an **IdP** question; the per-Node credential and the self-signed CA are already replaced by **mTLS and a delegated intermediate** in М13 Lesson 39.
+
+> **Most secrets exist because something was not given an identity.** Give the machine an identity and the secret it stood in for disappears.
+
+That leaves a genuinely narrow scope for OpenBao — **dynamic credentials, and the secrets a multi-tenant operator holds for many customers** — and makes layer 5 a smaller layer than the table implies. What a vault does that Postgres cannot is *issue and revoke*: the encryption key must not sit beside the data, and a stored `valid_until` cannot revoke anything by itself. If the orchestration layer stays single-tenant, the honest answer may be that the product does not need one, and М13 Lesson 41 is written to reach that conclusion rather than avoid it.
+
+**The exception, and it is the course's only real secrets problem:** camera credentials. An RTSP URL carries `user:pass@` inline, so М10's `rtsp_url` column silently held every customer's camera password in plaintext until Lesson 20 was corrected. Those must work with the centre unreachable, so a central vault is the wrong answer by construction — they stay at the site under a key the database backup does not contain.
+
 ### 2. Secrets arrive three modules before the module that manages them
 
-М9 provisions AWS credentials by hand at commissioning. М10 adds a database password. М11 adds service-to-service calls. OpenBao does not arrive until М12.
+М9 provisions AWS credentials by hand at commissioning. М10 adds a database password, an operator account and the camera credentials. М12 adds a per-Node credential and a self-signed CA. OpenBao does not arrive until М13.
 
 This is deliberate and follows the course's existing discipline — `camera_sim.py` before the real pipeline, `filesink` before `kvssink`, fixtures before real fragments. Hand-provisioned secrets are the stand-in; М13 replaces them, and the replacement is the lesson. What must not happen is М13 arriving as a surprise: every earlier module should mark its secret handling as temporary at the point it introduces it.
 

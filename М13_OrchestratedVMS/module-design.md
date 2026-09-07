@@ -107,6 +107,7 @@ Sites with that upstream exist. Most retail stores, schools and small industrial
 | PKI, split by scope | **Issuance is domain-level; the root and the delegation are federation-level** | A CA can be delegated, a vault cannot. М11 builds and runs the domain CA; this module supplies its authority. |
 | Revocation | **Short lifetimes, not revocation lists** | CRL and OCSP both assume you can reach something. At the edge you frequently cannot. |
 | Vault placement | **Central. The appliance does not run one** | Resolves the unsealing problem by dissolving it — see below. |
+| Vault scope | **Dynamic credentials and multi-tenant secrets only** | Most of the course's stand-in secrets are removed by *giving machines identities*, not by storing the secrets better. Lesson 41 audits this rather than assuming it. |
 | Inventory | **Reported, never commanded** | М10's rule at fleet scope: desired state is persisted, actual state is observed. |
 | Version skew | **A normal operating state, not a fault** | You cannot update a fleet atomically, so the contract must tolerate mixed versions by design. |
 | Service mesh | **No Consul** | See [`consul-and-openbao.md`](consul-and-openbao.md). |
@@ -281,16 +282,30 @@ The lesson that makes the deployment triangle real rather than a slide.
 
 ---
 
-### Lesson 41 — Secrets, and the debts from three modules
+### Lesson 41 — The debts, and how few of them a vault solves
 
-Every earlier module left a marker. This lesson collects them all.
+Every earlier module left a marker. This lesson collects them — and the collecting is more interesting than it looks, because **most of them turn out not to need a vault at all.**
 
-- Five markers, each named temporary where it appeared: **М9's** AWS credentials, **М10's** database password and its single hand-provisioned operator, and **М11's** per-Node credential and self-signed domain CA. Four are replaced here; the CA was replaced two lessons ago, which is the point — **trust anchors delegate downward, secrets do not**
-- OpenBao: auth methods, policies, dynamic credentials, leases
+Start by auditing honestly, before introducing the tool:
+
+| Debt | Where it was named | What actually resolves it |
+|---|---|---|
+| **М9's AWS credentials** | Lesson 19 | This layer replaces AWS with your own object storage. **Workload identity**, not a stored key |
+| **М10's database password** | Lesson 20 | A *local* secret for a *local* Postgres. **Certificate or peer auth removes it entirely** |
+| **М10's operator account** | Lesson 24 | Human identity. An **IdP** job — OIDC — not a vault's |
+| **М12's per-Node credential** | Lesson 33 | Already replaced, in Lesson 39, by **mTLS with the LDevID** |
+| **М12's self-signed domain CA** | Lesson 33 | Already replaced, in Lesson 39, by the **delegated intermediate** |
+| **М10's camera credentials** | Lesson 20 | **A column key, and it must stay at the site** — see below |
+
+Four of the six have non-vault answers and two were already paid two lessons ago. That is not an argument against secret management; it is the module being honest about a pattern this course has followed throughout — **most secrets exist because something was not given an identity.** Give the box an identity and the secret it was standing in for disappears.
+
+- **What a vault genuinely does that a database cannot.** Postgres *stores* secrets; a vault *issues and revokes* them. Three specifics: the encryption key must not sit next to the data (a `pg_dump` and the app config travel together); **dynamic credentials** — a fresh database user per request with a one-hour TTL, dropped automatically — cannot be expressed as a table, because the lifecycle engine *is* the vault; and a stored `valid_until` cannot revoke anything by itself
+- **What that leaves for OpenBao here**, stated as a scope rather than a tour: dynamic credentials for the services this layer runs, and the secrets a **multi-tenant** operator holds on behalf of many customers. If this layer is single-tenant and every machine has an identity, the honest answer is that **you may not need one** — and the lesson says so rather than teaching auth methods for their own sake
+- **The one debt a central vault is the wrong answer to.** Camera credentials must be usable with the centre unreachable, so they cannot be fetched from anywhere. They stay at the site, encrypted with a key the database backup does not contain — the TPM, or a Nomad Variable. **Distance from the data is the security property, not the product name**
 - **Where the vault lives**, from the section above, and why that dissolves the unsealing problem
 - Machine identity: how a service proves who it is to get a secret, now that the box has an LDevID to speak for it
 
-**Deliverable:** М11's API authenticated by real identities, and a grep across М9–М11 that finds no hand-provisioned secret left.
+**Deliverable:** a grep across М9–М12 that finds no hand-provisioned secret left — and a written table saying, for each one, whether a vault was what removed it. **If fewer than half needed a vault, that is the correct result and the lesson's actual conclusion.**
 
 ---
 
@@ -350,7 +365,7 @@ The capstone.
 - The whole CA hierarchy: root, per-domain intermediates, issuance, chain validation, and proving that a certificate from the wrong intermediate is rejected
 - Lifetime and expiry behaviour, including the thirty-day outage, by issuing short-lived certificates and moving time rather than waiting
 - Revocation semantics, renewal with overlapping validity, and clock-skew failures
-- OpenBao in a container: auth methods, policies, dynamic credentials, leases
+- OpenBao in a container: auth methods, policies, dynamic credentials, leases — and the audit in Lesson 41 that decides how much of it this product needs
 - Inventory reconciliation, the entitlement comparison, and the N−1 compatibility tests — all ordinary software, testable against fake workers in the style of Lessons 11–15
 
 **Track 2 — needs real hardware.** Three things: **TPM 2.0**, which cannot be faked in any way worth teaching; **two federated Nomad regions** for Lesson 36; and hawkBit driving real appliances. BRSKI can be walked through end to end with a simulated MASA, but a student without a TPM is reading rather than running Lesson 38's second half, and the lesson should say which paragraph that starts at.

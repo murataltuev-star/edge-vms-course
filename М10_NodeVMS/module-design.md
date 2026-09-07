@@ -60,6 +60,7 @@ If a lesson does not move that demo forward, it does not belong in this module.
 | Database placement | **On the data partition, as a Quadlet unit** | М9's three-way boundary with consequences: `PGDATA` in a rootfs slot is destroyed by the next OS update. |
 | Authentication | **One hand-provisioned operator, marked temporary** | On one Node there is nothing to decide. The tables exist from Lesson 20 so М11 adds policy rather than schema. |
 | Local storage engine | **Postgres, not SQLite** | The archive index and the event stream need a real database regardless, so a second engine for a small cache is pure cost. Partitioning is the deciding feature. |
+| Camera credentials | **Split out of the URL and encrypted at rest** | An RTSP URL carries the password inline, so `rtsp_url text` silently stores a thousand customer passwords in plaintext — and in every log line that URL reaches. The key placement is the real problem: the data partition here, a Nomad Variable or the TPM later. |
 | DB credentials | **Hand-provisioned, marked temporary** | Follows the course's existing discipline. М13 replaces this, and the replacement is the lesson — but the temporariness is stated here, not discovered there. |
 
 ---
@@ -189,7 +190,8 @@ All five are written: see [`README.md`](README.md) for the index and what can be
 - **The pruning trap**, found by running it: partition pruning needs a predicate on the *partition key*, so `span && …` alone opens every partition's index. Queries must bound `lower(span)` explicitly
 - **Events are not metrics.** An operator searches events; an engineer alarms on metrics. They look alike and belong in different modules — М14 has the second kind
 - **Operators and grants, in the schema from the start.** An `operators` table, and a `grants` table carrying `subject`, `capability` and `valid_until`. On one Node authorization is a non-problem — one operator, all rights — so this lesson builds the tables and no policy. **The expiry column is unused here and present so that М12 populates rather than migrates.** The lesson says so, rather than leaving a student to wonder why a column does nothing
-- **Operator-owned columns versus controller-owned columns.** `enabled`, `rtsp_url`, `retention_days`, `site_id` are written by people; `revision`, `assigned_worker`, `observed_revision`, `phase` are written by machines and never appear as form fields
+- **The credential hiding in `rtsp_url`.** The URL carries `user:pass@` inline, so the obvious schema stores every camera's password in plaintext. Split it into `cred_username` and an encrypted `cred_secret`, and be honest that **key placement, not encryption, is the hard part** — a key on the same partition as the database is in every backup of it. These are the *customer's* secrets, not the product's: unrotatable, unchosen, and often identical across every camera an installer touched
+- **Operator-owned columns versus controller-owned columns.** `enabled`, `rtsp_url`, `cred_username`, `retention_days`, `site_id` are written by people; `revision`, `assigned_worker`, `observed_revision`, `phase` are written by machines and never appear as form fields
 - `revision` as a monotonic, controller-assigned integer per object — not a hash, not a timestamp
 - Migrations as a shipped artifact, and the appliance constraint: they run at boot on a box nobody visits, so they must be idempotent and must never be able to leave it unbootable
 - **`PGDATA` on the data partition.** Postgres as a Quadlet unit with its volume outside both rootfs slots — М9's boundary with teeth

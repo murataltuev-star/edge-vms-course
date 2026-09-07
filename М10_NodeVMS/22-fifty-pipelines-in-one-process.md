@@ -48,11 +48,14 @@ DESC = (
     "splitmuxsink location={out}/%%05d.mp4 max-size-time=600000000000"
 )
 
-pipeline = Gst.parse_launch(DESC.format(url=cam["rtsp_url"], out=cam["dir"]))
+url = compose_rtsp_url(cam)          # decrypts cred_secret, in memory only
+pipeline = Gst.parse_launch(DESC.format(url=url, out=cam["dir"]))
 pipeline.set_state(Gst.State.PLAYING)
 ```
 
 `Gst.parse_launch` takes the same string syntax as `gst-launch-1.0` from Lesson 9, so everything you learned there transfers. Building the graph element-by-element with `Gst.ElementFactory.make` is the alternative; it is more code and buys nothing until you need to reach into a pipeline at runtime.
+
+**`compose_rtsp_url` is where Lesson 20's split gets paid for.** The credential is decrypted, used, and never stored back into a variable that outlives the call — because the composed URL is about to be interpolated into a pipeline description that GStreamer will happily print in an error message. Log `cam["rtsp_url"]`, never `url`, and put that in a comment so the next person does not "simplify" it.
 
 Two properties are doing real work:
 
@@ -249,6 +252,7 @@ That is the price paid for the per-process baseline, and it is bounded rather th
 |---|---|
 | `gst-inspect-1.0 watchdog` finds nothing | `gst-plugins-bad` is not installed. The element lives there, not in base or good. |
 | Corrupt or unplayable recorded segments | RTSP over UDP with packet loss. Set `protocols=tcp`. |
+| A camera password appears in a log or a bus error | Something logged the composed URL rather than the credential-free one. This is why Lesson 20 split the column. |
 | The worker is fine at 5 cameras and collapses at 50 | A per-buffer callback survived. Search for `add_probe`, `appsink`, and `identity`. Step 3. |
 | Bus messages arrive seconds late | `pump_buses` is blocked — usually `timed_pop_filtered` instead of `pop_filtered`, or blocking I/O in a handler. |
 | Pipelines go PLAYING then immediately error | Read the actual bus error rather than guessing; `rtspsrc` reports authentication and unreachable-host distinctly. |

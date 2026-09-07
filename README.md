@@ -57,7 +57,7 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — the Node's own state<br>4 · AppHost — the loop that acts on it | **Written** · 5 lessons (20–24) |
 | [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — a Node that outlives its server | **Designed** · 4 lessons (25–28) |
 | [**М12** — DomainVMS](./М12_DomainVMS) | 4 · A directory that is not a database, and the domain's own CA | **Designed** · 6 lessons (29–34) |
-| [**М13** — OrchestratedVMS](./М13_OrchestratedVMS) | 5 · OpenBao — identity, the trust root above every domain<br>7 · Enrollment, inventory, version skew<br>+ capacity: allocations, so a Node can run anywhere | **Designed** · 11 lessons (35–45) |
+| [**М13** — OrchestratedVMS](./М13_OrchestratedVMS) | 5 · Identity and the trust root above every domain<br>7 · Enrollment, inventory, version skew<br>+ capacity: allocations, so a Node can run anywhere | **Designed** · 11 lessons (35–45) |
 | М14 — Observability | 6 · Prometheus + logs | Planned · ~4 (46–49) |
 
 **[GLOSSARY.md](./GLOSSARY.md)** defines every term the course uses precisely — Node versus Server, desired versus actual state, epoch and fencing, and the acronyms it would otherwise leave unexplained.

@@ -94,13 +94,50 @@ CREATE TABLE cameras (
 );
 ```
 
+### The credential hiding in `rtsp_url`
+
+Before the column split, deal with the thing that column actually contains. An RTSP URL conventionally carries the camera's credentials inline:
+
+```
+rtsp://admin:Sup3rSecret@10.0.0.41/stream1
+```
+
+So a schema with `rtsp_url text NOT NULL` is a schema that stores **every camera's password in plaintext**, at every site, times a thousand cameras. Nobody decided that; it arrived through a field name.
+
+It is worth being precise about whose problem this is, because it changes the answer:
+
+> **These are not the product's secrets. They are the customer's** — and unlike a database password you provisioned, you cannot rotate them, you did not choose them, and they are very often the same password on every camera the installer touched.
+
+Split the credential out of the URL and encrypt it:
+
+```sql
+CREATE TABLE cameras (
+    ...
+    rtsp_url        text NOT NULL,          -- scheme://host/path, no credentials
+    cred_username   text,
+    cred_secret     bytea,                  -- encrypted; never selected into a log
+    ...
+);
+```
+
+**The hard part is not the encryption, it is where the key lives**, and Lesson 19's boundary already tells you what is wrong with the easy answer. A key in `/data/config/agent.env` travels with the database in every backup a support engineer takes, so it is not a second factor — it is the same factor in a different file.
+
+Two answers that actually work on an appliance:
+
+- **The TPM**, where М9's hardware allows: seal the column key so it can only be unwrapped by *this box, running this software*. A stolen disk yields ciphertext.
+- **Delivered at runtime** by whatever starts the Node, and held only in memory. On one box that is systemd reading from the data partition — no better than the file. From М11 it is a Nomad Variable, which is encrypted, ACL'd, and genuinely not in your `pg_dump`.
+
+**This module ships the first, weaker version and says so**: the column is encrypted, the key is on the data partition, and the improvement is named as a debt. What it must not do is leave the credential in a URL string, because that version cannot be improved later without touching every row and every log that has already been written.
+
+> **The rule worth carrying: a secret in a URL is a secret in every log line, every error message and every stack trace that URL ever appears in.** Lesson 22 formats this string into a GStreamer pipeline description; Lesson 23 prints pipeline errors. Both would have leaked it.
+
 ### The line through the middle of that table
 
 The comment is not decoration. It is the most important thing in the lesson.
 
 | Operator-owned | Controller-owned |
 |---|---|
-| `enabled`, `rtsp_url`, `retention_days`, `site_id`, `name` | `revision`, `observed_revision`, `phase`, `last_seen` |
+| `enabled`, `rtsp_url`, `cred_username`, `cred_secret`, `retention_days`, `site_id`, `name` | `revision`, `observed_revision`, `phase`, `last_seen` |
 | Written by people through a form | Written by machines, by observation |
 | Appear as form fields | **Never** appear as form fields |
 
@@ -362,6 +399,7 @@ WantedBy=multi-user.target
 - `revision` is a monotonic integer because ordering expresses *distance*; a hash expresses only difference and a timestamp needs clocks to agree.
 - `tstzrange` + GiST answers М8's timeline query directly — but **partition pruning needs a predicate on the partition key**, so bound `lower(span)` explicitly.
 - **`DELETE` is not retention.** 276,768 rows deleted in 231 ms freed zero disk. Detach-and-drop took 5 ms and freed 38 MB. Postgres has no `DROP PARTITION` statement — it is `DETACH` then `DROP TABLE`.
+- **`rtsp_url` was storing the customer's camera passwords in plaintext**, because the credential hides inside the URL. Split it out and encrypt it — and note the hard part is key placement, not encryption. A secret in a URL is a secret in every log line that URL reaches.
 - Migrations run unattended at boot after an OS update, and A/B rollback means they must be **expand-only within a release**. Renaming a column takes three releases.
 
 ## Exercises
@@ -370,7 +408,8 @@ WantedBy=multi-user.target
 2. Write the query the console needs — *is camera 7 recording right now, and how far behind is it?* — as a single statement. Then explain why `revision - observed_revision` is more useful on a dashboard than a boolean.
 3. Add a `CHECK` constraint that makes an empty or backwards `span` impossible to insert. Then argue whether that belongs in the database or the application, and be specific about who else writes to this table.
 4. Attempt a rename the naive way — `ALTER TABLE cameras RENAME COLUMN rtsp_url TO source_url` — then work out precisely what happens if Lesson 18's rollback fires afterwards. Write the three-release plan that avoids it.
-5. Measure it yourself: insert a million segment rows, `DELETE` half, and record the time *and* the disk. Then do it with partitions. Bring both numbers to Lesson 23, where the disk is already full.
+5. Grep your own М8 code for places an RTSP URL reaches a log, an exception message or an HTTP response. Count them. That number is how many places the credential leaked before this lesson.
+6. Measure it yourself: insert a million segment rows, `DELETE` half, and record the time *and* the disk. Then do it with partitions. Bring both numbers to Lesson 23, where the disk is already full.
 
 ## Where this is going
 
