@@ -214,7 +214,7 @@ JSONB because detectors differ: a motion event carries a region, a licence-plate
 
 > **Events are product data: an operator searches them. Metrics are operational data: an engineer alarms on them.**
 
-They look alike and they are not. "Camera 7 went offline at 14:02" is an event a security manager searches for next Tuesday. "The reconcile loop is taking 400 ms" is a metric an engineer alarms on and nobody ever searches. Different consumers, different retention, different modules — М13 has the second kind, and mixing them produces a database full of samples nobody reads and a monitoring system that cannot answer questions about a building.
+They look alike and they are not. "Camera 7 went offline at 14:02" is an event a security manager searches for next Tuesday. "The reconcile loop is taking 400 ms" is a metric an engineer alarms on and nobody ever searches. Different consumers, different retention, different modules — М14 has the second kind, and mixing them produces a database full of samples nobody reads and a monitoring system that cannot answer questions about a building.
 
 ## Step 6 — Retention, and the number that decides it
 
@@ -309,7 +309,7 @@ Release N+1:  read new
 Release N+2:  stop writing old, drop column
 ```
 
-Three releases to rename a column. That is what shipping to hardware you cannot visit costs, and М12 Lesson 44 generalises it to a fleet on mixed versions.
+Three releases to rename a column. That is what shipping to hardware you cannot visit costs, and М13 Lesson 44 generalises it to a fleet on mixed versions.
 
 ## Step 9 — `PGDATA` on the data partition
 

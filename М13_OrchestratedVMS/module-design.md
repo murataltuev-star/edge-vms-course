@@ -118,10 +118,10 @@ Sites with that upstream exist. Most retail stores, schools and small industrial
 - **М9 Lesson 19** — credentials are provisioned at commissioning, never baked into an image that ships identically to every device. This module finally answers *how*.
 - **М9 Lesson 17** — the RAUC signing chain, built with real `openssl`. The PKI lessons here are the same skill, one scope up.
 - **М10 Lesson 20** — the hand-provisioned database password, marked temporary. Cashed in at Lesson 41.
-- **М11 Lesson 32** — the deliberately unauthenticated API. Also cashed in at Lesson 41.
-- **М11 Lesson 33** — mTLS on the Node↔directory streams, from a self-signed domain CA. Lesson 38 replaces the root and leaves everything under it alone.
+- **М12 Lesson 32** — the deliberately unauthenticated API. Also cashed in at Lesson 41.
+- **М12 Lesson 33** — mTLS on the Node↔directory streams, from a self-signed domain CA. Lesson 38 replaces the root and leaves everything under it alone.
 - **М11 entire** — opaque config and revision ordering are what make version skew survivable, and Lesson 43 collects on that.
-- **М11 Part A** — Nomad clusters and jobs. Lesson 36 extends that to regions; the rest of the module does not depend on it.
+- **М11** — Nomad clusters and jobs. Lesson 36 extends that to regions; the rest of the module does not depend on it.
 
 ---
 
@@ -313,7 +313,7 @@ Every earlier module left a marker. This lesson collects them all.
 - М10's rule at fleet scope: inventory is *observation*, and nothing in it is authoritative over a device
 - What a box reports, how often, and how much of a thin uplink that may consume
 - Reconciling inventory against entitlement — what you have versus what you are licensed for, and which one wins when they disagree
-- The divergence idea from М11 Lesson 30, applied to a fleet: something running that inventory does not know about is a gap in the model
+- The divergence idea from М12 Lesson 30, applied to a fleet: something running that inventory does not know about is a gap in the model
 
 **Deliverable:** an inventory view across domains, and a report of everything it cannot account for.
 
@@ -364,7 +364,7 @@ The capstone.
 3. **Is the vendor in the hosting business, or the software business?** "Provide allocations in the cloud" is the sentence that decides it. Reselling compute at a markup, running someone else's video through your egress, and being paged when an instance dies are commitments of a different kind from shipping software — and the module can frame the choice but not take it.
 4. **Does a cloud Node get the same fencing story?** It must, and the module asserts it, but the failure mode differs: a partitioned rented instance may keep running longer than a powered-off server, which makes the epoch *more* load-bearing in the cloud, not less. Worth testing rather than assuming.
 5. **Are air-gapped sites a supported configuration?** A site that never reaches the centre cannot renew an intermediate, and the thirty-day answer becomes a one-year answer or a manual one.
-6. **М13's position**, still open from the course plan and sharpened twice over: this is now an eleven-lesson module, and three of its lessons lean on instrumentation it has not taught — the thirty-day outage cannot be *demonstrated* without metrics, and a self-halting canary is an alert rule. The recorded counter-argument ("never log a secret" is easier once students know what a secret is) is one rule, teachable in a sentence.
+6. **М14's position**, still open from the course plan and sharpened twice over: this is now an eleven-lesson module, and three of its lessons lean on instrumentation it has not taught — the thirty-day outage cannot be *demonstrated* without metrics, and a self-halting canary is an alert rule. The recorded counter-argument ("never log a secret" is easier once students know what a secret is) is one rule, teachable in a sentence.
 7. **Cross-domain archive search.** Search over footage spanning domains is the obvious next thing this layer enables — and a mixed deployment makes it arrive sooner, because one customer now routinely has footage in two places. Currently out of scope. Worth deciding deliberately rather than by omission.
 
 ---

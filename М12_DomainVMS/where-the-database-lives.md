@@ -206,7 +206,7 @@ That was already a weaker requirement than a database's — a backup may be minu
 | **repmgr** | A witness node holding no data, as referee before a standby promotes | Reasonable when a customer asks for HA |
 | **pg_auto_failover** | A monitor node that actively coordinates state changes | Same class, arguably simpler to reason about |
 | **Patroni** | A distributed configuration store — etcd, Consul, ZooKeeper or Kubernetes | **The trap** |
-| Domain database in the federated layer | A working uplink | Never. Inverts М12's thesis |
+| Domain database in the federated layer | A working uplink | Never. Inverts М13's thesis |
 
 **The Patroni trap is why this section survives its own obsolescence**, because it is exactly the kind of dependency that arrives sideways. Patroni requires a DCS, and the obvious candidates are etcd or Consul. [`consul-and-openbao.md`](../М13_OrchestratedVMS/consul-and-openbao.md) had just argued Consul out of the stack — so choosing Patroni meant either bringing it back or adding etcd instead, and the database's availability would then depend on a consensus cluster the product otherwise has no use for.
 
@@ -228,7 +228,7 @@ So split it by who wrote it:
 - **The domain holds a rollup only** — *"Node 3 has camera 7"*, in that Node's Variable beside its camera ids. Coarse enough to stay inside a key-value entry, which is the test for whether something belongs at the domain at all
 - **Playback asks the domain *where*, then the Node *what***
 
-Which extends the rule М10 Lesson 26 already teaches — *do not put video bulk on replicated storage; replicate metadata and let footage be local* — one level up: **replicate the summary, not the index.**
+Which extends the rule М11 Lesson 26 already teaches — *do not put video bulk on replicated storage; replicate metadata and let footage be local* — one level up: **replicate the summary, not the index.**
 
 ### The same shape, three times
 
@@ -278,8 +278,8 @@ Most events are never read. A filtered subset — alarms an operator must acknow
 - [PostgreSQL HA: repmgr vs Patroni vs pg_auto_failover](https://tomasz-gintowt.medium.com/postgresql-high-availability-repmgr-vs-patroni-vs-pg-auto-failover-a16fd0bfbc1e) — external dependencies of each, witness versus monitor versus DCS, and the closing argument that a system the team understands beats a more advanced one it does not
 - [`consul-and-openbao.md`](../М13_OrchestratedVMS/consul-and-openbao.md) — why Patroni's DCS requirement is a step backwards for this stack
 - [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) — camera lifecycle must survive a control-plane outage, which is the rule this record generalises
-- М10 Lesson 26 — replicate metadata, let footage be local
-- [`module-design.md`](module-design.md) — the epoch issuer, the fencing argument it comes from, and М11 Lesson 33's mTLS on the Node↔directory streams
+- М11 Lesson 26 — replicate metadata, let footage be local
+- [`module-design.md`](module-design.md) — the epoch issuer, the fencing argument it comes from, and М12 Lesson 33's mTLS on the Node↔directory streams
 - [Nomad Variables](https://developer.hashicorp.com/nomad/api-docs/variables) — check-and-set against `ModifyIndex`, which is what makes the epoch monotonic without a second database
 
 *Written 5 September 2026.*

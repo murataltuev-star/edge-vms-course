@@ -4,18 +4,21 @@ Course material for building a video management system, shipping it as an applia
 
 ---
 
-## Edge → Node → Domain → Orchestration
+## Edge → Node → Cluster → Domain → Orchestration
 
-The module names are not decoration. They mark one idea getting harder three times, and the course is arranged around it: **where the truth about the system lives, and how many things are able to disagree about it.**
+The module names are not decoration. They mark one idea getting harder four times, and the course is arranged around it: **where the truth about the system lives, and how many things are able to disagree about it.**
 
 |                        | The box knows                   | Truth lives                             | What can disagree                               | The new hard problem                                                               |
 | ---------------------- | ------------------------------- | --------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
 | **М9 · EdgeVMS**       | what it *is*                    | in the image that booted                | nothing — a box is whatever was flashed onto it | replacing the OS underneath a running product without destroying the recordings    |
 | **М10 · NodeVMS** | what it *should be* | in a database on the box | desired state and actual state, inside one process | closing the gap — and never persisting the half that must be re-derived |
-| **М11 · DomainVMS** | what it should be, *wherever it is running* | in each Node, with a directory above them | two instances of the same Node | surviving a server's death without two writers reaching one archive |
-| **М12 · OrchestratedVMS** | who it *is*, what it may do, **and where it may run** | in a trust root above every domain, in a cloud | domains, with the centre | staying correct while the centre is unreachable — and making edge and cloud one product rather than two |
+| **М11 · ClusterVMS** | what it should be, *wherever it is running* | in each Node, unchanged when the server dies | **two instances of the same Node** | surviving a server's death without two writers reaching one archive |
+| **М12 · DomainVMS** | what it should be, *and which Node holds it* | in each Node, with a directory above them | Nodes, with the directory | keeping a layer useful while it is allowed to be down |
+| **М13 · OrchestratedVMS** | who it *is*, what it may do, **and where it may run** | in a trust root above every domain, in a cloud | domains, with the centre | staying correct while the centre is unreachable — and making edge and cloud one product rather than two |
 
-**Every boundary in that table is a network you stopped trusting.** A domain is the largest set of servers sharing a reliable link; past that you federate rather than build a bigger domain. That is what makes the progression physical rather than a tidy-looking hierarchy — and it is also why **rented servers in one cloud region are a domain like any other**, which is what lets М12 offer edge, cloud and mixed deployments from one codebase.
+**Almost every boundary in that table is a network you stopped trusting.** A domain is the largest set of servers sharing a reliable link; past that you federate rather than build a bigger domain. That is what makes the progression physical rather than a tidy-looking hierarchy — and it is also why **rented servers in one cloud region are a domain like any other**, which is what lets М13 offer edge, cloud and mixed deployments from one codebase.
+
+**М11 is the exception, and the exception is instructive.** Its boundary is not a network — a cluster and a domain normally span the same machines. It is a boundary of *authority*: a cluster answers **where can this run**, a domain answers **what is supposed to be running**. The test worth remembering is what breaks when each dies: **losing the cluster stops rescheduling; losing the domain stops nothing that is already recording.**
 
 ### Three words the course keeps apart
 
@@ -52,9 +55,10 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 15 lessons |
 | [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback | **Written** · 4 lessons (16–19) |
 | [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — the Node's own state<br>4 · AppHost — the loop that acts on it | **Written** · 5 lessons (20–24) |
-| [**М11** — DomainVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — Nodes that move<br>4 · A directory that is not a database, and the domain's own CA | **Designed** · 10 lessons (25–34) |
-| [**М12** — OrchestratedVMS](./М13_OrchestratedVMS) | 5 · OpenBao — identity, the trust root above every domain<br>7 · Enrollment, inventory, version skew<br>+ capacity: allocations, so a Node can run anywhere | **Designed** · 11 lessons (35–45) |
-| М13 — Observability | 6 · Prometheus + logs | Planned · ~4 (46–49) |
+| [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — a Node that outlives its server | **Designed** · 4 lessons (25–28) |
+| [**М12** — DomainVMS](./М12_DomainVMS) | 4 · A directory that is not a database, and the domain's own CA | **Designed** · 6 lessons (29–34) |
+| [**М13** — OrchestratedVMS](./М13_OrchestratedVMS) | 5 · OpenBao — identity, the trust root above every domain<br>7 · Enrollment, inventory, version skew<br>+ capacity: allocations, so a Node can run anywhere | **Designed** · 11 lessons (35–45) |
+| М14 — Observability | 6 · Prometheus + logs | Planned · ~4 (46–49) |
 
 **[GLOSSARY.md](./GLOSSARY.md)** defines every term the course uses precisely — Node versus Server, desired versus actual state, epoch and fencing, and the acronyms it would otherwise leave unexplained.
 
@@ -79,7 +83,7 @@ Four lessons turning that cloud VMS into an appliance: A/B partitions, signed up
 
 Its spine is that a real edge product has **two independent update planes** — the operating system underneath, the workload on top — and both are visible on one box. Lesson 19 is where it bites: Podman's storage must be redirected to the data partition, because images and volumes left in a rootfs slot are destroyed by the next OS update. Conflate the planes and you build systems where a config change requires an OS flash.
 
-The same lesson has the module's other sharp edge. **Pull the network cable for ten minutes and go looking for those ten minutes of video** — with `kvssink` publishing straight to AWS there is nothing behind it, so an uplink blink is data loss rather than a visibility problem. So the box spools segments to the data partition and uploads them separately, deleting only on acknowledgement. Those segments are the first thing in the course a later module *upgrades* rather than replaces: **М10 puts an index over the same files and they become the archive; М12 makes the upload conditional.**
+The same lesson has the module's other sharp edge. **Pull the network cable for ten minutes and go looking for those ten minutes of video** — with `kvssink` publishing straight to AWS there is nothing behind it, so an uplink blink is data loss rather than a visibility problem. So the box spools segments to the data partition and uploads them separately, deleting only on acknowledgement. Those segments are the first thing in the course a later module *upgrades* rather than replaces: **М10 puts an index over the same files and they become the archive; М13 makes the upload conditional.**
 
 *The multi-node half of this module moved to М11, where Nodes are scheduled across servers. A module called EdgeVMS should not build a raft cluster.*
 
@@ -100,25 +104,33 @@ Its organising rule is that **desired state is persisted and actual state is der
 - [Module design](./М10_NodeVMS/module-design.md) — lesson plan, the Python shard model, and what the operator is never asked to decide
 - [`reference/shard-memory-probe.py`](./М10_NodeVMS/reference/shard-memory-probe.py) — measures what sharding actually saves, in PSS rather than RSS
 
-## М11 — DomainVMS
+## М11 — ClusterVMS
 
-Ten lessons, built on one decision taken up front: **a Node owns its own configuration.** A Node is not a server — it is a scheduler allocation with stable identity, so when a server dies the Node moves and its cameras go with it. Failover rewrites nothing, because ownership never changed.
+Four lessons, built on one decision taken up front: **a Node owns its own configuration.** A Node is not a server — it is a scheduler allocation with stable identity, so when a server dies the Node moves and its cameras go with it. Failover rewrites nothing, because ownership never changed.
 
-**Part A** makes that true: a Nomad cluster, the Node as an allocation, and the lesson most courses skip — *what it takes for a Node's state to be there when it arrives on a new server*. Then a server is pulled off the wall, its old instance wakes up, and the archive is proved intact. **Part B** is the small residue: the three things a Node cannot know about itself — where a camera is, which Node should get a new one, and how to move one. That is a directory, it is allowed to be down, and it turns out not to be a database at all — a key-value entry per Node for the list, an object per Node for the restore point.
-
-It states that decision rather than arriving at it, and then spends the module earning it — because the deciding fact is not obvious: **two writers to one video stream cannot be merged.** Nothing above can arbitrate after the fact, which is why this is the only module where a mistake corrupts customer footage rather than stopping a service.
+The module states that decision rather than arriving at it, then spends four lessons earning it — because the deciding fact is not obvious: **two writers to one video stream cannot be merged.** Nothing above can arbitrate after the fact, which is why this is the only module in the course where a mistake corrupts customer footage rather than stopping a service.
 
 It is built backwards from one demo. Four Nodes, two hundred cameras; pull the power on a server and watch Node 3 reappear elsewhere with its configuration intact. Then bring the dead server back and let its old instance of Node 3 try to keep writing. **The archive is intact, and the student can prove it.**
 
 The answer is that fencing belongs at the archive rather than at the controller: the epoch is part of the segment path, so the stale instance cannot name the files it would otherwise corrupt. You cannot stop a zombie from writing — you can only make its writes harmless.
 
-Because the Node is the writer, it is also the thing that has to be reachable and protected: Lesson 33 gives every Node↔directory stream **mTLS from the domain's own CA**, hand-provisioned and marked temporary. Certificates are issued *inside* the domain, so renewal never depends on the layer above — the same reason grants live in each Node and carry an expiry rather than being looked up.
-
-- [Module design](./М11_ClusterVMS/module-design.md) — the cluster, Nodes that outlive their servers, fencing, the directory above them, placement, shadow mode, and who may call the API
+- [Module design](./М11_ClusterVMS/module-design.md) — the cluster, what must outlive a server, the zombie writer, and fencing at the archive
 - [Kubernetes vs Nomad](./М11_ClusterVMS/kubernetes-vs-nomad.md) — why the orchestrator is Nomad, what it cost, and why neither belongs on one box
+
+## М12 — DomainVMS
+
+Six lessons, and they open from an unusual position: **М11 already works.** A Node owns its configuration and survives its server without any coordinating layer at all, so this module has to justify why one should exist. Exactly three things a Node cannot know about itself — where a camera is, which Node should get a new one, and how to move one — and that is a **directory**, not a configuration store.
+
+Which makes it the first layer in the course that is **allowed to be unavailable**. Recording continues without it, playback continues, and an operator can still edit a camera at its own Node. What stops is creation, cross-Node lookup, rebalancing, and restoring a Node that has died — and only the last of those matters.
+
+It turns out not to be a database at all: a key-value entry per Node for the list, an object per Node for the restore point. Five revisions of the decision record moved in one direction throughout, and the last one removed the database entirely.
+
+Because the Node is the writer, it is also the thing that must be reachable and protected: Lesson 33 gives every Node↔directory stream **mTLS from the domain's own CA**, hand-provisioned and marked temporary. Certificates are issued *inside* the domain, so renewal never depends on the layer above — the same reason grants live in each Node and carry an expiry rather than being looked up.
+
+- [Module design](./М12_DomainVMS/module-design.md) — the directory, placement that does not churn, shadow mode, what the API refuses, and who may call it
 - [Where the databases live](./М12_DomainVMS/where-the-database-lives.md) — five revisions ending with one database in the whole design, why a Node owns its configuration rather than caching someone else's, and the retention rule that protects customer footage
 
-## М12 — OrchestratedVMS
+## М13 — OrchestratedVMS
 
 Eleven lessons on what has to be true above any single domain — who a box is, who a person is, what a customer is entitled to, what the fleet consists of — and on the thing only this layer can supply: **capacity.** It runs in a cloud, public or the customer's own, and many domains operate through it.
 
@@ -133,7 +145,7 @@ It does not introduce the domain CA — М11 already built one. What this module
 - [Module design](./М13_OrchestratedVMS/module-design.md) — allocations and the edge/cloud/mixed triangle, secure introduction, the root above every domain, lifetimes against offline tolerance, inventory and version skew
 - [Consul and OpenBao](./М13_OrchestratedVMS/consul-and-openbao.md) — two answers to mTLS, and why the product needs only one
 
-## М13 — not yet started
+## М14 — not yet started
 
 Metrics and logs sized for a thin uplink: what to alarm on for a VMS, and why you cannot ship everything to a central Prometheus. Scope and sequencing in the [course plan](./COURSE-PLAN.md).
 

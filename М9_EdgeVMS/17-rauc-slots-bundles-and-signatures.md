@@ -101,7 +101,7 @@ openssl req -x509 -newkey rsa:3072 -keyout ca.key.pem -out ca.cert.pem -nodes -d
   -addext "keyUsage=critical,keyCertSign,cRLSign"
 ```
 
-Ten years, because a root that expires bricks your update path across the whole fleet. `-nodes` leaves the key unencrypted, which is fine for a lesson and **wrong for production** — a real root key lives offline, on a smartcard or in an HSM, and is used a handful of times a year. М12 Lesson 39 comes back to this with a signing ceremony.
+Ten years, because a root that expires bricks your update path across the whole fleet. `-nodes` leaves the key unencrypted, which is fine for a lesson and **wrong for production** — a real root key lives offline, on a smartcard or in an HSM, and is used a handful of times a year. М13 Lesson 39 comes back to this with a signing ceremony.
 
 Now an issuing certificate — the one you actually sign bundles with:
 

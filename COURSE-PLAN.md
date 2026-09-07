@@ -22,7 +22,7 @@ Layers 1–2 are the two update planes М9 is built around: the OS underneath, t
 
 **Layer 4 is split across two modules,** which is a change from this plan's first version. М10 builds the reconciliation loop on a single Node, where both ends of it are visible at once; М11 handles what happens when ownership is contested. A database with nothing acting on it is not a working system, so М10 could not stop at Postgres.
 
-**Layer 2 moved out of М9 and into М11 Part A.** М9's own progression promises one box — *a box is whatever was flashed onto it* — and it cannot promise that while building a three-server cluster in its second half. It spent one revision in М10, on the grounds that scheduling is desired-state work; that is true, but it put the two-level idea in two modules and taught it twice. A cluster and the controller above it are one arc. Nomad's cross-site federation went further still, to М12, where many networks actually begin.
+**Layer 2 moved out of М9 and into М11.** М9's own progression promises one box — *a box is whatever was flashed onto it* — and it cannot promise that while building a three-server cluster in its second half. It spent one revision in М10, on the grounds that scheduling is desired-state work; that is true, but it put the two-level idea in two modules and taught it twice. A cluster and the controller above it are one arc. Nomad's cross-site federation went further still, to М13, where many networks actually begin.
 
 ---
 
@@ -51,7 +51,7 @@ That leaves **Nomad as the only unavoidable BUSL dependency**, and no fork of it
 
 М9 provisions AWS credentials by hand at commissioning. М10 adds a database password. М11 adds service-to-service calls. OpenBao does not arrive until М12.
 
-This is deliberate and follows the course's existing discipline — `camera_sim.py` before the real pipeline, `filesink` before `kvssink`, fixtures before real fragments. Hand-provisioned secrets are the stand-in; М12 replaces them, and the replacement is the lesson. What must not happen is М12 arriving as a surprise: every earlier module should mark its secret handling as temporary at the point it introduces it.
+This is deliberate and follows the course's existing discipline — `camera_sim.py` before the real pipeline, `filesink` before `kvssink`, fixtures before real fragments. Hand-provisioned secrets are the stand-in; М13 replaces them, and the replacement is the lesson. What must not happen is М13 arriving as a surprise: every earlier module should mark its secret handling as temporary at the point it introduces it.
 
 ---
 
@@ -125,18 +125,21 @@ The order is dependency-driven, not layer-numbered:
 | М8 — Cloud VMS | 15 | 15 |
 | М9 — EdgeVMS | 4 | 19 |
 | М10 — NodeVMS | 5 | 24 |
-| М11 — DomainVMS | 10 | 34 |
-| М12 — OrchestratedVMS | 11 | 45 |
-| М13 — Observability | ~4 | ~49 |
+| М11 — ClusterVMS | 4 | 28 |
+| М12 — DomainVMS | 6 | 34 |
+| М13 — OrchestratedVMS | 11 | 45 |
+| М14 — Observability | ~4 | ~49 |
 
-Roughly **49 lessons**, or a full semester. Worth deciding deliberately rather than discovering at М12: this is a large course, and М10–М13 are each a genuine module rather than an appendix.
+Roughly **49 lessons**, or a full semester. Worth deciding deliberately rather than discovering at М13: this is a large course, and М10–М14 are each a genuine module rather than an appendix.
+
+**М13 is now the outlier at eleven lessons** — nearly double the next largest, and its own open questions note that three of them lean on observability it has not taught. It is the next split candidate, and a better one than М11 was.
 
 ---
 
 ## Deliberately out of scope
 
 - **Analytics and inference at depth.** М11 attaches detectors; it does not teach computer vision
-- **High availability of a single-box site.** One box, replaced not clustered — a second server is sold for capacity or for failover, never bolted on to make one box redundant. Failover *between* nodes in a multi-node domain is very much in scope: М10 Lesson 26 reschedules workers off a dead node, М11 Lesson 29 reassigns its cameras, and the module says plainly what does not fail over — the footage already on that node's disks
+- **High availability of a single-box site.** One box, replaced not clustered — a second server is sold for capacity or for failover, never bolted on to make one box redundant. Failover *between* nodes in a multi-node domain is very much in scope: М11 Lesson 26 reschedules workers off a dead node, М12 Lesson 29 reassigns its cameras, and the module says plainly what does not fail over — the footage already on that node's disks
 - **Multi-tenancy.** One operator organisation per deployment
 - **The cloud side.** М8 covers KVS; nothing here builds a SaaS control plane
 
@@ -153,7 +156,7 @@ Roughly **49 lessons**, or a full semester. Worth deciding deliberately rather t
 
 - ~~Where inference runs~~ — a deployment question, not a schema one. Opaque worker config means the controller is unchanged whether inference runs on the appliance, at the camera or in the cloud (М11)
 - ~~Where the write API belongs~~ — built in М11, unauthenticated and marked as such; authentication arrives with OpenBao in М12
-- ~~Lesson numbering~~ — **superseded twice by restructuring.** Current: М9 is 16–19, М10 is 20–24, М11 is 25–34, М12 is 35–45, М13 is 46–49
+- ~~Lesson numbering~~ — **superseded three times by restructuring.** Current: М9 is 16–19, М10 is 20–24, М11 is 25–28, М12 is 29–34, М13 is 35–45, М14 is 46–49. The М11/М12 split moved no lesson numbers at all — Part A and Part B were already contiguous
 - ~~Consul in or out~~ — out, and for a better reason than licensing alone ([`consul-and-openbao.md`](./М13_OrchestratedVMS/consul-and-openbao.md))
 - ~~Identity split across М12 and М14~~ — they were one layer; merged into М12
 - ~~Where the domain database lives, and whether hosts replicate it~~ — **there is no domain database.** Each **Node** owns its configuration in its own Postgres and publishes one way upward; the domain's directory is a Nomad Variable per Node plus an object per Node; a domain is the largest set of servers on a reliable network ([`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md))

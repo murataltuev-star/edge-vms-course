@@ -127,7 +127,7 @@ Three things worth being explicit about:
 
 **The same 401 for an unknown user and a wrong password.** Distinguishing them hands an attacker a username oracle for free.
 
-**This is the course's fourth temporary secret**, and the count is deliberate — М9's AWS credentials, М10's database password, this operator account, and М11 will add a per-Node credential and a self-signed domain CA. М12 Lesson 41 collects all five. Naming a stand-in where it appears is what stops it becoming permanent by silence.
+**This is the course's fourth temporary secret**, and the count is deliberate — М9's AWS credentials, М10's database password, this operator account, and М12 will add a per-Node credential and a self-signed domain CA. М13 Lesson 41 collects all five. Naming a stand-in where it appears is what stops it becoming permanent by silence.
 
 This is also the last module where there is exactly **one** surface to protect. М11 gives every Node its own API, which is N endpoints where there used to be one, and that is where authorization stops being trivial.
 

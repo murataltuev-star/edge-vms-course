@@ -60,7 +60,7 @@ If a lesson does not move that demo forward, it does not belong in this module.
 | Database placement | **On the data partition, as a Quadlet unit** | М9's three-way boundary with consequences: `PGDATA` in a rootfs slot is destroyed by the next OS update. |
 | Authentication | **One hand-provisioned operator, marked temporary** | On one Node there is nothing to decide. The tables exist from Lesson 20 so М11 adds policy rather than schema. |
 | Local storage engine | **Postgres, not SQLite** | The archive index and the event stream need a real database regardless, so a second engine for a small cache is pure cost. Partitioning is the deciding feature. |
-| DB credentials | **Hand-provisioned, marked temporary** | Follows the course's existing discipline. М12 replaces this, and the replacement is the lesson — but the temporariness is stated here, not discovered there. |
+| DB credentials | **Hand-provisioned, marked temporary** | Follows the course's existing discipline. М13 replaces this, and the replacement is the lesson — but the temporariness is stated here, not discovered there. |
 
 ---
 
@@ -187,13 +187,13 @@ All five are written: see [`README.md`](README.md) for the index and what can be
 - **Observation schema:** the archive index (which segment covers which camera over which range, as a `tstzrange` with a GiST index — М8's timeline query, answered directly) and the event stream (motion, camera offline, operator actions, with a JSONB payload because detectors differ)
 - **Time partitioning from day one.** Both index and events are rolling windows taking on the order of a hundred rows a second at scale. Retention drops whole partitions rather than deleting rows — **note the syntax: PostgreSQL has no `DROP PARTITION` statement** (that is Oracle/MySQL), it is `ALTER TABLE … DETACH PARTITION` then `DROP TABLE`. Measured while writing Lesson 20: `DELETE` of 276,768 rows took 231 ms and **freed no disk at all**; detach-and-drop took 5 ms and returned 38 MB. Lesson 23 collects on this
 - **The pruning trap**, found by running it: partition pruning needs a predicate on the *partition key*, so `span && …` alone opens every partition's index. Queries must bound `lower(span)` explicitly
-- **Events are not metrics.** An operator searches events; an engineer alarms on metrics. They look alike and belong in different modules — М13 has the second kind
-- **Operators and grants, in the schema from the start.** An `operators` table, and a `grants` table carrying `subject`, `capability` and `valid_until`. On one Node authorization is a non-problem — one operator, all rights — so this lesson builds the tables and no policy. **The expiry column is unused here and present so that М11 populates rather than migrates.** The lesson says so, rather than leaving a student to wonder why a column does nothing
+- **Events are not metrics.** An operator searches events; an engineer alarms on metrics. They look alike and belong in different modules — М14 has the second kind
+- **Operators and grants, in the schema from the start.** An `operators` table, and a `grants` table carrying `subject`, `capability` and `valid_until`. On one Node authorization is a non-problem — one operator, all rights — so this lesson builds the tables and no policy. **The expiry column is unused here and present so that М12 populates rather than migrates.** The lesson says so, rather than leaving a student to wonder why a column does nothing
 - **Operator-owned columns versus controller-owned columns.** `enabled`, `rtsp_url`, `retention_days`, `site_id` are written by people; `revision`, `assigned_worker`, `observed_revision`, `phase` are written by machines and never appear as form fields
 - `revision` as a monotonic, controller-assigned integer per object — not a hash, not a timestamp
 - Migrations as a shipped artifact, and the appliance constraint: they run at boot on a box nobody visits, so they must be idempotent and must never be able to leave it unbootable
 - **`PGDATA` on the data partition.** Postgres as a Quadlet unit with its volume outside both rootfs slots — М9's boundary with teeth
-- The database password and the operator credential are both hand-provisioned and **marked temporary in the lesson text**; М12 replaces them
+- The database password and the operator credential are both hand-provisioned and **marked temporary in the lesson text**; М13 replaces them
 
 **Deliverable:** schema and migrations applied, Postgres surviving a simulated A/B update with its data intact.
 

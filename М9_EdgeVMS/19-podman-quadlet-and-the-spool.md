@@ -164,7 +164,7 @@ This is Lesson 13's rule — configuration is read, credentials are injected —
 
 It is also **a stand-in, and the course says so where it appears.** A long-lived static AWS key in a plaintext file on a device in a warehouse is not a security design; it is a placeholder with a note attached. Somebody has to type it during commissioning, it never rotates, and extracting it needs physical access and about a minute.
 
-Three modules from now, М12 replaces it: the box proves who it is with a hardware-rooted identity and receives short-lived credentials it never stores. **Mark it in your own notes as the first of the course's temporary secrets** — М10 adds a database password, М11 adds a per-Node credential and a self-signed domain CA, and М12 Lesson 41 collects all five.
+Three modules from now, М13 replaces it: the box proves who it is with a hardware-rooted identity and receives short-lived credentials it never stores. **Mark it in your own notes as the first of the course's temporary secrets** — М10 adds a database password, М12 adds a per-Node credential and a self-signed domain CA, and М13 Lesson 41 collects all five.
 
 ## Step 5 — The failure this module has been shipping
 
@@ -356,7 +356,7 @@ You have just built a buffer in a module about operating-system updates. That de
 The spool exists here because **the link can fail here**, and nothing else in the course is yet in a position to catch it. But it is not thrown away:
 
 - **М10 puts an index over the same files and they become the archive.** The same `splitmuxsink` writes the same segments; nothing deletes them on upload; a database row is written instead. The pipeline barely changes — what changes is who owns the footage.
-- **М12 makes the upload conditional.** An on-prem Node has nobody to upload to. A cloud Node *is* the destination. A cloud site with no appliance has no spool at all, which is why the camera's own SD card becomes the buffer there.
+- **М13 makes the upload conditional.** An on-prem Node has nobody to upload to. A cloud Node *is* the destination. A cloud site with no appliance has no spool at all, which is why the camera's own SD card becomes the buffer there.
 
 Same segments, three meanings. It is the first thing in this course that a later module **upgrades rather than replaces**, and it is worth noticing as a design property: the parts that survive contact with later requirements are usually the ones that were forced by a physical fact rather than chosen for convenience.
 
@@ -380,17 +380,17 @@ Same segments, three meanings. It is the first thing in this course that a later
 - Three kinds of thing on an appliance: the **OS** (replaced by a bundle), the **application** (replaced by an image), and the **data** (never replaced). Podman's `graphroot` must move to the data partition, in the image, or the first OS update destroys it.
 - Quadlet turns a declarative `.container` file into a systemd service. `Image` is the only required key, `[Install]` is applied by the generator, and you must never `systemctl enable` the result.
 - `systemd-analyze verify` cannot check a Quadlet file. The generator's `--dryrun` can, and belongs in CI.
-- Credentials are provisioned at commissioning onto the data partition, because both slots ship identical. This is the course's **first temporary secret**; М12 Lesson 41 collects all five.
+- Credentials are provisioned at commissioning onto the data partition, because both slots ship identical. This is the course's **first temporary secret**; М13 Lesson 41 collects all five.
 - `kvssink` with nothing behind it loses footage on every uplink blink. The fix is local segments plus a separate uploader — the one media change this module makes.
 - **Delete on acknowledgement, never on send.** The bound needs a policy the product states. Catch-up needs a rate limit, or recovery becomes its own outage.
-- The spool is not thrown away: М10 indexes the same files into an archive, М12 makes the upload conditional.
+- The spool is not thrown away: М10 indexes the same files into an archive, М13 makes the upload conditional.
 
 ## Exercises
 
 1. Measure your spool's real growth rate with one simulated camera, then compute how long your Lesson 16 partition size actually survives. Compare it with the requirement you wrote down then. If they disagree, which one changes?
 2. Implement both bound policies behind a config flag, then write the two sentences a product manager would put in a datasheet for each. They should read like different products, because they are.
 3. Break the uploader so it acknowledges *before* the far side confirms, then run an outage. Show the resulting data loss and explain exactly which line caused it.
-4. Add a `spool_seconds_pending` metric — the age of the oldest unsent segment. Argue for the alert threshold. (М13 comes back to this; having an opinion first is the point.)
+4. Add a `spool_seconds_pending` metric — the age of the oldest unsent segment. Argue for the alert threshold. (М14 comes back to this; having an opinion first is the point.)
 5. The appliance drops the oldest footage when the spool fills and nobody is told. Design the smallest change that makes this visible to an operator, and say where that signal has to travel to be useful — noting that in this module there is nowhere above the box for it to go.
 
 ## Where this is going

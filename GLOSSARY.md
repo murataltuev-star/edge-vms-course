@@ -14,7 +14,8 @@ Two more that are easy to blur:
 
 | Term | Meaning here |
 |---|---|
-| **Domain** | The largest set of servers sharing a network you would bet recording on. One domain, one directory. Past that boundary you federate rather than build a bigger domain. |
+| **Cluster** | The set of **servers** a scheduler manages, and what М11 builds. Membership is a hardware fact: a server is in the cluster or it is not. |
+| **Domain** | The set of **Nodes** under one directory, and what М12 builds — bounded by the largest set of servers sharing a network you would bet recording on. Usually the same machines as the cluster, and not the same thing: a cluster answers *where can this run*, a domain answers *what is supposed to be running*. **Losing the cluster stops rescheduling; losing the domain stops nothing already recording.** Past the domain boundary you federate rather than build a bigger one. |
 | **Federation** | Independent domains cooperating under a shared trust root. **Not** Nomad's "federation", which joins scheduler regions — a different plane, and М12 says so on its first page. |
 | **Orchestration** | Two scopes, kept apart. Nomad *orchestrates* within a domain: it places allocations on servers. М12 **OrchestratedVMS** orchestrates above domains: it decides which domain and whose hardware there is to place on at all. |
 | **Edge / cloud / mixed** | Where a domain's servers physically are — at the site, rented in a cloud region, or both in one system. A placement decision per site, not three products: a Node cannot tell which it is running on. |
@@ -70,7 +71,7 @@ Two more that are easy to blur:
 | **Authentication** | Proving *who* a subject is. Federated in М12, so there is one Alice across every Node and domain. |
 | **Authorization** | Deciding what that subject may *do*. Deliberately **not** centralised: grants live in each Node so they can be checked with the domain unreachable, and carry an expiry that bounds the revocation window. |
 | **PKI** — public key infrastructure | The certificate authorities, certificates and revocation machinery that let parties prove who they are. |
-| **CA** — certificate authority | What signs certificates. Each domain runs one (М11); М12 replaces its self-signed root with an intermediate delegated from an offline root, so routine issuance never leaves the site. |
+| **CA** — certificate authority | What signs certificates. Each domain runs one (М12); М13 replaces its self-signed root with an intermediate delegated from an offline root, so routine issuance never leaves the site. |
 | **Trust anchor** | The certificate a party has decided to trust without further proof — the top of any chain it will accept. Delegating one downward is possible; delegating a secret is not, which is why domains run a CA and not a vault. |
 | **Cross-signing** | Issuing a second certificate for the same key from a different CA, so a chain validates under both the old and the new anchor at once. How a trust anchor is replaced without a flag day. |
 | **mTLS** — mutual TLS | Both ends of a connection present certificates, so the server authenticates the client as well as the reverse. |

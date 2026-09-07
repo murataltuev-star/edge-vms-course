@@ -60,9 +60,9 @@ The course names its temporary things where they appear rather than discovering 
 1. М9 Lesson 19 — AWS credentials in a file on the data partition
 2. **Lesson 20 — the database password**
 3. **Lesson 24 — one hand-provisioned operator account**
-4. М11 Lesson 33 — a per-Node credential, and a self-signed domain CA
+4. М12 Lesson 33 — a per-Node credential, and a self-signed domain CA
 
-М12 Lesson 41 collects them all. The `valid_until` column in Lesson 20's `grants` table is the mirror image: dead code here, present so that М11 *populates* rather than *migrates*.
+М13 Lesson 41 collects them all. The `valid_until` column in Lesson 20's `grants` table is the mirror image: dead code here, present so that М12 *populates* rather than *migrates*.
 
 ## Where this goes
 
