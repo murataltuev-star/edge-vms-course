@@ -6,8 +6,6 @@
 
 Exactly three things. This module builds them, and spends as much effort on what it refuses to do as on what it does.
 
-> **Scope note.** These six lessons and [М11](../М11_ClusterVMS/module-design.md)'s four were one module until this split. The merge that created it had a good reason — *a cluster and the layer above it are one arc* — and the split answers it rather than ignoring it: **the two-level idea is introduced in М11 Lesson 26 and collected here in Lesson 30**, where the student is asked to name the difference between a scheduler placing Nodes and a directory placing cameras. Taught inside one module, the two levels blur, because both are "scheduling". A boundary between them is what makes the distinction survive.
-
 > **Domain is not cluster, and a domain is bigger.** М11 built a **cluster** — servers close enough to share a network you would bet recording on, a boundary set by physics. This module builds a **domain**: the clusters under one directory, one CA and one set of operators, a boundary set by **administration**. A campus is one domain with three clusters and three server rooms; a cloud deployment is one domain with one cluster serving fifty sites. Sites and clusters are many-to-many on purpose.
 >
 > **And М11's rule holds here: a Node never crosses a cluster.** So this module is not about moving work between clusters — it is about *knowing where the work is*, and about being honest when a whole cluster is unreachable.
@@ -18,17 +16,17 @@ Exactly three things. This module builds them, and spends as much effort on what
 
 A Node owning its own configuration answers almost everything, and М11 showed a cluster failing over with nothing above it at all — **it restores from its own object store and never asks anyone's permission.** That raises the fair question of what is left for a domain layer, and the answer is: everything that stops being knowable once there is **more than one cluster.** Exactly three things:
 
-| | Why a Node cannot answer it |
+| | Why a **cluster** cannot answer it |
 |---|---|
-| **Lookup** — where is camera 7? | Asking every Node cannot distinguish *deleted* from *unreachable* |
-| **Creation** — which Node gets a new camera? | Capacity and reachability across Nodes is domain knowledge by definition |
-| **Rebalance** — move camera 7 from N to M | Two single-writer databases, no coordinator, no transaction. *Within a cluster only — a camera does not move between clusters any more than a Node does* |
+| **Lookup across clusters** — where is camera 7? | A cluster answers for its own Nodes, in one raft, correctly. It cannot see the other two, and **cannot tell *not mine* from *not anywhere*** |
+| **Which cluster** gets a new camera? | The criterion is **reachability** — which clusters can see this site's network — and no cluster knows what the others can reach |
+| **Is this answer complete?** | Only something that knows how many clusters exist can say a result is partial. A cluster asked about a camera it does not have says *no*, which is the wrong word |
 
-That is a **directory**, not a configuration store — which is why it may be down while recording continues and while an operator edits a camera at its own Node.
+**Note what is no longer in that table.** Lookup within a cluster, placing a camera on a Node, and rebalancing between Nodes are **М11's**, built in its Lesson 29 out of the Variables it already had. They needed no domain then and need none now — a single-cluster customer gets all three with nothing above the cluster at all.
 
-> **The domain is a directory, not a configuration store.** That is the whole design, and every decision below follows from it.
+> **The domain is a directory *of directories*** — and unlike the one inside a cluster, **it cannot be strongly consistent**, because no raft spans clusters. That single fact is what makes this a different module rather than the same one with bigger nouns, and every decision below follows from it.
 
-Which is also why this is the first layer in the course that is **allowed to be unavailable**. Recording continues without it. So does playback, and so does an operator editing a camera at its own Node. What stops is creating a camera, looking one up across Nodes, rebalancing — and restoring a Node that has died, which is the one that matters.
+Which is also why this is the first layer in the course **allowed to be unavailable**, and more so than it looks. Recording continues without it, playback continues, an operator still edits a camera at its own Node, and **a dead server still fails over** — М11 put both of failover's dependencies inside the cluster. What stops is cross-cluster lookup, deciding which cluster gets a new camera, and issuing certificates to new services. None of it is recording, and none of it is recovery.
 
 ---
 
@@ -38,8 +36,8 @@ Which is also why this is the first layer in the course that is **allowed to be 
 |---|---|---|
 | Clusters per domain | **One or many. Nomad regions, federated** | A campus is three server rooms and one customer. Regions share no state and gossip-couple, which is exactly what a domain needs: each cluster schedules on with the others unreachable. |
 | A dead cluster | **Reported, never healed** | Its cameras are on its network and its footage on its disks. Rebalancing them elsewhere produces Nodes failing to reach a dead network and hides the real fault. |
-| Domain layer | **A directory, not a configuration store** | Lookup, creation and rebalance only. It may be unavailable without recording stopping. |
-| Directory storage | **No database at all.** A Nomad Variable per Node for the list; an object store for the restore point | The two halves have nothing in common: kilobytes queried constantly, and megabytes read once on failover. Splitting them removes the last per-domain database — so a domain really is a set of Nodes on a network, not an installation. |
+| Domain layer | **A directory of directories, and not consistent** | Cross-cluster lookup, choosing a cluster, and saying when an answer is partial. Within-cluster lookup, placement and rebalance are М11's. |
+| Directory storage | **No database at all.** A federated read across each cluster's Variables | The clusters already hold the answer; the domain aggregates rather than copies. Restore points stay in each cluster's own object store and the domain never reads them. |
 | Convergence token | **Monotonic revision**, not token equality | Ordering expresses *distance*; equality only *difference*. See below. |
 | Transport | **mTLS, from a self-signed domain CA marked temporary** | The Node↔directory streams carry configuration, grants and status. A credential says who is calling; it says nothing about the channel. М13 replaces the self-signed root with a delegated intermediate. |
 | Authentication | **A hand-provisioned credential per Node, marked temporary** | The course's existing discipline: the stand-in is named where it appears. М13 replaces it with a federated identity. |
@@ -54,7 +52,7 @@ The decisions about the servers underneath — camera ownership, Node identity, 
 ## Prerequisites
 
 - **М11 entire.** Nodes that move between servers, and the epoch that keeps two instances of one Node from corrupting an archive. This module adds a layer above that and must not weaken it.
-- **М11 Lesson 26** — Nomad Variables, and why configuration does *not* go in them. Lesson 29 uses the half that does.
+- **М11 Lesson 26** — Nomad Variables, and why configuration does *not* go in them. **М11 Lesson 29** turns the half that does into a cluster directory; this module aggregates several of those.
 - **М10 Lesson 20** — `revision` as a monotonic integer. The convergence token here is that same idea, one scope up.
 - **М10 Lesson 24** — positions versus reasons. The console in Lesson 32 is that model at fleet scale.
 
@@ -69,21 +67,6 @@ Configuration replicates one way from each Node upward, and the domain must be a
 3. **It survives replay and reordering.** A late report carrying a lower revision is ignored rather than ambiguous
 
 **The cost:** you lose proof that one *precise* configuration was applied at one moment. If that must be auditable it belongs in an audit log, not in the convergence token.
-
----
-## Placement that does not churn
-
-Placement happens **twice in a camera's life** — when it is created, and if an operator rebalances — and never in between. That makes the rule easy to state and easy to violate:
-
-> **Only place a camera when you must.** Two triggers: the camera is new, or an operator asked for a rebalance. A dead server is *not* a trigger, because the Node moves and the camera goes with it.
-
-**Capacity comes from measurement.** М10 shipped [`shard-memory-probe.py`](../М10_NodeVMS/reference/shard-memory-probe.py) precisely so this is observed rather than guessed. **Constraints come from physics** — a camera on an isolated VLAN is reachable from some Nodes and not others.
-
-### Why not consistent hashing
-
-The reflexive answer, and wrong here: cameras are **not uniform** (4K at 8 Mbps beside 720p at 1); **constraints break the ring**; and it is **not inspectable** — at 3am *"why is camera 812 on Node 3"* should be a row with a reason and a timestamp, not a hash to recompute.
-
-**Store the placement; do not derive it.** Rebalance, when genuinely wanted, is explicit: **budgeted** at N moves per minute, observable, and interruptible.
 
 ---
 ## Several clusters, one domain
@@ -120,38 +103,42 @@ So the domain's job is **honesty, not recovery**:
 
 ---
 
-## Lessons
+## Placement, at the level above the one М11 built
 
-*Six lessons. The three things a Node cannot know about itself, and the discipline of a layer that may be down.*
+М11's Lesson 29 placed cameras on **Nodes**, by measured capacity, with the stability rule and its property tests. That work is done and this module does not repeat it. What is added is the level above, and the division is about *what each level knows*:
 
-### Lesson 29 — What the domain knows that a Node cannot
+| Level | Decides | On | Because only it knows |
+|---|---|---|---|
+| Nomad | which **server** runs a Node | resources, constraints | the servers |
+| **Cluster** (М11 L29) | which **Node** gets a camera | measured capacity | its own Nodes' load, accurately |
+| **Domain** (here) | which **cluster** gets a camera | **reachability** | which clusters exist, and what each can see |
 
-- The directory: which Nodes exist, which cameras belong to which, and how far behind each Node's replica is
-- **The directory is two things, and only one of them is queried.** A *list* — kilobytes, read constantly, answering *where is camera 7* — and a *restore point*, megabytes per Node, read exactly once in the life of a failover and never parsed by anything but the Node that wrote it. Building one store for both is what makes people reach for a database
-- **So there is no domain database.** The list is **a Nomad Variable per Node**; the restore point is **an object per Node in an object store**. Both already exist for other reasons: Variables deliver identity and the epoch, and М9's appliance already talks to object storage
-- **One writer per key, enforced by the platform.** Node 3 writes only `nodes/node-3`, and a Nomad ACL policy says so. That is Candidate 2 expressed in the storage layer rather than in a convention — the same property Postgres was being asked to provide by discipline
-- **What is *not* in it: the epoch.** A Nomad Variable too, but the domain's — so the whole directory can be lost and rebuilt without the fencing tokens ever going backwards
-- **What the directory exports:** `node_replica_lag_seconds` — how long since each Node last published — which is the **RPO made visible per Node**, and the number that says how much configuration a failover would lose *right now* rather than in theory. Alarm on the worst Node, not the mean; one Node silent for a day is invisible in an average across forty
-- **Reading it.** *Where is camera 7* scans one Variable per Node — tens of entries, not thousands of rows — and the console caches the result. Say the number out loud: this stops being adequate somewhere in the low hundreds of Nodes per domain, and that is a limit the product states rather than discovers
-- **Why it is small, and why that matters.** It is not a configuration store — it may be unavailable while recording continues and while an operator edits a camera on its own Node
-- The contract: **streams, not callbacks.** A server-streaming watch and a client-streaming report mean a Node is never required to be addressable, which is what makes this work behind a customer's NAT
-- **Why ordering beats equality**, from the section above
-- **Opaque config** — the domain stores and delivers what it does not parse, which is what lets a new worker class ship without touching it
-- **Where the domain ends:** at the first network link you would not bet recording on
+**Reachability, not capacity, is the domain's criterion**, and that is the whole reason the level exists. A camera on a warehouse VLAN can be reached from the warehouse cluster and from nowhere else; no amount of spare capacity elsewhere makes another cluster a candidate. Capacity only breaks ties among clusters that can actually see the camera.
 
-**Deliverable:** the directory, and a Node that registers, replicates upward and reports how far behind it is.
+> **Only place a camera when you must.** Two triggers: the camera is new, or an operator asked for a rebalance. A dead server is *not* a trigger — the Node moves and the camera goes with it. **And a dead cluster is not a trigger either**, for the opposite reason: its cameras cannot be reached from anywhere else, so re-placing them produces Nodes failing against a dead network and hides the real fault.
+
+**Store the placement; do not derive it** — at both levels. At 3am, *"why is camera 812 in the north cluster"* should be a row with a reason and a timestamp.
 
 ---
 
-### Lesson 30 — Placement: where a new camera goes
+## Lessons
 
-- Capacity per Node from М10's measurements; constraints as labels
-- **The stability rule** and its property test — *adding a Node moves nothing*
-- Why not consistent hashing
-- Rebalance as a two-writer move: budgeted, reasoned, interruptible, and why it needs the domain to coordinate it
-- Placement as a stored row with its own revision
+*Five lessons. The three things a cluster cannot know, and the discipline of a layer that may be down.*
 
-**Deliverable:** a placement function with property tests, including the one that fails the first time somebody adds a tidy-looking rebalance.
+### Lesson 30 — What a cluster cannot know
+
+М11 built a directory and did not call it one: scanning each Node's Variable answers *where is camera 7*, in one raft, strongly consistent. **This lesson is what happens to that answer when there are three clusters**, and the change is not one of scale.
+
+- **The consistency boundary, which is the module's real subject.** Inside a cluster there is one raft, so the directory has one current answer. Across clusters there is **no raft at all** — regions share no state by design — so the domain's directory is an *aggregation* over N cluster directories: partial, stale by a bounded amount, and sometimes incomplete. **This is the CAP boundary, drawn for you by a network you stopped trusting rather than chosen**
+- **Incompleteness as a first-class result.** When one cluster is unreachable, *where is camera 7* may be **unanswerable**, and the honest response is "not found in the three clusters I could reach" — never a short list rendered as though it were complete. A short list read as complete is how an access review, or a missing-camera investigation, goes wrong
+- **Two-level placement, and each level decides only what it knows.** The **domain** picks the *cluster*, on **reachability** — which clusters can see this site's network at all. The **cluster** picks the *Node*, on **capacity**, which only it measures accurately. Neither level can do the other's job, and that is why this is not the same lesson as М11's
+- **The third level, named once.** Nomad places allocations on servers; the cluster places cameras on Nodes; the domain places cameras on clusters. Students who have now written two of the three stop finding schedulers mysterious
+- **What the domain holds and does not.** A federated read across regions, plus each cluster's object store for restore points — which the domain never touches, because recovery is cluster-local
+- **Why ordering beats equality**, from the section above: replica lag across clusters is a *distance*, and "four revisions behind for forty minutes" is an incident where "diverged" is an alert you learn to ignore
+- **Opaque config** — the domain stores and forwards what it does not parse, which is what lets a new worker class ship without touching it
+- **Where the domain ends:** at the first network link you would not bet *administration* on. Not recording — recording stopped being the test when the cluster boundary took that job
+
+**Deliverable:** three clusters, one directory; find a camera in each; then make one cluster unreachable and show the console saying **what it does not know**, rather than a shorter list.
 
 ---
 

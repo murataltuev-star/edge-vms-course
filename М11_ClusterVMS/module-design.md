@@ -6,7 +6,7 @@
 
 The organising decision, taken up front because everything depends on it: **a Node owns its own configuration.** Nomad moves the Node; the cameras go with it; nothing rewrites who owns what. That is what makes failover teachable *here* rather than deferred to a coordinating layer: there is no ownership to reassign, so a dead server is a relocation rather than a decision.
 
-> **Scope note.** These four lessons and [М12](../М12_DomainVMS/module-design.md)'s six were one module until this split, and the merge that created it had a good reason: *a cluster and the layer above it are one arc, and splitting them meant teaching the two-level idea twice.* That reason still holds, and the split answers it rather than ignoring it — **the two-level idea is introduced here and collected in М12**, which is the same setup-and-collection the course already runs across module boundaries, from М9's AWS credentials to М13's vault. Lesson 26 says out loud that Nomad places *Nodes* and something above will place *cameras*; М12 Lesson 30 is where that second level arrives and the student is asked to name the difference. Taught inside one module, the two levels blur, because both are "scheduling".
+> **Scope note.** These five lessons and [М12](../М12_DomainVMS/module-design.md)'s five were one module until this split, and the merge that created it had a good reason: *a cluster and the layer above it are one arc, and splitting them meant teaching the two-level idea twice.* That reason still holds, and the split answers it rather than ignoring it — **the two-level idea is introduced here and collected in М12**, which is the same setup-and-collection the course already runs across module boundaries, from М9's AWS credentials to М13's vault. Lesson 26 says out loud that Nomad places *Nodes* and something above will place *cameras*; М12 Lesson 30 is where the third level arrives and the student is asked to name the difference. Taught inside one module, the two levels blur, because both are "scheduling".
 
 > **Cluster is not domain, and they are different *sizes*.** A **cluster** is servers close enough to share a network you would bet recording on — one LAN, usually one server room. That boundary is set by **physics**. A **domain** is the clusters under one directory, one CA and one set of operators, and that boundary is set by **administration**. A campus is one domain with three clusters; a cloud deployment is one domain with one. This is the fifth pair of words the course keeps apart, after Node/Server/Site, the two orchestrations and the two federations.
 >
@@ -200,7 +200,7 @@ Which generalises into the rule the whole module stores things by — **three st
 ---
 ## Lessons
 
-*Four lessons. Several Nodes, scheduled — and the hard part is the data, not the scheduling.*
+*Five lessons. Several Nodes, scheduled — and the hard part is the data, not the scheduling.*
 
 ### Lesson 25 — When one box isn't enough
 
@@ -223,7 +223,7 @@ Which generalises into the rule the whole module stores things by — **three st
 - **Node identity: where it comes from, and where it must not.** The Node must be the same Node after it moves. Nomad's *allocation index* looks like the answer and has had documented uniqueness bugs — two simultaneously-running allocations sharing an index, accepted and later fixed. Fine for a metrics label; **never for something archive correctness depends on**
 - **Nomad Variables are the right mechanism** — an encrypted, namespaced, ACL'd key-value store the scheduler delivers to a task. A Node reads *which Node am I, where is the directory, what is my epoch* from there. It is exactly what Variables are for, and it is why identity survives rescheduling without living on any disk
 - **And why configuration does *not* go there.** Variables cap at **64 KiB per entry** — originally 16 KiB, raised since, and capped at all because, in HashiCorp's own words, the limit exists *"to reduce the potential performance impact of Variables on our raft store."* That is the maintainers stating this module's own reason: the raft store is memory-resident and replicated to every server, so it is the wrong place for anything that grows. A thousand cameras of settings do not fit, and a key-value store cannot answer *which cameras have retention over 30 days* anyway
-- **What does fit is the pointer.** A Node's Variable holds its identity, its camera ids, and *where its configuration object is and at which revision* — hundreds of bytes, not megabytes. Lesson 29 turns that into the whole directory
+- **What does fit is the pointer.** A Node's Variable holds its identity, its camera ids, and *where its configuration object is and at which revision* — hundreds of bytes, not megabytes. Lesson 29 points out that this **already is** the cluster's directory
 - Storage reality: recordings stay local. **Do not put video bulk on replicated storage**
 - Placement constraints: cameras are not uniformly reachable from every server
 
@@ -286,9 +286,28 @@ Server A dies
 **Deliverable:** pull the power on a server; report how long until recording resumed and how many seconds were lost. Then restore it, let the old instance wake up, and prove the archive is intact and its output orphaned.
 
 ---
+### Lesson 29 — The cluster directory, and where a camera goes
+
+The lesson that costs almost nothing to build, because **you already built it in Lesson 26 and called it something else.**
+
+- **Scanning your Nodes' Variables answers *where is camera 7*.** Each Node's Variable already carries its camera ids. Tens of entries, read in milliseconds, cached by the console. That is a directory, and noticing it is the lesson's first move
+- **Why it is a directory and not a database:** small, one writer per key enforced by a Nomad ACL, and never queried by anything but an exact scan. The same three properties that made the configuration store a database make this one not
+- **And it can be *strongly consistent*, because it is one raft.** Say this out loud, because it is the single thing М12 cannot have: inside a cluster there is one Nomad raft, so *where is camera 7* has one answer and it is current. Across clusters there is no raft at all
+- **Placement onto Nodes: capacity, measured.** [`shard-memory-probe.py`](../М10_NodeVMS/reference/shard-memory-probe.py) from М10 is why this is observed rather than guessed. Constraints are labels — a camera on an isolated VLAN is reachable from some Nodes and not others
+- **The stability rule, with a property test:** *adding a Node moves nothing.* Then the tests that follow from it — every camera lands on exactly one Node, no constraint violated
+- **Why not consistent hashing.** Cameras are not uniform (4K at 8 Mbps beside 720p at 1); constraints break the ring; and it is not inspectable — at 3am *"why is camera 812 on Node 3"* should be a row with a reason and a timestamp, not a hash to recompute
+- **Store the placement; do not derive it.** Rebalance between Nodes is explicit: **budgeted** at N moves per minute, observable, interruptible — and it is the one two-writer operation in this module, which is why it needs the epoch you just built
+- **What placement here does *not* decide: which cluster.** This cluster is the only one that exists so far, and М12 adds the level above
+
+**Deliverable:** *where is camera 7* answered from the cluster in one scan, and a placement function with property tests — including the one that fails the first time somebody adds a tidy-looking rebalance.
+
+---
+
 ## Verification plan
 
 **Track 1 — verified in the authoring sandbox.** More of this module than its subject matter suggests:
+
+- **Placement is a pure function** — property tests are the natural fit, and they run with no cluster at all
 
 - **Fencing is fully testable with a filesystem and no cameras at all.** `kill -STOP`, restart the Node elsewhere, `kill -CONT`, assert on the directory tree. The correctness property has nothing to do with video
 - The lease state machine, the epoch issuer's check-and-set behaviour, and revision handling

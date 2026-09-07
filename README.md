@@ -61,8 +61,8 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 15 lessons |
 | [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback | **Written** · 4 lessons (16–19) |
 | [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — the Node's own state<br>4 · AppHost — the loop that acts on it | **Written** · 5 lessons (20–24) |
-| [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — a Node that outlives its server, inside one cluster | **Designed** · 4 lessons (25–28) |
-| [**М12** — DomainVMS](./М12_DomainVMS) | 4 · Several clusters, one directory — which is not a database — and the domain's own CA | **Designed** · 6 lessons (29–34) |
+| [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — a Node that outlives its server, inside one cluster<br>4 · The cluster's own directory | **Designed** · 5 lessons (25–29) |
+| [**М12** — DomainVMS](./М12_DomainVMS) | 4 · Several clusters, one directory of directories — and the domain's own CA | **Designed** · 5 lessons (30–34) |
 | [**М13** — OrchestratedVMS](./М13_OrchestratedVMS) | 5 · Identity and the trust root above every domain<br>7 · Enrollment, inventory, version skew<br>+ capacity: allocations, so a Node can run anywhere | **Designed** · 11 lessons (35–45) |
 | [**М14** — Observability](./М14_Observability) | 6 · Prometheus + logs — collecting what М9–М12 emit | **Designed** · 4 lessons (46–49) |
 
@@ -112,9 +112,9 @@ Its organising rule is that **desired state is persisted and actual state is der
 
 ## М11 — ClusterVMS
 
-Four lessons, built on one decision taken up front: **a Node owns its own configuration.** A Node is not a server — it is a scheduler allocation with stable identity, so when a server dies the Node moves and its cameras go with it. Failover rewrites nothing, because ownership never changed.
+Five lessons, built on one decision taken up front: **a Node owns its own configuration.** A Node is not a server — it is a scheduler allocation with stable identity, so when a server dies the Node moves and its cameras go with it. Failover rewrites nothing, because ownership never changed.
 
-The module states that decision rather than arriving at it, then spends four lessons earning it — because the deciding fact is not obvious: **two writers to one video stream cannot be merged.** Nothing above can arbitrate after the fact, which is why this is the only module in the course where a mistake corrupts customer footage rather than stopping a service.
+The module states that decision rather than arriving at it, then spends five lessons earning it — because the deciding fact is not obvious: **two writers to one video stream cannot be merged.** Nothing above can arbitrate after the fact, which is why this is the only module in the course where a mistake corrupts customer footage rather than stopping a service.
 
 **It is a complete product on its own**, which is the clearest evidence the split was real: one cluster, failing over, restoring from its own object store, asking nothing above it for permission. A single-building customer needs nothing else.
 
@@ -127,7 +127,7 @@ The answer is that fencing belongs at the archive rather than at the controller:
 
 ## М12 — DomainVMS
 
-Six lessons, and they open from an unusual position: **М11 already works.** A Node owns its configuration and survives its server without any coordinating layer at all, so this module has to justify why one should exist. Exactly three things a Node cannot know about itself — where a camera is, which Node should get a new one, and how to move one — and that is a **directory**, not a configuration store.
+Five lessons, and they open from an unusual position: **М11 already works.** A Node owns its configuration and survives its server without any coordinating layer at all, so this module has to justify why one should exist. Exactly three things a Node cannot know about itself — where a camera is, which Node should get a new one, and how to move one — and that is a **directory**, not a configuration store.
 
 Which makes it the first layer in the course that is **allowed to be unavailable** — and more so than it first looked. Recording continues without it, playback continues, an operator can still edit a camera at its own Node, and **a dead server still fails over**, because М11 put the restore point in the cluster rather than the domain. What stops is creation, cross-cluster lookup, rebalancing, and issuing certificates to new services. None of it is recording.
 

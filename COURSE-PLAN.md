@@ -143,7 +143,7 @@ Its thesis is a constraint: **everything below this layer must keep working when
 | М9 L19 | `spool_oldest_seconds`, `spool_bytes_used` | alarm on age, not count — one threshold works at any camera count |
 | М10 L24 | `camera_lag` (a distribution), `camera_silent_seconds` | the second: the only one describing the product |
 | М11 L28 | `node_failover_seconds` (RTO, worst case), `node_epoch_conflicts` | a counter that should be zero forever |
-| М12 L29 | `node_replica_lag_seconds` | the worst Node, never the mean |
+| М12 L30 | `node_replica_lag_seconds` | the worst Node, never the mean |
 
 What is left for this module is what is genuinely *cross-cutting*:
 
@@ -179,8 +179,8 @@ The order is dependency-driven, not layer-numbered:
 | М8 — Cloud VMS | 15 | 15 |
 | М9 — EdgeVMS | 4 | 19 |
 | М10 — NodeVMS | 5 | 24 |
-| М11 — ClusterVMS | 4 | 28 |
-| М12 — DomainVMS | 6 | 34 |
+| М11 — ClusterVMS | 5 | 29 |
+| М12 — DomainVMS | 5 | 34 |
 | М13 — OrchestratedVMS | 11 | 45 |
 | М14 — Observability | ~4 | ~49 |
 
@@ -193,7 +193,7 @@ Roughly **49 lessons**, or a full semester. Worth deciding deliberately rather t
 ## Deliberately out of scope
 
 - **Analytics and inference at depth.** М11 attaches detectors; it does not teach computer vision
-- **High availability of a single-box site.** One box, replaced not clustered — a second server is sold for capacity or for failover, never bolted on to make one box redundant. Failover *between* nodes in a multi-node domain is very much in scope: М11 Lesson 26 reschedules workers off a dead node, М12 Lesson 29 reassigns its cameras, and the module says plainly what does not fail over — the footage already on that node's disks
+- **High availability of a single-box site.** One box, replaced not clustered — a second server is sold for capacity or for failover, never bolted on to make one box redundant. Failover *between* servers in a cluster is very much in scope: М11 Lesson 26 reschedules a Node off a dead server, its cameras go with it because ownership never changed, and the module says plainly what does not fail over — the footage already on that server's disks
 - **Multi-tenancy.** One operator organisation per deployment
 - **The cloud side.** М8 covers KVS; nothing here builds a SaaS control plane
 
@@ -210,7 +210,7 @@ Roughly **49 lessons**, or a full semester. Worth deciding deliberately rather t
 
 - ~~Where inference runs~~ — a deployment question, not a schema one. Opaque worker config means the controller is unchanged whether inference runs on the appliance, at the camera or in the cloud (М11)
 - ~~Where the write API belongs~~ — built in М11, unauthenticated and marked as such; authentication arrives with OpenBao in М12
-- ~~Lesson numbering~~ — **superseded three times by restructuring.** Current: М9 is 16–19, М10 is 20–24, М11 is 25–28, М12 is 29–34, М13 is 35–45, М14 is 46–49. The М11/М12 split moved no lesson numbers at all — Part A and Part B were already contiguous
+- ~~Lesson numbering~~ — **superseded three times by restructuring.** Current: М9 is 16–19, М10 is 20–24, М11 is 25–**29**, М12 is **30**–34, М13 is 35–45, М14 is 46–49. The М11/М12 split moved no lesson numbers at all — Part A and Part B were already contiguous
 - ~~Consul in or out~~ — out, and for a better reason than licensing alone ([`consul-and-openbao.md`](./М13_OrchestratedVMS/consul-and-openbao.md))
 - ~~Identity split across М12 and М14~~ — they were one layer; merged into М12
 - ~~Where the domain database lives, and whether hosts replicate it~~ — **there is no domain database.** Each **Node** owns its configuration in its own Postgres and publishes one way upward; the domain's directory is a Nomad Variable per Node plus an object per Node; a **cluster** is the largest set of servers on a reliable network and a **domain** is the clusters under one directory ([`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md))

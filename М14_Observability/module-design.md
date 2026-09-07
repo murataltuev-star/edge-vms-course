@@ -80,7 +80,7 @@ If a lesson does not move that wall forward, it does not belong here.
 - **М9 Lesson 19** — `spool_oldest_seconds`, and why age beats count.
 - **М10 Lesson 20** — events are not metrics; and the credential hiding in `rtsp_url`, which Lesson 49 collects on.
 - **М10 Lesson 24** — `camera_lag` and `camera_silent_seconds`, and positions versus reasons.
-- **М11 Lesson 28** and **М12 Lesson 29** — failover duration, epoch conflicts, replica lag.
+- **М11 Lesson 28** and **М12 Lesson 30** — failover duration, epoch conflicts, replica lag.
 - **М13 Lesson 36** — regions, because a fleet view spans them.
 
 ---
@@ -95,7 +95,7 @@ The module opens by taking inventory rather than by installing anything:
 | М9 L19 | `spool_oldest_seconds`, `spool_bytes_used` | the spool was the first thing whose health was a *quantity* |
 | М10 L24 | `camera_lag` (distribution), `camera_silent_seconds` | the second is the only one describing the product |
 | М11 L28 | `node_failover_seconds`, `node_epoch_conflicts` | RTO, and a counter that should be zero forever |
-| М12 L29 | `node_replica_lag_seconds` | the RPO made visible per Node |
+| М12 L30 | `node_replica_lag_seconds` | the RPO made visible per Node |
 
 **Six signals for a whole VMS.** That is the point, and it is worth saying to a student who expects a hundred: each one was chosen at the moment its failure was demonstrated, and nothing was added because it was easy to measure.
 
