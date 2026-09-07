@@ -349,7 +349,29 @@ After reconnection, watch it drain at the rate you configured — not all at onc
 
 Then answer the question the deliverable actually asks: **how long can this box survive?** Not a guess — measure the growth rate over five minutes, divide the spool bound by it, and state the number. Lesson 16 asked you to size the partition from a requirement; this is where you find out whether you got it right.
 
-## Step 9 — Why this is not premature
+## Step 9 — The two numbers the spool must export
+
+The spool is the first thing on this box whose *health is a quantity* rather than a yes/no, so it is where the appliance starts emitting signals rather than just logging.
+
+Two, and only two:
+
+| Signal | What it means | Alarm when |
+|---|---|---|
+| **`spool_oldest_seconds`** | age of the oldest unsent segment | it exceeds your stated outage tolerance — *before* the bound is reached, not at it |
+| **`spool_bytes_used` / bound** | how full the buffer is | above ~70%, because the remaining time shrinks as cameras are added |
+
+The first is the one that matters, and it is worth understanding why it beats the obvious alternative. **Alarm on age, not on count.** Segment count depends on how many cameras a site has and how long a segment is; age is directly the answer to *how much footage is at risk right now*, and it means the same thing at a four-camera shop and a two-hundred-camera warehouse. One threshold works everywhere.
+
+The threshold comes from Lesson 16's arithmetic rather than from taste. If you sized the partition for a 24-hour outage, alarm at something like **6 hours** — early enough that somebody can act while there is still three quarters of the buffer left, late enough that a router reboot does not page anyone at 3am.
+
+Two properties worth noticing now, because М14 generalises both:
+
+- **This is a product signal, not a process one.** Nothing here reports CPU or memory. `spool_oldest_seconds` says *how much of the customer's footage is currently at risk*, which is the alarm-on-the-product rule from Lesson 18 in its second instance
+- **It has to be readable when the uplink is down**, which is precisely when it is interesting — so it is exported locally and scraped from wherever the box can be reached, never pushed to a centre that by definition is unreachable at that moment. М14 turns that into a scrape topology
+
+**Do not build a metrics endpoint yet.** Write the two numbers where the health check can read them; М14 gives them a proper exporter. Deciding *what to measure* is this lesson's job, and it is the half that is actually hard.
+
+## Step 10 — Why this is not premature
 
 You have just built a buffer in a module about operating-system updates. That deserves a justification, and it is not "we had room".
 
@@ -390,7 +412,7 @@ Same segments, three meanings. It is the first thing in this course that a later
 1. Measure your spool's real growth rate with one simulated camera, then compute how long your Lesson 16 partition size actually survives. Compare it with the requirement you wrote down then. If they disagree, which one changes?
 2. Implement both bound policies behind a config flag, then write the two sentences a product manager would put in a datasheet for each. They should read like different products, because they are.
 3. Break the uploader so it acknowledges *before* the far side confirms, then run an outage. Show the resulting data loss and explain exactly which line caused it.
-4. Add a `spool_seconds_pending` metric — the age of the oldest unsent segment. Argue for the alert threshold. (М14 comes back to this; having an opinion first is the point.)
+4. Take your `spool_oldest_seconds` threshold from Step 9 and simulate the outage that trips it. Then ask whether you would have wanted to be woken — and adjust the number rather than the story.
 5. The appliance drops the oldest footage when the spool fills and nobody is told. Design the smallest change that makes this visible to an operator, and say where that signal has to travel to be useful — noting that in this module there is nowhere above the box for it to go.
 
 ## Where this is going

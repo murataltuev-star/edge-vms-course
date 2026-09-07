@@ -107,6 +107,19 @@ Then the vocabulary from Lesson 21, now with a home on the screen:
 
 That last row is about the Node, and greying it out is deliberate: when the AppHost is not reporting, you do not know what the cameras are doing. Showing them green because they were green four minutes ago is precisely the lie Lesson 21's persisted-actual bug produced, arriving through the interface instead of the data model.
 
+### The Node's two exported signals
+
+The console renders these for a human. The same two numbers are what the Node **exports** for a machine, and М9 Lesson 19 already established the pattern with `spool_oldest_seconds`:
+
+| Signal | Question it answers | Why this one |
+|---|---|---|
+| **`camera_lag`** = `revision - observed_revision` | is the control plane keeping up? | a *distance*, so a lag of 1 clearing in a second is visibly different from a lag of 1 stuck for an hour — which is why Lesson 20 made `revision` an ordered integer |
+| **`camera_silent_seconds`** = now − `last_segment_end` | **is footage arriving?** | the only signal here describing the *product* rather than the control plane |
+
+Alarm on the second. A camera can be `converged`, `enabled`, phase `running`, `lag = 0` — every control-plane field agreeing the system is healthy — and have written nothing for forty minutes. That is Lesson 18's rule in its third instance: **alarm on the product, not on the process.**
+
+And a warning about the first that М14 spends a whole section on: `camera_lag` is **per camera**, so at a thousand cameras it is a thousand time series. That is exactly how a metrics system becomes more expensive than the thing it watches. Export the *distribution* — how many cameras are lagging, and the worst lag — and keep the per-camera number in the database where the console already reads it. **A metric is not a database, and the temptation to make it one is what kills a monitoring system.**
+
 ## Step 3 — A login, marked temporary
 
 ```python
@@ -220,6 +233,7 @@ That is the honest defence of building it in Python first, and it is not "Python
 ## Recap
 
 - One query, not three round trips — and `lag` as a **number**, because ordering is what `revision` was made an integer for.
+- The Node exports exactly two signals: **`camera_lag`** as a distribution, never per-camera, and **`camera_silent_seconds`**, which is the one to alarm on.
 - **`silent_for` is the only column describing the product.** Everything else describes the control plane, and all of it can look healthy while nothing records.
 - **Positions and reasons are different axes.** Phase says where an object is; conditions say why it cannot get further, and `since` turns a ticket into a fix. Kubernetes shipped the merged enum and documented why it was wrong.
 - `unreachable` greys the Node out rather than showing its cameras green. Stale green is Lesson 21's lying cache, arriving through the interface.

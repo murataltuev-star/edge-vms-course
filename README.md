@@ -58,7 +58,7 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — a Node that outlives its server | **Designed** · 4 lessons (25–28) |
 | [**М12** — DomainVMS](./М12_DomainVMS) | 4 · A directory that is not a database, and the domain's own CA | **Designed** · 6 lessons (29–34) |
 | [**М13** — OrchestratedVMS](./М13_OrchestratedVMS) | 5 · Identity and the trust root above every domain<br>7 · Enrollment, inventory, version skew<br>+ capacity: allocations, so a Node can run anywhere | **Designed** · 11 lessons (35–45) |
-| М14 — Observability | 6 · Prometheus + logs | Planned · ~4 (46–49) |
+| М14 — Observability | 6 · Prometheus + logs — collecting what М9–М12 emit | Planned · ~4 (46–49) |
 
 **[GLOSSARY.md](./GLOSSARY.md)** defines every term the course uses precisely — Node versus Server, desired versus actual state, epoch and fencing, and the acronyms it would otherwise leave unexplained.
 
@@ -147,7 +147,7 @@ It does not introduce the domain CA — М11 already built one. What this module
 
 ## М14 — not yet started
 
-Metrics and logs sized for a thin uplink: what to alarm on for a VMS, and why you cannot ship everything to a central Prometheus. Scope and sequencing in the [course plan](./COURSE-PLAN.md).
+**It does not introduce observability — it collects it.** Every module below already emits signals, defined where the failure that needs them was introduced: М9's health-check ladder and spool age, М10's `camera_silent_seconds`, М11's failover time, М12's replica lag. What is left here is what is genuinely cross-cutting — scrape topology bounded by the domain, cardinality, the thin uplink, and the rule that gives the module its spine: **monitoring must not share a failure domain with the thing it monitors.** Scope and sequencing in the [course plan](./COURSE-PLAN.md).
 
 ---
 

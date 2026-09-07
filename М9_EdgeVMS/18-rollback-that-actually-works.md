@@ -156,6 +156,28 @@ Consider the options in increasing order of ambition:
 | The VMS answers its own health endpoint | Application startup failures, bad config | A VMS that runs and records nothing |
 | **A camera is actually recording** | Nearly everything that matters | Failures slower than the check window |
 
+**That table is alert design, and it is worth knowing that is what you are doing.** Every row is a signal, and each one down the ladder is *closer to the thing the customer paid for* and *further from the thing that is easy to measure*. The course meets Prometheus in М14; you are writing your first alert rule here, three modules early, and it is the highest-stakes one in the whole course — **it decides whether an operating system update is kept or rolled back.** Nothing else you write gets to make that call.
+
+The general form, which М14 comes back to:
+
+> **Alarm on the product, not on the process.** "The service is up" is a statement about your software. "Footage is being written" is a statement about the customer's building. Only the second one is what they bought, and a dashboard full of the first is how an outage stays green for a fortnight.
+
+#### A health check is not monitoring, and confusing them is dangerous
+
+These look like the same job and they are close to opposites. Get this straight now, because М14 introduces the other one and students merge them by default.
+
+| | **The health check** (this lesson) | **Monitoring** (М14) |
+|---|---|---|
+| Runs | **on the box** | somewhere else, scraping in |
+| Audience | the box itself | a human |
+| Decides | whether to keep this OS slot | whether to wake somebody |
+| Must work when | **the network is down** | the network is up |
+| If it is wrong | the box rolls back, or keeps a broken update | somebody is paged, or isn't |
+
+The dangerous conflation is one direction specifically: **a health check that asks a remote monitoring system whether it is healthy.** Then an unreachable monitoring server means an unhealthy box, and a network fault at the wrong moment rolls back a perfectly good update on every appliance in the fleet at once — an outage that looks like diligence. The check in this lesson touches nothing outside the box, and that is not an accident of convenience.
+
+The reverse also holds: monitoring must not depend on the thing it monitors, which М14 makes into a placement rule.
+
 The fourth is the right answer for a VMS, and it is worth being clear about why the third is not. A video management system that is up, healthy, answering HTTP, and writing zero bytes of video has failed at the only job it has — and it will look perfectly green on any dashboard that stops at the third row.
 
 The counter-pressure is real: the more demanding the check, the longer the box takes to commit, and the more likely a *transient* problem (a camera rebooting at the same moment) triggers a rollback of a perfectly good update. **Pick a window, write it down, defend it.**

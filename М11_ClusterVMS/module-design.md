@@ -270,6 +270,8 @@ Server A dies
 
 ### Lesson 28 — Failover, and the two instances of one Node
 
+> **The two numbers this lesson has to export.** `node_failover_seconds` — power pulled to recording resumed — is the product's **RTO**, and it is meaningless as an average: report the worst case, because the customer's question is *how long could my site be dark*. And `node_epoch_conflicts` counts how often a stale instance was fenced at the archive; on a healthy system it is zero forever, which makes it exactly the kind of counter people forget to alarm on. **A metric that is always zero is worth more than one that is always noisy** — the day it moves, something the design said was impossible has happened.
+
 - **Restart versus reschedule.** Restart retries on the same server; reschedule places on a different one. Service jobs default to unlimited attempts
 - **The `disconnect` block, and why its default is wrong for a VMS.** By default a client missing heartbeats has its allocations marked lost and replaced *while the client keeps running its tasks* — so a partitioned server keeps recording while a replacement starts elsewhere. `lost_after`, `replace`, `stop_on_client_after`, and the four `reconcile` strategies. The exercise is the argument: for a recorder, is two servers recording the same camera for a minute better or worse than neither?
 - **Fencing**, from the section above: the epoch in the archive path, monotonic clocks, and the two margins

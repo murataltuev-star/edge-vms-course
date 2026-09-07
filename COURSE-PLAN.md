@@ -133,12 +133,27 @@ Its thesis is a constraint: **everything below this layer must keep working when
 - **Closing the arc with М8.** The course opened renting a cloud VMS from Kinesis and ends building one, retiring М9's hand-provisioned AWS credentials by not needing them
 - **hawkBit**, closing both update planes with a control plane that finally spans sites
 
-### М13 — Observability: Prometheus and logs · ~4 lessons (46–49)
+### М14 — Observability: Prometheus and logs · ~4 lessons (46–49)
 
-- Metrics from Nomad, Podman and the domain controller
-- What to actually alarm on for a VMS: fragment write rate, camera offline, disk fill rate, time skew. Not CPU graphs
-- **The edge constraint:** you cannot ship everything to a central Prometheus over a thin uplink. Remote-write with downsampling, or local retention with pull-on-demand
-- Logs: journald, retention, and never letting a secret reach them — which is why this module follows М12
+**This module does not introduce observability — it collects it.** Every module below already emits signals, defined where the failure that needs them was introduced, because a metric chosen at the moment you watch something break has a reason, and one chosen in an observability chapter has only a name:
+
+| Emitted in | Signal | The point |
+|---|---|---|
+| М9 L18 | the health check's four-row ladder | it decides **rollback**, on the box, offline |
+| М9 L19 | `spool_oldest_seconds`, `spool_bytes_used` | alarm on age, not count — one threshold works at any camera count |
+| М10 L24 | `camera_lag` (a distribution), `camera_silent_seconds` | the second: the only one describing the product |
+| М11 L28 | `node_failover_seconds` (RTO, worst case), `node_epoch_conflicts` | a counter that should be zero forever |
+| М12 L29 | `node_replica_lag_seconds` | the worst Node, never the mean |
+
+What is left for this module is what is genuinely *cross-cutting*:
+
+- **Scrape topology, bounded by the domain.** Prometheus pulls, and you cannot pull across the link you stopped trusting — so the scrape boundary **is** the domain boundary, for exactly the reason certificate issuance is
+- **The placement rule, which is the module's spine:** *monitoring must not share a failure domain with the thing monitored.* A Prometheus running as a Nomad job inside the domain it watches dies with that domain and cannot tell you it died. And its mirror image from М9 L18: **a health check must not depend on monitoring**, or an unreachable metrics server rolls back a good update across the fleet at once
+- **Metrics are the fourth data type**, and [`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md) predicted it — *"the fourth one will arrive eventually."* Detail is local, summary is domain: full resolution at the site with pull-on-demand, alarms and aggregates to the centre. The same rule as footage, index and events
+- **Cardinality, which is how monitoring becomes more expensive than the product it watches.** Per-camera series at a thousand cameras is a thousand time series per metric. Export distributions; leave the per-object number in the database the console already queries. **A metric is not a database**
+- **Alarm on the product, not the process** — М9 L18's rule, stated once for everything above it. Fragment write rate and camera-offline, not CPU graphs
+- **The thin uplink:** remote-write with downsampling, or local retention with pull-on-demand — and what an operator is shown for a site whose uplink is down, which is *not* "healthy"
+- **Logs:** journald, retention, and never letting a secret reach them — sharpened by М10 L20's finding that an RTSP URL carries the password inline, so the leak is a **log-formatting** bug rather than a storage one
 
 ---
 
@@ -148,10 +163,11 @@ The order is dependency-driven, not layer-numbered:
 
 - **М9 before М10** — an appliance has to exist before it can be scheduled onto
 - **М10 before М11** — the loop has to work on one box before a scheduler above it, or contested ownership, means anything
-- **М11 before М12** — secrets management is abstract until there are services worth protecting
-- **М12 before М13** — so that "never log a secret" is a rule students already understand
+- **М11 before М12** — a Node has to survive its server before a layer above several Nodes means anything
+- **М12 before М13** — identity and trust are abstract until there are N Nodes and N endpoints worth protecting
+- **М13 before М14** — so that "never log a secret" is a rule students already understand
 
-**One defensible alternative, and it has strengthened:** move observability (М13) before М12. You cannot operate what you cannot see, М11's reconciliation loop is far easier to debug with metrics in front of you, and **three of М12's lessons now lean on instrumentation it has not taught** — the thirty-day outage can only be asserted without it, and a self-halting canary is an alert rule. The cost is teaching monitoring slightly before there is much worth monitoring.
+**Partly resolved by emitting low.** Now that М9–М12 each define their own signals, М13's thirty-day-outage demo and its self-halting canary have numbers to work with before М14 arrives, so the ordering problem is smaller than it looked. What remains: **one defensible alternative** is to move observability before М13. You cannot operate what you cannot see, М10's reconciliation loop is far easier to debug with metrics in front of you, and **three of М13's lessons still lean on instrumentation it has not taught** — the thirty-day outage can only be asserted without it, and a self-halting canary is an alert rule. The cost is teaching monitoring slightly before there is much worth monitoring.
 
 ---
 
