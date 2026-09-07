@@ -45,6 +45,33 @@ Three of seven layers under IBM's BUSL, in a product that is *shipped to custome
 
 That leaves **Nomad as the only unavoidable BUSL dependency**, and no fork of it exists — unlike Terraform (OpenTofu) and Vault (OpenBao). If that single dependency is unacceptable, the decision is to teach Kubernetes instead, and it should be taken now rather than at М13.
 
+#### Resolved: BUSL does not prohibit shipping this product
+
+Checked against the licence itself rather than against the general alarm around it. **The Additional Use Grant permits commercial use, including embedding**, and prohibits something much narrower:
+
+> "You may make production use of the Licensed Work, provided Your use does not include offering the Licensed Work to third parties on a hosted or embedded basis" in competition with the licensor's paid offerings.
+
+Two conditions must hold **together**. HashiCorp's own FAQ defines both, and the second is what decides it:
+
+> A "competitive offering" is a product sold to third parties "that significantly overlaps the capabilities of a HashiCorp commercial product."
+>
+> "Embedded" means including code from a HashiCorp product **"in a competitive product."**
+
+*Embedded* is defined relative to a competitive product — embedding alone is not the trigger. Their worked example: a company building a Terraform competitor may still use Vault to secure it. **A VMS does not significantly overlap Nomad Enterprise**, so shipping Nomad inside a VMS appliance is permitted as written. The licensor is now **IBM**, not HashiCorp.
+
+**The risk to watch is not the appliance — it is the plugin roadmap.** The moment the product lets a customer run *their own* containers on it (a third-party analytics platform, a detector marketplace, bring-your-own-model), it starts offering orchestration as a customer-facing capability, and "significantly overlaps" becomes arguable. For a VMS that is not a hypothetical drift: third-party analytics is where every VMS eventually goes. **М13 is the second exposure**, because renting cloud capacity and running customers' Nodes makes *hosted* and *embedded* both true, leaving only the competitive test.
+
+Not legal advice. The specific question for counsel is narrower than "can we use Nomad": *does our analytics-plugin roadmap turn the appliance into something that significantly overlaps Nomad Enterprise?*
+
+#### The Change Date is not an escape route
+
+Each BUSL release converts to **MPL 2.0 four years after it is published** — 1.8.0 (28 May 2024) becomes MPL on **28 May 2028**; 2.0.0 (21 Apr 2026) in **April 2030**. Two things make this useless as a plan:
+
+- **The Change Date and the support window move in opposite directions.** By the time a version is MPL it has been out of support for roughly two years. 1.7.x is the worked example: EOL since April 2024, with an allocation-directory-escape CVE (CVE-2024-7625, affecting `>= 1.7.0, < 1.7.11`) fixed **only in Enterprise**. Shipping that to an appliance nobody visits is not a licence saving, it is a defect.
+- **The only genuinely MPL Nomad is ≤ 1.6.5** (13 Dec 2023), and the 1.6 branch is a trap: 1.6.6 onward ship BUSL, whose text retroactively claims coverage from 1.6.4 even though the shipped 1.6.4 and 1.6.5 artifacts carry MPL. Anyone relying on "1.6.x is MPL" must pin **≤ 1.6.5** exactly — and then has no Variable Locks, no `disconnect` block, and three years of unpatched CVEs.
+
+**So the version decision is an engineering decision, not a licensing one:** ship a supported release, and treat BUSL as settled by the competitive test above.
+
 **This is now settled**, in [`consul-and-openbao.md`](./М13_OrchestratedVMS/consul-and-openbao.md). The short version: Consul and OpenBao are not alternatives — they overlap on exactly one thing, mTLS between services — and Consul's mesh CA turns out to be the *same* root → per-locality intermediate → short-leaf design М12 arrives at independently. The decision turns on scope instead: no service mesh issues an identity to a device that has never been on the network, so the product runs a PKI regardless, and a second certificate hierarchy buys nothing. The accepted cost is health-check-filtered discovery, which Nomad's native discovery does not provide.
 
 ### 2. Secrets arrive three modules before the module that manages them
@@ -147,7 +174,7 @@ Roughly **49 lessons**, or a full semester. Worth deciding deliberately rather t
 
 ## Open questions
 
-1. **The BUSL decision, taken once.** If Nomad is unacceptable in a shipped product, that changes М9 and everything above it. Decide before М11, not after М13
+1. ~~**The BUSL decision, taken once.**~~ **Resolved** — the Additional Use Grant permits this product; the risk is the analytics-plugin roadmap, not the appliance. See the licensing section above. What remains open is a counsel review of that one question
 2. **Does the vendor run a MASA?** BRSKI is unimplementable without one, and it is a permanent operational commitment — a signing service that must outlive every appliance shipped
 3. **М13's position** — before or after the domain controller, and now also sharpened by М12 being nine lessons long
 4. **Does the product ship a database HA option?** [`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md) settles the architecture — each Node owns its configuration, the domain keeps a directory — but whether HA is offered for the directory, and priced, is commercial
