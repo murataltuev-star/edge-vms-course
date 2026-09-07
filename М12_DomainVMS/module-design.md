@@ -39,6 +39,7 @@ Which is also why this is the first layer in the course that is **allowed to be 
 | Convergence token | **Monotonic revision**, not token equality | Ordering expresses *distance*; equality only *difference*. See below. |
 | Transport | **mTLS, from a self-signed domain CA marked temporary** | The Node↔directory streams carry configuration, grants and status. A credential says who is calling; it says nothing about the channel. М13 replaces the self-signed root with a delegated intermediate. |
 | Authentication | **A hand-provisioned credential per Node, marked temporary** | The course's existing discipline: the stand-in is named where it appears. М13 replaces it with a federated identity. |
+| Human identity | **A token signed by a domain issuer; Nodes hold the public key, never a password hash** | М10's per-Node `operators` table becomes N Alices and N stealable hashes. Verifying a signature needs no network, so this survives the domain being down. The issuer is hand-provisioned and marked temporary; М13 federates it. |
 | Authorization | **Node-local grants carrying an expiry** | Enforcement must survive the domain being down, so it cannot be a lookup. Expiry is what bounds the revocation window. |
 | Status model | **Positions and reasons kept apart** | Kubernetes shipped a phase enum and then documented why it was a mistake. |
 
@@ -175,11 +176,49 @@ Configuration staleness is benign and self-announcing. Revocation staleness is s
 - **The tension, and it has no clean answer:** short renewal revokes fast and locks an operator out of their own site during a long outage; long renewal is the reverse. The lesson makes students pick a number and defend it
 - Rights are therefore not special — they are one more thing *cached from above with an expiry*, governed by the rule this module already applies to entitlement and placement
 
+#### The other credential: М10's `operators` table, times N
+
+Lesson 24 of М10 put a login on the console, against a local `operators` table holding a password hash. On one box that was right. **On N Nodes it is a defect**, and naming it is this lesson's second half.
+
+Four Nodes means four accounts for one person, four passwords she will make identical, and four hashes an attacker can take. Worse, it breaks the rule this lesson just established: **a grant expires and the account does not.** Revoke Alice's grants and her credential still authenticates on every Node; you have bounded the authorization window and left the authentication window unbounded.
+
+The fix is the move this course keeps making, and it is the same one the CA made two bullets ago:
+
+> **Delegate an authority; do not distribute a secret.** A Node holds the **issuer's public key**, not Alice's password hash. It verifies a signature — which needs no network — and then checks its own local grants for the subject that signature names.
+
+So the Node stores *no human credential at all*:
+
+```
+Alice ──▶ domain identity service ──▶ short-lived signed token (subject: alice)
+                                                │
+                                                ▼
+                                   Node 3: verify signature (public key, offline)
+                                           check expiry
+                                           look up local grants for "alice"
+```
+
+- **N Nodes holding password hashes is N places to steal them from. N Nodes holding a public key is zero.** That is a security improvement, not just a tidiness one
+- **The issuer is hand-provisioned here and marked temporary**, exactly like the self-signed domain CA in this same lesson. It is the second stand-in this lesson creates and М13's Lesson 42 collects both: the CA becomes a delegated intermediate, the issuer becomes federated, and *one Alice* finally spans domains
+- **М10's `operators` table is superseded, not extended.** Say so explicitly — a student who keeps it and adds a `node_id` column has built the N-Alices problem on purpose
+
+#### Two lifetimes, and they are not independent
+
+The grant now has `valid_until` and the token has its own expiry, and picking them separately produces nonsense:
+
+| | Too short | Too long |
+|---|---|---|
+| **Token lifetime** | Alice is logged out mid-incident, and cannot re-authenticate if the domain is unreachable | A revoked employee keeps working until it expires |
+| **Grant lifetime** | A site in a long outage locks out its own operator | A revoked administrator keeps the site |
+
+**A token outliving its grant is harmless** — the Node finds no grants and refuses. **A grant outliving every token is also harmless** — nobody can present a subject. The failure is assuming one covers the other. The lesson makes students state both numbers and say which one bounds the revocation window. *(It is the shorter of the two, and most people answer the token.)*
+
+**The honest residue: break-glass.** Alice is on site, the uplink is down, and her token expired an hour ago. No amount of design removes that case — a local emergency account is what real products ship, and it reintroduces exactly the password hash this section removed. The defensible version is that it is **one account, audited on every use, alarmed on, and rotated after** — and that the module says this out loud rather than pretending the clean design has no edge.
+
 #### What the domain can and cannot tell you
 
 The directory aggregates grants for review, never for enforcement. And when a Node is unreachable, the answer to *"what can Alice access?"* is **incomplete** — the console must say so rather than render a short list, because a short list read as complete is how an access review misses something.
 
-**Identity itself is not Node-local.** Alice is an employee of the customer and exists whether or not any Node does; storing her *in* Node 3 would create N Alices whose records can disagree about who she is. Nodes store grants against a subject; М12 supplies the subject.
+**Identity itself is not Node-local.** Alice is an employee of the customer and exists whether or not any Node does; storing her *in* Node 3 would create N Alices whose records can disagree about who she is. Nodes store grants against a subject; **this module supplies the subject locally, and М13 federates it** — see below.
 
 **Deliverable:** grant an operator rights on a Node, then revoke them while that Node is unreachable — and state, in advance and then by measurement, exactly when their access ends.
 

@@ -315,7 +315,7 @@ Four of the six have non-vault answers and two were already paid two lessons ago
 
 - An operator who can watch three sites and administer one — which is the half of this that only exists above a domain
 - **Authorization is deliberately scattered, and М11 explains why.** Grants live in each Node so they can be enforced with the domain unreachable. What this module adds is not a central check but **one Alice**: a federated identity the grants refer to, so she is not N separate records that can disagree about who she is
-- Replacing М11's hand-provisioned per-Node credential with that identity — the debt named in Lesson 33 and paid here
+- Replacing **both** of М12 Lesson 33's stand-ins with one thing: the hand-provisioned per-Node credential, and the **hand-provisioned domain token issuer**. The Nodes already verify a signature against a public key rather than storing anybody's password — so what changes is *whose key*, and nothing about how a Node authenticates a person changes at all. **That is the payoff for delegating an authority rather than distributing a secret**, and it is the same shape as the CA swap in Lesson 39
 - Why identity for people and identity for machines share a trust root but not a lifecycle
 - Delegated administration: the customer's own administrator, and what the vendor can and cannot see
 

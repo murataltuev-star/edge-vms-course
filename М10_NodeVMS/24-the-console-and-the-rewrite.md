@@ -127,6 +127,8 @@ Three things worth being explicit about:
 
 **The same 401 for an unknown user and a wrong password.** Distinguishing them hands an attacker a username oracle for free.
 
+**This account is superseded in М12, not extended.** With N Nodes, a local `operators` table means N accounts for one person, N password hashes to steal, and — the part that matters — **a grant that expires attached to a credential that does not.** М12 Lesson 33 removes the hash from the Node entirely: the Node holds an issuer's *public key*, verifies a short-lived signed token offline, and looks up its own grants for the subject that token names. A student who keeps this table and adds a `node_id` column has built the problem on purpose.
+
 **This is the course's fourth temporary secret**, and the count is deliberate — М9's AWS credentials, М10's database password, this operator account, and М12 will add a per-Node credential and a self-signed domain CA. М13 Lesson 41 collects all five. Naming a stand-in where it appears is what stops it becoming permanent by silence.
 
 This is also the last module where there is exactly **one** surface to protect. М11 gives every Node its own API, which is N endpoints where there used to be one, and that is where authorization stops being trivial.
