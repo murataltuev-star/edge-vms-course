@@ -36,6 +36,8 @@ Both planes are fully visible on one box, which is why this module needs only on
 | Uplink loss | **Spool to the data partition, then upload** | The one media change this module makes, and it is forced: you cannot buffer behind `kvssink`, and an appliance that loses footage whenever the link blinks is not an appliance. Segments are written locally and uploaded by a separate process. |
 | Those segments | **Become the archive in М10** | They are written here as a buffer and never thrown away: М10 puts an index over the same files, М12 makes the upload optional. The first thing in the course a later module *upgrades* rather than replaces. |
 | Scope | **One appliance** | Scheduling, clustering and multi-site delivery moved to М10 and М12. A module called EdgeVMS should not build a raft cluster. |
+| Bundle format | **`verity`, set explicitly in the manifest and enforced with `bundle-formats=-plain`** | RAUC still defaults to the legacy `plain` format with only a warning if you configure neither. `verity` is also what makes installing from an HTTP URL possible at all. |
+| Slot status storage | **`data-directory`, not `statusfile`** | `statusfile` is deprecated in current RAUC. Most tutorials still use it. |
 | Bundle delivery | Plain HTTP(S) | `rauc install https://…` keeps the focus on the update mechanism. **Eclipse hawkBit** is the production answer and now matters more than it did: it restores pull-based OS updates, partly offsetting the reconciliation lost with Fleet. Candidate for promotion out of a footnote. |
 
 ---
@@ -53,6 +55,8 @@ New assumed knowledge: none.
 ---
 
 ## Lessons
+
+All four are written: see [`README.md`](README.md) for the index and the honest account of what can be verified without hardware.
 
 *Four lessons, one box. Nothing here depends on an orchestrator, which is the point.*
 
@@ -143,7 +147,7 @@ Modules 1–15 held to a rule: every step shows a real, observed result, and not
 
 - The **RAUC signing chain** with real `openssl` — build a CA, sign, verify, and prove a wrong-key bundle fails. *Already demonstrated: correct bundle accepted, rogue-CA bundle rejected, tampered bundle rejected.*
 - `system.conf` and bundle manifest structure, parsed and checked
-- Quadlet unit files checked with `systemd-analyze verify` (systemd 255 is present)
+- Quadlet unit files checked with **`podman-system-generator --dryrun`**, not `systemd-analyze verify` — *corrected while writing Lesson 19*: `systemd-analyze` does not know the `[Container]` section and reports `Unknown section 'Container'. Ignoring.` while ignoring the whole file. Verified against systemd 255. The generator needs Podman, so this is Track 2, not Track 1
 - Partition arithmetic and any shell logic
 - **The spool, in full.** Segments on disk, an uploader, delete-on-acknowledgement, the bound and its policy, and the rate-limited drain — all of it is files and a queue, testable against a fake uploader that can be told to fail. The ten-minute-outage deliverable runs here with the network fault simulated rather than a cable pulled
 

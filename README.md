@@ -50,7 +50,7 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | Module | Layer it builds | State |
 |---|---|---|
 | [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 15 lessons |
-| [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback | **Designed** · 4 lessons (16–19) |
+| [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback | **Written** · 4 lessons (16–19) |
 | [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — domain state<br>4 · AppHost — the loop that acts on it | **Designed** · 5 lessons (20–24) |
 | [**М11** — DomainVMS](./М11_DomainVMS) | 2 · Nomad + Podman — Nodes that move<br>4 · A directory that is not a database, and the domain's own CA | **Designed** · 10 lessons (25–34) |
 | [**М12** — OrchestratedVMS](./М12_OrchestratedVMS) | 5 · OpenBao — identity, the trust root above every domain<br>7 · Enrollment, inventory, version skew<br>+ capacity: allocations, so a Node can run anywhere | **Designed** · 11 lessons (35–45) |
@@ -83,6 +83,7 @@ The same lesson has the module's other sharp edge. **Pull the network cable for 
 
 *The multi-node half of this module moved to М11, where Nodes are scheduled across servers. A module called EdgeVMS should not build a raft cluster.*
 
+- [Lesson index](./М9_EdgeVMS/README.md) — start here
 - [Module design](./М9_EdgeVMS/module-design.md) — lesson plan, partition layout, verification strategy, ARM porting appendix
 - [RAUC alternatives](./М9_EdgeVMS/rauc-alternatives.md) — SWUpdate, Mender, bootc, systemd-sysupdate, and where each wins
 - [One container per camera?](./М9_EdgeVMS/apphost-and-process-model.md) — the process model at 1000 cameras, and why the orchestrator must not own camera lifecycle
