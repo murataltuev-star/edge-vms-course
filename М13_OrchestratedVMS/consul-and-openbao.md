@@ -1,6 +1,6 @@
 # Consul and OpenBao — Two Answers to mTLS
 
-**A decision record for М12_OrchestratedVMS.** Companion to [`kubernetes-vs-nomad.md`](../М11_DomainVMS/kubernetes-vs-nomad.md), [`rauc-alternatives.md`](../М9_EdgeVMS/rauc-alternatives.md) and [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md), written in answer to "Consul or OpenBao?" — which turns out to be the wrong question, in a useful way.
+**A decision record for М13_OrchestratedVMS.** Companion to [`kubernetes-vs-nomad.md`](../М11_ClusterVMS/kubernetes-vs-nomad.md), [`rauc-alternatives.md`](../М9_EdgeVMS/rauc-alternatives.md) and [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md), written in answer to "Consul or OpenBao?" — which turns out to be the wrong question, in a useful way.
 
 ---
 
@@ -56,7 +56,7 @@ So the PKI is not optional. It is the module.
 
 4. **The sidecar has a measurable cost.** A mesh means an Envoy proxy per service. М10 taught students to measure a worker's memory footprint precisely because appliance budgets are finite; adding a proxy per service to a box already running twenty media workers is a number, and it should be measured rather than waved away.
 
-5. **It is a second BUSL dependency.** [`kubernetes-vs-nomad.md`](../М11_DomainVMS/kubernetes-vs-nomad.md) works through the licence text: Nomad and Consul are both BUSL with IBM as licensor, in a product that is *shipped to customers on hardware* — the word the Additional Use Grant uses is "embedded". Dropping Consul leaves **Nomad as the only unavoidable BUSL component**, which is a materially easier answer to give an acquirer than three.
+5. **It is a second BUSL dependency.** [`kubernetes-vs-nomad.md`](../М11_ClusterVMS/kubernetes-vs-nomad.md) works through the licence text: Nomad and Consul are both BUSL with IBM as licensor, in a product that is *shipped to customers on hardware* — the word the Additional Use Grant uses is "embedded". Dropping Consul leaves **Nomad as the only unavoidable BUSL component**, which is a materially easier answer to give an acquirer than three.
 
 ---
 
@@ -112,7 +112,7 @@ None of those describe a VMS appliance at one site.
 - [Consul service mesh architecture](https://developer.hashicorp.com/consul/docs/architecture/data-plane/connect) — the sidecar data plane
 - [Cross-datacentre mesh gateways](https://developer.hashicorp.com/consul/docs/east-west/mesh-gateway/federation) — what federation in a mesh means, and how it differs from this course's use of the word
 - [RFC 8995 — BRSKI](https://datatracker.ietf.org/doc/html/rfc8995) — the device-onboarding problem no service mesh addresses
-- [`kubernetes-vs-nomad.md`](../М11_DomainVMS/kubernetes-vs-nomad.md) — the BUSL licence reading, applying equally to Consul
+- [`kubernetes-vs-nomad.md`](../М11_ClusterVMS/kubernetes-vs-nomad.md) — the BUSL licence reading, applying equally to Consul
 - Nomad native service discovery and its limits, as recorded in [`COURSE-PLAN.md`](../COURSE-PLAN.md)
 
 *Checked against current documentation, 5 September 2026.*

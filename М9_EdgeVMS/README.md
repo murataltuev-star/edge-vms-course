@@ -58,7 +58,7 @@ Written alongside the module, with their costs attached rather than quietly omit
 - [RAUC alternatives](rauc-alternatives.md) — SWUpdate, Mender, bootc, systemd-sysupdate, and where each wins. RAUC is taught because A/B slots are legible and its signature verification is unconditional; **bootc may well be the better choice for a product shipping on x86-64 UEFI**, and the document says so.
 - [One container per camera?](apphost-and-process-model.md) — the process model at 1000 cameras, and why the orchestrator must not own camera lifecycle. Lesson 19's second sidebar sets this up; М10 Lesson 25 breaks the pattern deliberately.
 
-The multi-node half of this module moved to [М11](../М11_DomainVMS/module-design.md), where Nodes are scheduled across servers. A module called EdgeVMS should not build a raft cluster. The orchestrator comparison that shaped it is recorded in [Kubernetes vs Nomad](../М11_DomainVMS/kubernetes-vs-nomad.md).
+The multi-node half of this module moved to [М11](../М11_ClusterVMS/module-design.md), where Nodes are scheduled across servers. A module called EdgeVMS should not build a raft cluster. The orchestrator comparison that shaped it is recorded in [Kubernetes vs Nomad](../М11_ClusterVMS/kubernetes-vs-nomad.md).
 
 ## Where this goes
 

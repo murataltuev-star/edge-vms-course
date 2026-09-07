@@ -1,4 +1,4 @@
-# М12_OrchestratedVMS — Module Design
+# М13_OrchestratedVMS — Module Design
 
 **The layer that supplies what a domain cannot make for itself — and the first one allowed to be unavailable.**
 
@@ -374,6 +374,6 @@ The capstone.
 - [RFC 8995 — Bootstrapping Remote Secure Key Infrastructure (BRSKI)](https://datatracker.ietf.org/doc/html/rfc8995) — pledge, registrar, MASA, voucher, IDevID and LDevID; zero-touch bootstrap without pre-shared keys or bare trust-on-first-use
 - [RFC 8995 at the RFC Editor](https://www.rfc-editor.org/info/rfc8995/) — the citable record
 - [`consul-and-openbao.md`](consul-and-openbao.md) — why mTLS comes from the PKI rather than a service mesh
-- [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) and [М11's design](../М11_DomainVMS/module-design.md) — the contracts that make version skew survivable
+- [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) and [М11's design](../М11_ClusterVMS/module-design.md) — the contracts that make version skew survivable
 
 *Written 5 September 2026.*

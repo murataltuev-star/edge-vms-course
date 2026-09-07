@@ -51,9 +51,9 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 |---|---|---|
 | [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 15 lessons |
 | [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback | **Written** · 4 lessons (16–19) |
-| [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — domain state<br>4 · AppHost — the loop that acts on it | **Designed** · 5 lessons (20–24) |
-| [**М11** — DomainVMS](./М11_DomainVMS) | 2 · Nomad + Podman — Nodes that move<br>4 · A directory that is not a database, and the domain's own CA | **Designed** · 10 lessons (25–34) |
-| [**М12** — OrchestratedVMS](./М12_OrchestratedVMS) | 5 · OpenBao — identity, the trust root above every domain<br>7 · Enrollment, inventory, version skew<br>+ capacity: allocations, so a Node can run anywhere | **Designed** · 11 lessons (35–45) |
+| [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — the Node's own state<br>4 · AppHost — the loop that acts on it | **Written** · 5 lessons (20–24) |
+| [**М11** — DomainVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — Nodes that move<br>4 · A directory that is not a database, and the domain's own CA | **Designed** · 10 lessons (25–34) |
+| [**М12** — OrchestratedVMS](./М13_OrchestratedVMS) | 5 · OpenBao — identity, the trust root above every domain<br>7 · Enrollment, inventory, version skew<br>+ capacity: allocations, so a Node can run anywhere | **Designed** · 11 lessons (35–45) |
 | М13 — Observability | 6 · Prometheus + logs | Planned · ~4 (46–49) |
 
 **[GLOSSARY.md](./GLOSSARY.md)** defines every term the course uses precisely — Node versus Server, desired versus actual state, epoch and fencing, and the acronyms it would otherwise leave unexplained.
@@ -96,6 +96,7 @@ Five lessons in which one box starts owning its own truth. `INSERT INTO cameras`
 
 Its organising rule is that **desired state is persisted and actual state is derived** — persist the second and you have built a cache that lies. It is also where the process model from М9's decision record gets built: fifty GStreamer pipelines in one Python process, with the GIL boundary demonstrated rather than asserted.
 
+- [Lesson index](./М10_NodeVMS/README.md) — start here
 - [Module design](./М10_NodeVMS/module-design.md) — lesson plan, the Python shard model, and what the operator is never asked to decide
 - [`reference/shard-memory-probe.py`](./М10_NodeVMS/reference/shard-memory-probe.py) — measures what sharding actually saves, in PSS rather than RSS
 
@@ -113,9 +114,9 @@ The answer is that fencing belongs at the archive rather than at the controller:
 
 Because the Node is the writer, it is also the thing that has to be reachable and protected: Lesson 33 gives every Node↔directory stream **mTLS from the domain's own CA**, hand-provisioned and marked temporary. Certificates are issued *inside* the domain, so renewal never depends on the layer above — the same reason grants live in each Node and carry an expiry rather than being looked up.
 
-- [Module design](./М11_DomainVMS/module-design.md) — the cluster, Nodes that outlive their servers, fencing, the directory above them, placement, shadow mode, and who may call the API
-- [Kubernetes vs Nomad](./М11_DomainVMS/kubernetes-vs-nomad.md) — why the orchestrator is Nomad, what it cost, and why neither belongs on one box
-- [Where the databases live](./М11_DomainVMS/where-the-database-lives.md) — five revisions ending with one database in the whole design, why a Node owns its configuration rather than caching someone else's, and the retention rule that protects customer footage
+- [Module design](./М11_ClusterVMS/module-design.md) — the cluster, Nodes that outlive their servers, fencing, the directory above them, placement, shadow mode, and who may call the API
+- [Kubernetes vs Nomad](./М11_ClusterVMS/kubernetes-vs-nomad.md) — why the orchestrator is Nomad, what it cost, and why neither belongs on one box
+- [Where the databases live](./М12_DomainVMS/where-the-database-lives.md) — five revisions ending with one database in the whole design, why a Node owns its configuration rather than caching someone else's, and the retention rule that protects customer footage
 
 ## М12 — OrchestratedVMS
 
@@ -129,8 +130,8 @@ The demo: a box arrives in a carton, nobody types a secret into it, and minutes 
 
 It does not introduce the domain CA — М11 already built one. What this module supplies is its *authority*: an offline root, an intermediate delegated to each domain, and the swap performed under a running system. **A CA can be delegated; a vault cannot** — an intermediate is a bounded piece of the root handed down once a year, whereas a copy of a secret in every domain is N places to steal it from. That asymmetry is also the answer to the problem the course plan had flagged as having none. Unattended unsealing at 3am: **if the appliance needs a vault to boot, the vault is not allowed to be unavailable** — which contradicts the layer's own thesis. So the appliance holds certificates and does not run a vault.
 
-- [Module design](./М12_OrchestratedVMS/module-design.md) — allocations and the edge/cloud/mixed triangle, secure introduction, the root above every domain, lifetimes against offline tolerance, inventory and version skew
-- [Consul and OpenBao](./М12_OrchestratedVMS/consul-and-openbao.md) — two answers to mTLS, and why the product needs only one
+- [Module design](./М13_OrchestratedVMS/module-design.md) — allocations and the edge/cloud/mixed triangle, secure introduction, the root above every domain, lifetimes against offline tolerance, inventory and version skew
+- [Consul and OpenBao](./М13_OrchestratedVMS/consul-and-openbao.md) — two answers to mTLS, and why the product needs only one
 
 ## М13 — not yet started
 

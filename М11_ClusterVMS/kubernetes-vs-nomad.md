@@ -1,6 +1,6 @@
 # Kubernetes vs Nomad for an Edge VMS
 
-**A decision record for М11_DomainVMS**, written while the orchestrator still lived in М9. Written after the module was first designed around k3s, in answer to "why not Nomad?" — which turned out to be a better question than the original design deserved.
+**A decision record for М11_ClusterVMS**, written while the orchestrator still lived in М9. Written after the module was first designed around k3s, in answer to "why not Nomad?" — which turned out to be a better question than the original design deserved.
 
 ---
 

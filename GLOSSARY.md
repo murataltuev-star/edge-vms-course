@@ -89,7 +89,7 @@ Two more that are easy to blur:
 |---|---|
 | **BUSL** — Business Source License | A source-available licence: the source is published, production use is granted subject to conditions, and each version converts to an open-source licence after a **Change Date**. Nomad and Consul are BUSL with IBM as Licensor. |
 | **Change Date** | When a given version's BUSL grant converts — four years per version for Nomad, to MPL 2.0. Staying on supported releases means never reaching it. |
-| **Additional Use Grant** | The clause defining what production use is permitted. Nomad's uses the word *embedded*, which is what a shipped appliance does — hence the discussion in [`kubernetes-vs-nomad.md`](./М11_DomainVMS/kubernetes-vs-nomad.md). |
+| **Additional Use Grant** | The clause defining what production use is permitted. Nomad's uses the word *embedded*, which is what a shipped appliance does — hence the discussion in [`kubernetes-vs-nomad.md`](./М11_ClusterVMS/kubernetes-vs-nomad.md). |
 | **MPL 2.0** | Mozilla Public License 2.0 — a weak-copyleft open-source licence; what BUSL components convert to. |
 
 *Summaries of licence terms, not legal advice.*

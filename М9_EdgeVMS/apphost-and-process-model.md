@@ -1,6 +1,6 @@
 # One Container Per Camera? The VMS Process Model
 
-**A decision record for М9_EdgeVMS and М11.** Companion to [`kubernetes-vs-nomad.md`](../М11_DomainVMS/kubernetes-vs-nomad.md) and [`rauc-alternatives.md`](rauc-alternatives.md), written in answer to "if one server handles 1000 cameras, is that 1000 Podman containers — and another 1000 for recording?"
+**A decision record for М9_EdgeVMS and М11.** Companion to [`kubernetes-vs-nomad.md`](../М11_ClusterVMS/kubernetes-vs-nomad.md) and [`rauc-alternatives.md`](rauc-alternatives.md), written in answer to "if one server handles 1000 cameras, is that 1000 Podman containers — and another 1000 for recording?"
 
 No to both. The interesting part is *why*, because the usual reason given is the wrong one.
 
@@ -101,7 +101,7 @@ Decode and encode. Live transcoding for an operator's 16-up wall, and analytics 
 | Transcode / analytics | Concurrent demand | Yes | 4–16 workers, GPU-pinned |
 | Control plane | Fixed | No | 1 controller |
 
-The middle tier is **demand-driven, not camera-driven** — sized by concurrent viewers and enabled detectors. It is also hardware-bound, which is where Nomad's `exec2` and `virt` drivers earn the argument made in [`kubernetes-vs-nomad.md`](../М11_DomainVMS/kubernetes-vs-nomad.md): a native process needing direct device access does not have to be containerised.
+The middle tier is **demand-driven, not camera-driven** — sized by concurrent viewers and enabled detectors. It is also hardware-bound, which is where Nomad's `exec2` and `virt` drivers earn the argument made in [`kubernetes-vs-nomad.md`](../М11_ClusterVMS/kubernetes-vs-nomad.md): a native process needing direct device access does not have to be containerised.
 
 ---
 

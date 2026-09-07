@@ -6,7 +6,7 @@
 
 **What this module builds is a Node**, and the capital letter matters from М11 onward. A Node is not a server: it is a VMS instance that owns its own database, its own cameras and its own archive — and in М11 it becomes a scheduler allocation that moves between servers, carrying its cameras with it. Everything built here travels intact.
 
-> **Scope note.** This module has been assembled three times, and the last move is the one worth knowing. The course plan first had М10 as Postgres alone with the loop deferred to М11; the loop came back, because a database nothing acts on is not a working system. Then М9's multi-node half landed here — it is desired-state work, and М9 is supposed to be one box. It did not stay: a Nomad cluster and a domain controller turned out to be one arc cut in the wrong place, so scheduling went on to [М11](../М11_DomainVMS/module-design.md). What is left is one Node, which is what the name promises — and М11 takes that same Node, runs several of them, and moves them between servers without changing anything built here.
+> **Scope note.** This module has been assembled three times, and the last move is the one worth knowing. The course plan first had М10 as Postgres alone with the loop deferred to М11; the loop came back, because a database nothing acts on is not a working system. Then М9's multi-node half landed here — it is desired-state work, and М9 is supposed to be one box. It did not stay: a Nomad cluster and a domain controller turned out to be one arc cut in the wrong place, so scheduling went on to [М11](../М11_ClusterVMS/module-design.md). What is left is one Node, which is what the name promises — and М11 takes that same Node, runs several of them, and moves them between servers without changing anything built here.
 
 ---
 
@@ -56,7 +56,7 @@ If a lesson does not move that demo forward, it does not belong in this module.
 | Change notification | **Poll on a timer, `LISTEN/NOTIFY` for latency** | NOTIFY is not durable — a listener that was disconnected misses it forever. Notify for speed, poll for correctness. Teaching only NOTIFY produces a system that silently stops converging. |
 | Node visibility | **Decided for the operator, never by them** | See below. The `cameras` table has no Node column a client may write. |
 | Language | **Python for the course; Go + C++ for the product** | Python teaches the loop and makes the language boundary visible. The product splits it — Go for the controller, C++ for the media worker — and Lesson 24 says why that split costs almost nothing. |
-| Databases | **One, and the Node owns it** | Configuration, archive index and events in one Postgres. М11 adds Nodes, not a second database — the domain above them is a Nomad Variable and an object store, so nothing here is ever demoted to a cache. See [`where-the-database-lives.md`](../М11_DomainVMS/where-the-database-lives.md). |
+| Databases | **One, and the Node owns it** | Configuration, archive index and events in one Postgres. М11 adds Nodes, not a second database — the domain above them is a Nomad Variable and an object store, so nothing here is ever demoted to a cache. See [`where-the-database-lives.md`](../М12_DomainVMS/where-the-database-lives.md). |
 | Database placement | **On the data partition, as a Quadlet unit** | М9's three-way boundary with consequences: `PGDATA` in a rootfs slot is destroyed by the next OS update. |
 | Authentication | **One hand-provisioned operator, marked temporary** | On one Node there is nothing to decide. The tables exist from Lesson 20 so М11 adds policy rather than schema. |
 | Local storage engine | **Postgres, not SQLite** | The archive index and the event stream need a real database regardless, so a second engine for a small cache is pure cost. Partitioning is the deciding feature. |
@@ -176,6 +176,8 @@ So: invisible in configuration, visible in diagnostics and capacity. The same re
 
 *Five lessons, one Node on one server. The student writes the reconciler.*
 
+All five are written: see [`README.md`](README.md) for the index and what can be verified without hardware.
+
 ### Lesson 20 — The database the cloud VMS didn't need
 
 - Why М8's spec forbade a database, and why the answer flips on-prem: in the cloud KVS held the configuration; on a box, the box holds it
@@ -183,7 +185,8 @@ So: invisible in configuration, visible in diagnostics and capacity. The same re
 - **Three kinds of data, one engine.** *Configuration* — cameras, streams, sites, retention policies — is what an operator asked for. The *archive index* and the *event stream* are what this box observed. They differ in almost every property except the engine they run on, and Lesson 23 depends on the difference
 - **Configuration schema:** cameras, streams, sites and retention policies
 - **Observation schema:** the archive index (which segment covers which camera over which range, as a `tstzrange` with a GiST index — М8's timeline query, answered directly) and the event stream (motion, camera offline, operator actions, with a JSONB payload because detectors differ)
-- **Time partitioning from day one.** Both index and events are rolling windows taking on the order of a hundred rows a second at scale. Retention is `DROP PARTITION`, not `DELETE FROM` — Lesson 23 collects on this
+- **Time partitioning from day one.** Both index and events are rolling windows taking on the order of a hundred rows a second at scale. Retention drops whole partitions rather than deleting rows — **note the syntax: PostgreSQL has no `DROP PARTITION` statement** (that is Oracle/MySQL), it is `ALTER TABLE … DETACH PARTITION` then `DROP TABLE`. Measured while writing Lesson 20: `DELETE` of 276,768 rows took 231 ms and **freed no disk at all**; detach-and-drop took 5 ms and returned 38 MB. Lesson 23 collects on this
+- **The pruning trap**, found by running it: partition pruning needs a predicate on the *partition key*, so `span && …` alone opens every partition's index. Queries must bound `lower(span)` explicitly
 - **Events are not metrics.** An operator searches events; an engineer alarms on metrics. They look alike and belong in different modules — М13 has the second kind
 - **Operators and grants, in the schema from the start.** An `operators` table, and a `grants` table carrying `subject`, `capability` and `valid_until`. On one Node authorization is a non-problem — one operator, all rights — so this lesson builds the tables and no policy. **The expiry column is unused here and present so that М11 populates rather than migrates.** The lesson says so, rather than leaving a student to wonder why a column does nothing
 - **Operator-owned columns versus controller-owned columns.** `enabled`, `rtsp_url`, `retention_days`, `site_id` are written by people; `revision`, `assigned_worker`, `observed_revision`, `phase` are written by machines and never appear as form fields
@@ -232,7 +235,7 @@ Each failure mode reproduced on purpose, then handled.
 
 - **Camera offline** → exponential backoff **with jitter**. Two hundred cameras reconnecting in lockstep after a switch reboot is a self-inflicted outage, and the jitter is the whole fix
 - **Stalled stream, socket still open** → `watchdog` fires, that one pipeline restarts, the other forty-nine never notice
-- **Disk full** → retention enforcement degrades by policy, and this is М9's spool-bound question returning with the answer changed: there, a full disk meant choosing between dropping the oldest and stopping recording, because the footage was in transit. Here it is *the archive*, so retention decides and the choice is the customer's, written down. The deletion loop must be conservative: never delete what it cannot prove is superseded. With Lesson 20's partitioning this is `DROP PARTITION` and a segment unlink, not a scan — which is what makes it fast enough to run under pressure
+- **Disk full** → retention enforcement degrades by policy, and this is М9's spool-bound question returning with the answer changed: there, a full disk meant choosing between dropping the oldest and stopping recording, because the footage was in transit. Here it is *the archive*, so retention decides and the choice is the customer's, written down. The deletion loop must be conservative: never delete what it cannot prove is superseded. With Lesson 20's partitioning this is a partition detach-and-drop plus a segment unlink, not a scan — which is what makes it fast enough to run under pressure. Order matters: drop the index rows *before* unlinking, so a crash leaves orphaned files rather than index rows pointing at nothing
 - **The AppHost dies** → systemd restarts it, state is re-derived, and the segment discipline bounds the loss
 - **The fencing rule, introduced small:** on restart, never resume the previous segment — open a new one. Leases and epochs are М11's problem; the rule that makes them necessary lands here
 
@@ -259,7 +262,7 @@ Each failure mode reproduced on purpose, then handled.
 
 Better than М9's, because almost nothing here needs hardware.
 
-**Track 1 — verified in the authoring sandbox.** Postgres runs in a container and needs no appliance; the schema, migrations, the reconcile loop and the state machine are all ordinary software. The loop is tested against a fake actuator exactly as Lessons 11–15 tested against fake AWS objects, which means convergence, backoff, restart and the deliberate mistakes are all provable here.
+**Track 1 — verified in the authoring sandbox, and now actually run.** Postgres 16.13 and plain Python produced every figure printed in Lessons 20, 21 and 23 — the retention timings, the pruning plans, and the seven reconciler tests including the 200-camera jitter spread. The schema, migrations, the reconcile loop and the state machine are all ordinary software. The loop is tested against a fake actuator exactly as Lessons 11–15 tested against fake AWS objects, which means convergence, backoff, restart and the deliberate mistakes are all provable here.
 
 **Track 2 — needs a real bench.** Anything with GStreamer in it: the pipeline strings, the GIL demonstration, the `watchdog` timing, and the memory and thread measurements. The authoring sandbox has no GStreamer and the package mirrors are blocked, so Lesson 22's numbers come from the student's box, produced by a script that ships with the module rather than from figures asserted in the text.
 

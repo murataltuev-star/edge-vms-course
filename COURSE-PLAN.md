@@ -45,7 +45,7 @@ Three of seven layers under IBM's BUSL, in a product that is *shipped to custome
 
 That leaves **Nomad as the only unavoidable BUSL dependency**, and no fork of it exists — unlike Terraform (OpenTofu) and Vault (OpenBao). If that single dependency is unacceptable, the decision is to teach Kubernetes instead, and it should be taken now rather than at М13.
 
-**This is now settled**, in [`consul-and-openbao.md`](./М12_OrchestratedVMS/consul-and-openbao.md). The short version: Consul and OpenBao are not alternatives — they overlap on exactly one thing, mTLS between services — and Consul's mesh CA turns out to be the *same* root → per-locality intermediate → short-leaf design М12 arrives at independently. The decision turns on scope instead: no service mesh issues an identity to a device that has never been on the network, so the product runs a PKI regardless, and a second certificate hierarchy buys nothing. The accepted cost is health-check-filtered discovery, which Nomad's native discovery does not provide.
+**This is now settled**, in [`consul-and-openbao.md`](./М13_OrchestratedVMS/consul-and-openbao.md). The short version: Consul and OpenBao are not alternatives — they overlap on exactly one thing, mTLS between services — and Consul's mesh CA turns out to be the *same* root → per-locality intermediate → short-leaf design М12 arrives at independently. The decision turns on scope instead: no service mesh issues an identity to a device that has never been on the network, so the product runs a PKI regardless, and a second certificate hierarchy buys nothing. The accepted cost is health-check-filtered discovery, which Nomad's native discovery does not provide.
 
 ### 2. Secrets arrive three modules before the module that manages them
 
@@ -67,7 +67,7 @@ The cloud VMS spec forbade a database outright. The appliance needs one, and und
 - The reconcile loop, built against a fake actuator first: desired persisted, actual derived, `observed_revision >= revision` as the only test of applied
 - Fifty GStreamer pipelines in one Python process — the GIL boundary demonstrated, `watchdog` for stall detection, and where Python stops being the right answer
 
-### М11 — DomainVMS: Nodes that move, and the directory above them · 10 lessons (25–34) · [designed](./М11_DomainVMS/module-design.md)
+### М11 — DomainVMS: Nodes that move, and the directory above them · 10 lessons (25–34) · [designed](./М11_ClusterVMS/module-design.md)
 
 Where the course stops being about infrastructure and starts being about the product, and the only module where getting it wrong corrupts customer data rather than merely stopping a service. М10's loop already works on one box; this is everything that appears once there is more than one.
 
@@ -79,7 +79,7 @@ Where the course stops being about infrastructure and starts being about the pro
 
 **Detectors resolve an open question rather than needing a lesson:** attaching one creates another object of another worker class with its own opaque config, and the controller does not change. Where inference runs is therefore a *deployment* question, answered by worker class and placement constraints.
 
-### М12 — OrchestratedVMS: identity, trust and the fleet · 10 lessons (35–44) · [designed](./М12_OrchestratedVMS/module-design.md)
+### М12 — OrchestratedVMS: identity, trust and the fleet · 10 lessons (35–44) · [designed](./М13_OrchestratedVMS/module-design.md)
 
 **Merged from the old М12 and М14**, which asked the same question twice, and given Nomad's cross-site federation from М9. The fourth and last scope level: things that must be true above any single domain — and, since the rename from FederatedVMS, the layer that supplies capacity as well as authority.
 
@@ -147,16 +147,16 @@ Roughly **49 lessons**, or a full semester. Worth deciding deliberately rather t
 1. **The BUSL decision, taken once.** If Nomad is unacceptable in a shipped product, that changes М9 and everything above it. Decide before М11, not after М13
 2. **Does the vendor run a MASA?** BRSKI is unimplementable without one, and it is a permanent operational commitment — a signing service that must outlive every appliance shipped
 3. **М13's position** — before or after the domain controller, and now also sharpened by М12 being nine lessons long
-4. **Does the product ship a database HA option?** [`where-the-database-lives.md`](./М11_DomainVMS/where-the-database-lives.md) settles the architecture — each Node owns its configuration, the domain keeps a directory — but whether HA is offered for the directory, and priced, is commercial
+4. **Does the product ship a database HA option?** [`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md) settles the architecture — each Node owns its configuration, the domain keeps a directory — but whether HA is offered for the directory, and priced, is commercial
 
 **Resolved since the first version of this plan:**
 
 - ~~Where inference runs~~ — a deployment question, not a schema one. Opaque worker config means the controller is unchanged whether inference runs on the appliance, at the camera or in the cloud (М11)
 - ~~Where the write API belongs~~ — built in М11, unauthenticated and marked as such; authentication arrives with OpenBao in М12
 - ~~Lesson numbering~~ — **superseded twice by restructuring.** Current: М9 is 16–19, М10 is 20–24, М11 is 25–34, М12 is 35–45, М13 is 46–49
-- ~~Consul in or out~~ — out, and for a better reason than licensing alone ([`consul-and-openbao.md`](./М12_OrchestratedVMS/consul-and-openbao.md))
+- ~~Consul in or out~~ — out, and for a better reason than licensing alone ([`consul-and-openbao.md`](./М13_OrchestratedVMS/consul-and-openbao.md))
 - ~~Identity split across М12 and М14~~ — they were one layer; merged into М12
-- ~~Where the domain database lives, and whether hosts replicate it~~ — **there is no domain database.** Each **Node** owns its configuration in its own Postgres and publishes one way upward; the domain's directory is a Nomad Variable per Node plus an object per Node; a domain is the largest set of servers on a reliable network ([`where-the-database-lives.md`](./М11_DomainVMS/where-the-database-lives.md))
+- ~~Where the domain database lives, and whether hosts replicate it~~ — **there is no domain database.** Each **Node** owns its configuration in its own Postgres and publishes one way upward; the domain's directory is a Nomad Variable per Node plus an object per Node; a domain is the largest set of servers on a reliable network ([`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md))
 
 ---
 
