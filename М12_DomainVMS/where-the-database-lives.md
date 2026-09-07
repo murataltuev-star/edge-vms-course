@@ -8,7 +8,9 @@ A fourth revision followed the PKI split — М11 now runs a certificate authori
 
 A fifth revision removed the domain database entirely. The objection that did it was aimed at this record's own first verdict — *"a node database, one per Node, and a domain directory, one per domain; both Postgres"* — and consisted of pointing at the last three words. It is wrong, and the reason it took five revisions to see is instructive: the directory does two jobs with nothing in common, and a database is the obvious answer to either one taken alone.
 
-Each revision is left visible rather than quietly edited out, because the sequence is the lesson.
+A sixth revision came from redefining the words above it. **Cluster and domain used to span the same machines**, which made the split between М11 and М12 feel arbitrary — so a cluster became *servers on one network you would bet recording on* and a domain became *the clusters under one directory*, different scales rather than different framings. That reclassified the restore point, and with it this record's last remaining claim about what the domain is *needed* for. Corrected below.
+
+Each revision is left visible rather than quietly edited out, because the sequence is the lesson — and this one is the sixth in a row that took state **out** of the domain.
 
 ---
 
@@ -19,8 +21,9 @@ Five things. The first was wrong in every earlier draft, in a different way each
 1. **One database, and it belongs to a Node.** Postgres per Node, holding its configuration, its archive index and its events. **The domain has no database at all** — its directory is a Nomad Variable per Node plus an object per Node in an object store, because those two halves are a small consistent thing and a large opaque thing and neither is a query workload.
 2. **The Node owns its configuration and replicates one way upward.** It does not cache someone else's. A Node is a Nomad allocation with stable identity, so when a server dies the Node moves and **its cameras go with it** — nothing rewrites ownership, because ownership never changed.
 3. **Destructive operations must never run from state whose authority is unreachable.** Recording continues; deletion does not.
-4. **A domain is the largest set of nodes sharing a reliable network.** That is what decides where domain boundaries fall, and it makes the whole Edge → Node → Domain → Federation progression physical rather than arbitrary.
+4. **A cluster is the largest set of servers sharing a reliable network; a domain is the clusters under one directory.** The first boundary is physics, the second administration — and **a Node never crosses the first**, which is what makes the restore point cluster-scoped and puts the fencing epoch at exactly the scope Nomad's per-region raft provides.
 5. **Storage is chosen by shape, not by habit.** Small and consistent goes in the scheduler's store; large and queryable goes in the database; large and opaque goes in an object store. A record about where databases live turns out to be mostly about what they are *not* for.
+6. **The restore point is cluster-scoped, so the domain is not needed to recover either.** Earlier drafts made much of *"needed to recover, not to run."* That was true while the restore point lived at the domain. It does not: a Node restores from **its own cluster's** object store and its own cluster's Nomad Variables, so a dead server fails over with the domain unreachable. **What actually stops without the domain is creation, cross-cluster lookup, rebalance and issuing new certificates** — and none of that is recording *or* recovery.
 
 ---
 
@@ -176,15 +179,30 @@ A Node that cannot confirm its retention policy keeps footage and reports that i
 
 ---
 
-## Where the domain boundary falls
+## Where the boundaries fall — and there are two of them
 
-Node-owned configuration means a Node no longer depends on the network for its *own* settings. But four things still cross it — creating a camera, rebalancing, **reaching the epoch issuer**, and **restoring a dead Node's configuration from the directory** — and the last two are what a failover needs. A domain spanning a link you do not trust is a domain that cannot fail over.
+Earlier drafts of this record had one boundary and drew it in the wrong place. There are two, they are set by different things, and separating them is what made М11 and М12 different modules rather than two halves of one.
 
-> **A domain is the largest set of nodes that share a reliable network.**
+> **A cluster is the largest set of servers that share a network you would bet recording on.** Physics draws this one.
+>
+> **A domain is the clusters under one directory, one CA and one set of operators.** Administration draws this one.
 
-Three buildings on one campus LAN: one domain. Fifty stores across a country: fifty domains, federated. The boundary is not organisational and not a matter of taste — **each level of the progression begins at a network you stopped trusting**, which is what makes Edge → Node → Domain → Federation physical rather than a tidy-looking hierarchy.
+A campus with three server rooms is **one domain, three clusters**. Fifty stores across a country are fifty clusters, and whether they are one domain or fifty is a question about who administers them, not about the network. Rented servers in a cloud region are a cluster like any other.
 
-This settles two of М11's open questions at once: one controller per domain, and a domain per reliable network.
+### What actually crosses each
+
+Node-owned configuration means a Node does not depend on the network for its *own* settings. What is left:
+
+| Crosses | Scope | Needed for failover? |
+|---|---|---|
+| Reaching the epoch issuer | **cluster** — Nomad's own raft | **Yes** |
+| Restoring a dead Node's configuration | **cluster** — its object store | **Yes** |
+| Creating a camera, rebalancing, cross-cluster lookup | domain | No |
+| Issuing a certificate to a new service | domain | No |
+
+**Both of failover's dependencies are inside the cluster**, on the same servers it is failing over between. That is why a cluster is a complete product on its own, and why the domain can be unavailable without anything stopping — including recovery, which earlier drafts of this record got wrong.
+
+**A Node never crosses a cluster boundary**, and two independent arguments put it there: its footage is on that cluster's disks, and the epoch comes from a per-cluster raft. When two unrelated reasons pick the same line, the line is usually real.
 
 ---
 
@@ -194,9 +212,12 @@ Earlier drafts of this record spent a page here choosing between repmgr, pg_auto
 
 **What losing the directory costs now:** creating cameras, cross-Node lookup, rebalancing, certificate issuance for new services, and — the one that matters — every Node's off-box restore point, so no failover can complete. Recording continues. So does editing a camera at its own Node, and renewing a certificate a Node already holds, up to its lifetime.
 
-> **The directory is not needed to run; it is needed to recover.**
+> ~~**The directory is not needed to run; it is needed to recover.**~~
+> **Superseded.** It is not needed to recover either.
 
-That was already a weaker requirement than a database's — a backup may be minutes stale and briefly unreachable without anyone noticing. Splitting it removed the requirement entirely: **Nomad's raft is replicated because the scheduler needs it to be, and durability is what an object store sells.** Both are highly available for reasons that have nothing to do with this product, which is the cheapest kind of availability there is.
+That sentence was true while the restore point lived at the domain, and the sixth revision moved it: a Node restores from **its own cluster's** object store and Nomad Variables, both on the servers it is already failing over between. So the domain is absent from the recovery path entirely.
+
+What remains is weaker still: **Nomad's raft is replicated because the scheduler needs it to be, and durability is what an object store sells.** Both are highly available for reasons that have nothing to do with this product, which is the cheapest kind of availability there is — and neither of them is at the domain.
 
 ### Superseded, and kept for the trap in it
 

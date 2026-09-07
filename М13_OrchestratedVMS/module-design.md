@@ -18,7 +18,7 @@ It is also the first layer that may be switched off without the product stopping
 >
 > **Orchestration.** М11 calls Nomad *the orchestrator* — it places allocations on servers inside one domain. This module is *OrchestratedVMS* because it decides something one level up: **which domain, and whose hardware, a workload lands on at all.** Nomad still does the placing; this layer decides what there is to place on. Same verb, two scopes — exactly like Node and Server, and the module says so on its first page rather than letting students merge them.
 >
-> **Federation.** Lesson 36 teaches Nomad *federation* — regions joined by gossip, sharing no state. That is the **workload** plane spanning sites. The product plane — trust, identity and entitlement spanning domains — is a different federation, and the module teaches them adjacently on purpose, because students who meet the two a module apart tend to merge them.
+> **Federation.** **М12** teaches Nomad *federation* — regions joined by gossip, sharing no state — because that is how a domain is built from several clusters. It is the **workload** plane. The product plane — trust, identity and entitlement spanning *domains* — is a different federation entirely, and this module is where it arrives. Students who meet the two a module apart tend to merge them, so Lesson 36 names the distinction before using either.
 
 ---
 
@@ -38,9 +38,9 @@ If this layer hands out the allocations a domain runs on, how can it also be all
 
 The definition М11 arrived at already covers the cloud case without amendment:
 
-> **A domain is the largest set of servers sharing a network you would bet recording on.**
+> **A cluster is servers close enough to share a network you would bet recording on.**
 
-Rented servers in one cloud region share such a network. So they can be a domain. Servers in a building share such a network. So they can be a domain. **A site's cameras and a cloud Node do not** — the uplink is exactly the link the whole course says you must not bet recording on — which is why the interesting configuration is not "cloud" but *mixed*, and why the next section is arithmetic rather than opinion.
+Rented servers in one cloud region share such a network. So they can be a cluster, and a domain can be built from them exactly as М12 builds one from server rooms. **A site's cameras and a cloud Node do not share such a network** — the uplink is precisely the link the whole course says you must not bet recording on — which is why the interesting configuration is not "cloud" but *mixed*, and why the next section is arithmetic rather than opinion.
 
 The rule produces three consequences that this module spends nine lessons on:
 
@@ -213,17 +213,17 @@ The vault is central — it runs in this layer's cloud, alongside everything els
 
 ---
 
-### Lesson 36 — Many sites: regions, and one of them is a cloud
+### Lesson 36 — A cluster you rent
 
-Moved here from М9, because "many sites" is where this module begins rather than where the appliance module ends.
+М12 already builds a domain out of several clusters, and taught Nomad regions to do it. **This lesson changes one thing: where the servers come from.**
 
-- Regions are **fully independent** — they share no jobs, clients or state, and nothing replicates between them
-- They are loosely coupled by a **gossip protocol**, so a job can be submitted to any region, or any region's state queried, transparently; requests are forwarded to the right regional servers
-- Why "independent regions, loosely coupled" suits camera sites better than one stretched cluster: a site that loses its uplink keeps recording
-- **A cloud region is just a region.** Rented servers on one provider network satisfy М11's definition of a domain exactly as a rack in a building does, and Nomad cannot tell the difference. That is the whole mechanism behind "edge, cloud or mixed" — there is no second system
-- Namespaces and node pools for separating tenants and hardware classes — and node pools are how *edge* and *cloud* hardware are kept apart within one region when a deployment is mixed
+- **A cloud region is just a cluster.** Rented instances on one provider network satisfy М11's definition exactly as a rack in a building does — servers close enough to share a network you would bet recording on — and Nomad cannot tell the difference. **That is the whole mechanism behind edge, cloud and mixed: there is no second system, and no new concept in this lesson**
+- **Provisioning as the actual new thing.** М12's clusters were bought and racked; these are created on demand, which is the capacity this layer supplies. What that adds is a lifecycle — created, resized, destroyed — that a server room does not have
+- **A mixed domain**, which is the shape that pays: one on-prem cluster recording a warehouse's forty cameras, one rented cluster recording six cameras at a shop with no hardware, **one directory over both**. М11's rule holds unchanged — no Node crosses between them, and neither would want to
+- **Node pools and namespaces** for keeping hardware classes and tenants apart within a cluster
+- **What does *not* transfer:** a rented cluster's cameras reach it over the internet rather than a LAN, so М13's bandwidth arithmetic and the camera-as-buffer answer apply to it and not to the on-prem one. **The clusters are identical; their camera links are not**
 
-**Deliverable:** two federated regions — one on local hardware, one on rented instances — each running the VMS, both reachable from one CLI.
+**Deliverable:** one domain, two clusters — one local, one rented — both recording, both in one directory, and a written note of every place the two differ. The list should be shorter than students expect.
 
 ---
 

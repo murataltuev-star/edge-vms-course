@@ -8,7 +8,9 @@ The organising decision, taken up front because everything depends on it: **a No
 
 > **Scope note.** These four lessons and [М12](../М12_DomainVMS/module-design.md)'s six were one module until this split, and the merge that created it had a good reason: *a cluster and the layer above it are one arc, and splitting them meant teaching the two-level idea twice.* That reason still holds, and the split answers it rather than ignoring it — **the two-level idea is introduced here and collected in М12**, which is the same setup-and-collection the course already runs across module boundaries, from М9's AWS credentials to М13's vault. Lesson 26 says out loud that Nomad places *Nodes* and something above will place *cameras*; М12 Lesson 30 is where that second level arrives and the student is asked to name the difference. Taught inside one module, the two levels blur, because both are "scheduling".
 
-> **Cluster is not domain.** This module builds a **cluster**: the set of servers a scheduler manages. М12 builds a **domain**: the set of Nodes under one directory. They are normally the same machines and they are not the same thing — a cluster answers *where can this run*, a domain answers *what is supposed to be running*. The test: **losing the cluster stops rescheduling; losing the domain stops nothing that is already recording.** This is the fifth pair of words the course keeps apart, after Node/Server/Site, the two orchestrations and the two federations.
+> **Cluster is not domain, and they are different *sizes*.** A **cluster** is servers close enough to share a network you would bet recording on — one LAN, usually one server room. That boundary is set by **physics**. A **domain** is the clusters under one directory, one CA and one set of operators, and that boundary is set by **administration**. A campus is one domain with three clusters; a cloud deployment is one domain with one. This is the fifth pair of words the course keeps apart, after Node/Server/Site, the two orchestrations and the two federations.
+>
+> **The rule that follows, and this module is built on it: a Node fails over *within* its cluster and never across one.** Its footage is on that cluster's disks, so relocating the process away from the archive it wrote would gain nothing and lose everything. A whole cluster dying is therefore not a failover — it is a larger event, and [М12](../М12_DomainVMS/module-design.md)'s job is to say clearly what it took with it rather than to heal it.
 
 ---
 
@@ -47,6 +49,8 @@ Node 3 reappears on another server with its configuration intact and resumes its
 | Fencing | **At the archive, not at the controller** | You cannot stop a zombie from writing. You can make its writes land where nobody reads. |
 | Epoch issuer | **A Nomad Variable with check-and-set** | Atomic, monotonic and raft-replicated, so it survives losing a server. Nomad's *variable lock* is the trap: its lock ID is an opaque UUID, not a fencing token. |
 | Orchestrator | **Nomad** | Non-container workloads, Podman kept as the runtime, far smaller operational surface. See [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md). |
+| Failover scope | **Within a cluster. A Node never crosses one** | Two independent reasons, and either alone would decide it: footage lives on the cluster's disks, and **the epoch comes from Nomad's raft, which is per-cluster** — regions share no state, so there is no domain-wide issuer and no need for one. |
+| The restore point | **Cluster-scoped object storage — a backup, not a directory** | Failover needs somewhere off-box to restore configuration from. That is not the same thing as knowing *which Node has camera 7*, which is М12's and does not exist yet here. |
 | **Minimum version** | **Nomad ≥ 1.8.0. Target 1.10.x LTS or 2.0.x** | The `disconnect` block Lesson 28 is built on arrived in **1.8.0**; before that there is only `max_client_disconnect`/`stop_after_client_disconnect` and **no `reconcile` strategies at all**. Those predecessors were then *removed* in 1.10.0, so writing against 1.7.x teaches syntax that no longer exists. 1.7.x is also EOL with an allocation-directory-escape CVE fixed only in Enterprise. |
 | Single-server deployments | **No orchestrator at all** | М9's Quadlet stack is better on one box, and Lesson 25 makes students argue that rather than assert it. |
 
@@ -245,7 +249,7 @@ Server A dies
        1. empty Postgres; migrations run
        2. read its own Nomad Variable — "I am Node 3; my configuration
           is object node-3/rev-812, and these are my camera ids"
-       3. fetch that object from the domain's object store
+       3. fetch that object from the CLUSTER's object store
        4. restore it; check the revision against the Variable
        5. request a new epoch
        6. begin recording into epoch-N+1
@@ -253,7 +257,7 @@ Server A dies
 
 - **Step 2 is why identity cannot live on disk.** The disk is on the dead server
 - **Step 4 is where the RPO becomes visible.** The revision that comes back may be behind the one the operator last saw acknowledged
-- **Steps 2 and 3 are why the domain must be reachable to fail over**, even though nothing in it is needed to *run*. Note they are two different things to reach — the scheduler's own store and an object store — and neither is a database somebody installed for this
+- **Steps 2 and 3 are why something off-box must be reachable to fail over**, even though nothing off-box is needed to *run*. Both live **inside this cluster** — Nomad's own store and an object store on these same servers — which is why failover survives the domain, and everything above it, being unreachable. **М12 does not have to exist for this lesson to work**, and that is the cleanest evidence that a cluster is a product on its own
 
 #### The mechanism, and what not to build
 

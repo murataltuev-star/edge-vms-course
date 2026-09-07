@@ -13,7 +13,7 @@ A shipped edge VMS is seven layers deep. The course builds them in dependency or
 | 3 | **Postgres** | What does this system know about itself? | М10 | Designed |
 | 4 | **Domain controller** | Cameras, archives, detectors — the actual product | М10 (one Node) · М11 (many) | Designed |
 | 5 | **OpenBao** | Who is allowed to know what, and how do they prove it? *(smaller than it looks — see below)* | М13 | Designed |
-| 6 | **Prometheus + logs** | Is it working, and how would I know? | М13 | Planned |
+| 6 | **Prometheus + logs** | Is it working, and how would I know? | М14 | Designed |
 | 7 | **Device management** | What do I have, where, on which version? | М12 | Designed |
 
 Layers 1–2 are the two update planes М9 is built around: the OS underneath, the workload on top — both visible on a single box, which is all М9 needs. М9 also owns the **third** thing on that box, which is neither: the data. A spool of recorded-but-not-yet-uploaded segments outlives both planes, and the segments it writes are what М10 turns into the archive. Layers 3–4 are the product. Layers 5–7 are what turns one working box into a fleet somebody can operate.
@@ -154,6 +154,7 @@ What is left for this module is what is genuinely *cross-cutting*:
 - **Alarm on the product, not the process** — М9 L18's rule, stated once for everything above it. Fragment write rate and camera-offline, not CPU graphs
 - **The thin uplink:** remote-write with downsampling, or local retention with pull-on-demand — and what an operator is shown for a site whose uplink is down, which is *not* "healthy"
 - **Logs:** journald, retention, and never letting a secret reach them — sharpened by М10 L20's finding that an RTSP URL carries the password inline, so the leak is a **log-formatting** bug rather than a storage one
+- **A second licensing finding, sharper than the Nomad one.** Grafana, Loki, Tempo and **Mimir** are all **AGPLv3**; Prometheus, VictoriaMetrics, Thanos, Cortex, the OTel Collector and Grafana Alloy are Apache 2.0. BUSL *permitted* this product; AGPL §6 triggers on **conveying at all**, modified or not, and Grafana's free Enterprise binary is explicitly not redistributable. The course's position: teach Prometheus and **ship no dashboard** — the customer installs Grafana and points it at an Apache-2.0 endpoint. Full reasoning in [`М14_Observability/module-design.md`](./М14_Observability/module-design.md)
 
 ---
 
@@ -163,7 +164,7 @@ The order is dependency-driven, not layer-numbered:
 
 - **М9 before М10** — an appliance has to exist before it can be scheduled onto
 - **М10 before М11** — the loop has to work on one box before a scheduler above it, or contested ownership, means anything
-- **М11 before М12** — a Node has to survive its server before a layer above several Nodes means anything
+- **М11 before М12** — a Node has to survive its server, inside one cluster, before a layer across several clusters means anything
 - **М12 before М13** — identity and trust are abstract until there are N Nodes and N endpoints worth protecting
 - **М13 before М14** — so that "never log a secret" is a rule students already understand
 
@@ -212,7 +213,7 @@ Roughly **49 lessons**, or a full semester. Worth deciding deliberately rather t
 - ~~Lesson numbering~~ — **superseded three times by restructuring.** Current: М9 is 16–19, М10 is 20–24, М11 is 25–28, М12 is 29–34, М13 is 35–45, М14 is 46–49. The М11/М12 split moved no lesson numbers at all — Part A and Part B were already contiguous
 - ~~Consul in or out~~ — out, and for a better reason than licensing alone ([`consul-and-openbao.md`](./М13_OrchestratedVMS/consul-and-openbao.md))
 - ~~Identity split across М12 and М14~~ — they were one layer; merged into М12
-- ~~Where the domain database lives, and whether hosts replicate it~~ — **there is no domain database.** Each **Node** owns its configuration in its own Postgres and publishes one way upward; the domain's directory is a Nomad Variable per Node plus an object per Node; a domain is the largest set of servers on a reliable network ([`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md))
+- ~~Where the domain database lives, and whether hosts replicate it~~ — **there is no domain database.** Each **Node** owns its configuration in its own Postgres and publishes one way upward; the domain's directory is a Nomad Variable per Node plus an object per Node; a **cluster** is the largest set of servers on a reliable network and a **domain** is the clusters under one directory ([`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md))
 
 ---
 

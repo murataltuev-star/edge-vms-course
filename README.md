@@ -12,13 +12,19 @@ The module names are not decoration. They mark one idea getting harder four time
 | ---------------------- | ------------------------------- | --------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
 | **М9 · EdgeVMS**       | what it *is*                    | in the image that booted                | nothing — a box is whatever was flashed onto it | replacing the OS underneath a running product without destroying the recordings    |
 | **М10 · NodeVMS** | what it *should be* | in a database on the box | desired state and actual state, inside one process | closing the gap — and never persisting the half that must be re-derived |
-| **М11 · ClusterVMS** | what it should be, *wherever it is running* | in each Node, unchanged when the server dies | **two instances of the same Node** | surviving a server's death without two writers reaching one archive |
-| **М12 · DomainVMS** | what it should be, *and which Node holds it* | in each Node, with a directory above them | Nodes, with the directory | keeping a layer useful while it is allowed to be down |
+| **М11 · ClusterVMS** | what it should be, *on whichever server survived* | in each Node, unchanged when a server dies | **two instances of the same Node** | surviving a server's death without two writers reaching one archive |
+| **М12 · DomainVMS** | what it should be, *and which cluster holds it* | in each Node, with a directory across clusters | Nodes, with the directory | a layer that must stay useful while it is allowed to be down — and honest when a whole cluster is unreachable |
 | **М13 · OrchestratedVMS** | who it *is*, what it may do, **and where it may run** | in a trust root above every domain, in a cloud | domains, with the centre | staying correct while the centre is unreachable — and making edge and cloud one product rather than two |
 
-**Almost every boundary in that table is a network you stopped trusting.** A domain is the largest set of servers sharing a reliable link; past that you federate rather than build a bigger domain. That is what makes the progression physical rather than a tidy-looking hierarchy — and it is also why **rented servers in one cloud region are a domain like any other**, which is what lets М13 offer edge, cloud and mixed deployments from one codebase.
+**Every boundary in that table is a network you stopped trusting — except one, and it is set by administration instead.**
 
-**М11 is the exception, and the exception is instructive.** Its boundary is not a network — a cluster and a domain normally span the same machines. It is a boundary of *authority*: a cluster answers **where can this run**, a domain answers **what is supposed to be running**. The test worth remembering is what breaks when each dies: **losing the cluster stops rescheduling; losing the domain stops nothing that is already recording.**
+A **cluster** is servers close enough to share a link you would bet recording on: one LAN, usually one server room. That is physics. A **domain** is the clusters under one directory, one CA and one set of operators — one customer installation, which may be one cluster or several. That is administration. A campus is one domain, three clusters, three sites; a cloud deployment is one domain, one cluster, fifty sites. **Sites and clusters are many-to-many on purpose**, and rented servers in a cloud region are a cluster like any other, which is what lets М13 offer edge, cloud and mixed from one codebase.
+
+The rule that makes the two modules genuinely different, and everything above depends on it:
+
+> **A Node fails over within its cluster and never across one.** Its footage is on that cluster's disks. So a whole cluster dying is not a failover but a larger event — and М12's job there is to report honestly what is unreachable, not to heal it.
+
+That rule was chosen for archive locality, and it turns out to put the fencing epoch at the right scope too, since Nomad's raft is per-cluster. When two independent arguments land on the same boundary, the boundary is usually real.
 
 ### Three words the course keeps apart
 
@@ -55,10 +61,10 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 15 lessons |
 | [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback | **Written** · 4 lessons (16–19) |
 | [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — the Node's own state<br>4 · AppHost — the loop that acts on it | **Written** · 5 lessons (20–24) |
-| [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — a Node that outlives its server | **Designed** · 4 lessons (25–28) |
-| [**М12** — DomainVMS](./М12_DomainVMS) | 4 · A directory that is not a database, and the domain's own CA | **Designed** · 6 lessons (29–34) |
+| [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — a Node that outlives its server, inside one cluster | **Designed** · 4 lessons (25–28) |
+| [**М12** — DomainVMS](./М12_DomainVMS) | 4 · Several clusters, one directory — which is not a database — and the domain's own CA | **Designed** · 6 lessons (29–34) |
 | [**М13** — OrchestratedVMS](./М13_OrchestratedVMS) | 5 · Identity and the trust root above every domain<br>7 · Enrollment, inventory, version skew<br>+ capacity: allocations, so a Node can run anywhere | **Designed** · 11 lessons (35–45) |
-| М14 — Observability | 6 · Prometheus + logs — collecting what М9–М12 emit | Planned · ~4 (46–49) |
+| [**М14** — Observability](./М14_Observability) | 6 · Prometheus + logs — collecting what М9–М12 emit | **Designed** · 4 lessons (46–49) |
 
 **[GLOSSARY.md](./GLOSSARY.md)** defines every term the course uses precisely — Node versus Server, desired versus actual state, epoch and fencing, and the acronyms it would otherwise leave unexplained.
 
@@ -110,7 +116,9 @@ Four lessons, built on one decision taken up front: **a Node owns its own config
 
 The module states that decision rather than arriving at it, then spends four lessons earning it — because the deciding fact is not obvious: **two writers to one video stream cannot be merged.** Nothing above can arbitrate after the fact, which is why this is the only module in the course where a mistake corrupts customer footage rather than stopping a service.
 
-It is built backwards from one demo. Four Nodes, two hundred cameras; pull the power on a server and watch Node 3 reappear elsewhere with its configuration intact. Then bring the dead server back and let its old instance of Node 3 try to keep writing. **The archive is intact, and the student can prove it.**
+**It is a complete product on its own**, which is the clearest evidence the split was real: one cluster, failing over, restoring from its own object store, asking nothing above it for permission. A single-building customer needs nothing else.
+
+It is built backwards from one demo. Four Nodes, two hundred cameras; pull the power on a server and watch Node 3 reappear elsewhere in the same cluster with its configuration intact. Then bring the dead server back and let its old instance of Node 3 try to keep writing. **The archive is intact, and the student can prove it.**
 
 The answer is that fencing belongs at the archive rather than at the controller: the epoch is part of the segment path, so the stale instance cannot name the files it would otherwise corrupt. You cannot stop a zombie from writing — you can only make its writes harmless.
 
@@ -121,7 +129,9 @@ The answer is that fencing belongs at the archive rather than at the controller:
 
 Six lessons, and they open from an unusual position: **М11 already works.** A Node owns its configuration and survives its server without any coordinating layer at all, so this module has to justify why one should exist. Exactly three things a Node cannot know about itself — where a camera is, which Node should get a new one, and how to move one — and that is a **directory**, not a configuration store.
 
-Which makes it the first layer in the course that is **allowed to be unavailable**. Recording continues without it, playback continues, and an operator can still edit a camera at its own Node. What stops is creation, cross-Node lookup, rebalancing, and restoring a Node that has died — and only the last of those matters.
+Which makes it the first layer in the course that is **allowed to be unavailable** — and more so than it first looked. Recording continues without it, playback continues, an operator can still edit a camera at its own Node, and **a dead server still fails over**, because М11 put the restore point in the cluster rather than the domain. What stops is creation, cross-cluster lookup, rebalancing, and issuing certificates to new services. None of it is recording.
+
+The shape that makes it a module rather than a chapter is a campus: **three server rooms, three clusters, one customer, one directory.** Nomad calls a cluster a region and joining them is federation, so the mechanism was always here. And when a whole cluster goes dark the domain's job is honesty rather than recovery — those cameras are on that cluster's network, so **rebalancing them elsewhere would produce Nodes failing to reach a dead network and hide the real fault.**
 
 It turns out not to be a database at all: a key-value entry per Node for the list, an object per Node for the restore point. Five revisions of the decision record moved in one direction throughout, and the last one removed the database entirely.
 
@@ -145,9 +155,17 @@ It does not introduce the domain CA — М11 already built one. What this module
 - [Module design](./М13_OrchestratedVMS/module-design.md) — allocations and the edge/cloud/mixed triangle, secure introduction, the root above every domain, lifetimes against offline tolerance, inventory and version skew
 - [Consul and OpenBao](./М13_OrchestratedVMS/consul-and-openbao.md) — two answers to mTLS, and why the product needs only one
 
-## М14 — not yet started
+## М14 — Observability
 
-**It does not introduce observability — it collects it.** Every module below already emits signals, defined where the failure that needs them was introduced: М9's health-check ladder and spool age, М10's `camera_silent_seconds`, М11's failover time, М12's replica lag. What is left here is what is genuinely cross-cutting — scrape topology bounded by the domain, cardinality, the thin uplink, and the rule that gives the module its spine: **monitoring must not share a failure domain with the thing it monitors.** Scope and sequencing in the [course plan](./COURSE-PLAN.md).
+**It does not introduce observability — it collects it.** Every module below already emits signals, defined where the failure that needed them was introduced: М9's health-check ladder and spool age, М10's `camera_silent_seconds`, М11's failover time, М12's replica lag. Six signals for a whole VMS, and the module opens by taking inventory rather than installing anything.
+
+What makes it hard is one sentence: **in a datacentre, no news is bad news; at the edge, no news is *no news*.** A site that stops answering might be broken, or its uplink might be down, or the building might have lost power — four different problems for four different people, and an identical signal in every case. A monitoring system that cannot tell *broken* from *unreachable* either pages somebody whenever a router reboots or stays quiet through a real outage, and in practice does both.
+
+That collides with the rule everybody knows — **monitoring must not share a failure domain with the thing it monitors** — because Prometheus pulls, and you cannot pull across the link you stopped trusting. The resolution is two observers with different jobs: a local one that sees everything and dies with the site, and a remote one whose only job is to tell silence from health. Which is **detail is local, summary is domain** for the fourth time — the rule that predicted a fourth data type would arrive.
+
+It also carries the course's second licensing finding, and a sharper one than Nomad's: **Grafana, Loki, Tempo and Mimir are AGPLv3**, and §6 triggers on shipping at all, modified or not. Prometheus, VictoriaMetrics, Thanos, Cortex, the OTel Collector and Grafana Alloy are Apache 2.0. The course's position is to teach Prometheus and **ship no dashboard** — which is a better product decision anyway, since an operator should not need two consoles.
+
+- [Module design](./М14_Observability/module-design.md) — the observer's paradox, what silence means, alert design, and the AGPL problem
 
 ---
 

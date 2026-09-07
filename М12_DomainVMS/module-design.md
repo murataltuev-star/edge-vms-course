@@ -8,19 +8,21 @@ Exactly three things. This module builds them, and spends as much effort on what
 
 > **Scope note.** These six lessons and [М11](../М11_ClusterVMS/module-design.md)'s four were one module until this split. The merge that created it had a good reason — *a cluster and the layer above it are one arc* — and the split answers it rather than ignoring it: **the two-level idea is introduced in М11 Lesson 26 and collected here in Lesson 30**, where the student is asked to name the difference between a scheduler placing Nodes and a directory placing cameras. Taught inside one module, the two levels blur, because both are "scheduling". A boundary between them is what makes the distinction survive.
 
-> **Domain is not cluster.** М11 built a **cluster**: the set of servers a scheduler manages. This module builds a **domain**: the set of Nodes under one directory. Normally the same machines, and not the same thing — a cluster answers *where can this run*, a domain answers *what is supposed to be running*. The test: **losing the cluster stops rescheduling; losing the domain stops nothing that is already recording.**
+> **Domain is not cluster, and a domain is bigger.** М11 built a **cluster** — servers close enough to share a network you would bet recording on, a boundary set by physics. This module builds a **domain**: the clusters under one directory, one CA and one set of operators, a boundary set by **administration**. A campus is one domain with three clusters and three server rooms; a cloud deployment is one domain with one cluster serving fifty sites. Sites and clusters are many-to-many on purpose.
+>
+> **And М11's rule holds here: a Node never crosses a cluster.** So this module is not about moving work between clusters — it is about *knowing where the work is*, and about being honest when a whole cluster is unreachable.
 
 ---
 
 ## The thesis
 
-A Node owning its own configuration answers almost everything, which raises the fair question of what is left for a domain layer at all. Exactly three things:
+A Node owning its own configuration answers almost everything, and М11 showed a cluster failing over with nothing above it at all — **it restores from its own object store and never asks anyone's permission.** That raises the fair question of what is left for a domain layer, and the answer is: everything that stops being knowable once there is **more than one cluster.** Exactly three things:
 
 | | Why a Node cannot answer it |
 |---|---|
 | **Lookup** — where is camera 7? | Asking every Node cannot distinguish *deleted* from *unreachable* |
 | **Creation** — which Node gets a new camera? | Capacity and reachability across Nodes is domain knowledge by definition |
-| **Rebalance** — move camera 7 from N to M | Two single-writer databases, no coordinator, no transaction |
+| **Rebalance** — move camera 7 from N to M | Two single-writer databases, no coordinator, no transaction. *Within a cluster only — a camera does not move between clusters any more than a Node does* |
 
 That is a **directory**, not a configuration store — which is why it may be down while recording continues and while an operator edits a camera at its own Node.
 
@@ -34,6 +36,8 @@ Which is also why this is the first layer in the course that is **allowed to be 
 
 | Decision | Choice | Why |
 |---|---|---|
+| Clusters per domain | **One or many. Nomad regions, federated** | A campus is three server rooms and one customer. Regions share no state and gossip-couple, which is exactly what a domain needs: each cluster schedules on with the others unreachable. |
+| A dead cluster | **Reported, never healed** | Its cameras are on its network and its footage on its disks. Rebalancing them elsewhere produces Nodes failing to reach a dead network and hides the real fault. |
 | Domain layer | **A directory, not a configuration store** | Lookup, creation and rebalance only. It may be unavailable without recording stopping. |
 | Directory storage | **No database at all.** A Nomad Variable per Node for the list; an object store for the restore point | The two halves have nothing in common: kilobytes queried constantly, and megabytes read once on failover. Splitting them removes the last per-domain database — so a domain really is a set of Nodes on a network, not an installation. |
 | Convergence token | **Monotonic revision**, not token equality | Ordering expresses *distance*; equality only *difference*. See below. |
@@ -82,6 +86,40 @@ The reflexive answer, and wrong here: cameras are **not uniform** (4K at 8 Mbps 
 **Store the placement; do not derive it.** Rebalance, when genuinely wanted, is explicit: **budgeted** at N moves per minute, observable, and interruptible.
 
 ---
+## Several clusters, one domain
+
+A domain with one cluster is the common case and the boring one. The interesting shape is a campus: three server rooms, three LANs, one customer, one directory — and that is what makes this a module rather than a chapter.
+
+**Nomad calls a cluster a *region*, and joining regions is Nomad federation.** So the mechanism was always here rather than three modules up:
+
+- Regions are **fully independent** — they share no jobs, clients or state, and nothing replicates between them
+- They are loosely coupled by a **gossip protocol**, so a job can be submitted to any region, or any region's state queried, transparently, with requests forwarded to the right regional servers
+- Which is exactly the property a domain needs: **each cluster keeps scheduling with the others unreachable**, and the domain reads across them without owning them
+
+### What that does to the directory
+
+The list is a Nomad Variable per Node, and Variables belong to a region. So with several clusters the directory is **a federated read**, not one store — the domain scans each region through Nomad's forwarding rather than holding a copy. Single-writer per key is unchanged, and so is the limit: tens of Nodes per cluster, low hundreds of clusters' worth before the scan stops being adequate.
+
+The **restore points** are unaffected — they are objects in each cluster's own store, outside Nomad, and only that cluster ever reads them.
+
+### And it settles the epoch
+
+**Raft is per-cluster.** Federated regions share no state, so there is no domain-wide raft to issue from — which would be a serious problem if a Node could move between clusters, and is a non-problem because it cannot. **The epoch only ever needs to be monotonic for one Node, and that Node lives in exactly one cluster for its whole life.** Nomad's per-region raft is not a compromise here; it is precisely the right scope.
+
+> Worth saying out loud, because it is the kind of thing that looks like luck: the failover rule was chosen for **archive locality** — footage is on the cluster's disks — and it happens to make the fencing token's scope correct too. When two independent arguments land on the same boundary, the boundary is usually real.
+
+### When a whole cluster dies
+
+Not a failover, and the module must not pretend otherwise. Those cameras are on that cluster's network; if the servers are gone, so is the ability to reach the cameras and the disks holding their footage. Nothing above can heal it.
+
+So the domain's job is **honesty, not recovery**:
+
+- Report the cluster as **unreachable**, distinct from its Nodes being unhealthy — you do not know which
+- Show what is **unavailable rather than lost**: footage on those disks still exists and will return
+- **Refuse to rebalance its cameras elsewhere.** They cannot be reached from another cluster, so a placement decision would produce Nodes trying to record cameras on a dead network — busy, failing, and hiding the real fault
+
+---
+
 ## Lessons
 
 *Six lessons. The three things a Node cannot know about itself, and the discipline of a layer that may be down.*
