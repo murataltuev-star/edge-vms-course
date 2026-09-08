@@ -6,7 +6,7 @@ Every module before this one built a scope of the product: a box, a Node, a clus
 
 That is why this module changed kind rather than just name. Its earlier drafts were a fifth scope — a federated layer holding a root CA, an identity provider, a vault, a fleet inventory and rented capacity. Item by item, each turned out to be either something the domain can do for itself or something the vendor does *across customers*. What remained is this module, and it is short on purpose.
 
-> **Scope note.** Formerly *VendorVMS*, and before that *FederatedVMS*. Both names described a layer that provided capacity or trust to domains from above. The domain turned out not to need either — it provisions its own clusters from the customer's cloud account (М12 Lesson 37) and is its own trust root (М12 Lesson 36). What a vendor genuinely does is vouch for hardware, sell entitlements, publish updates, and optionally rent capacity; none of it is a runtime dependency, and the module is arranged to prove that.
+> **Scope note.** Formerly *OrchestratedVMS*, and before that *FederatedVMS*. Both names described a layer that provided capacity or trust to domains from above. The domain turned out not to need either — it provisions its own clusters from the customer's cloud account (М12 Lesson 37) and is its own trust root (М12 Lesson 36). What a vendor genuinely does is vouch for hardware, run the licence system, publish updates, and optionally rent capacity; none of it is a runtime dependency, and the module is arranged to prove that.
 
 ---
 
@@ -34,7 +34,7 @@ The right-hand column is a list of things earlier drafts of this course would ha
 
 A customer's domain has been running for a year. Then, on a date the student picks, **the vendor disappears** — MASA, licence server, update server, everything.
 
-For thirty days: recording continues, operators log in, cameras are added within the entitlement's grace period, certificates renew, a server fails over. Nothing that was already working stops. What *cannot* happen is enumerated, not implied: no new appliance enrolls with BRSKI (approval still works), no new OS bundle arrives, and on day thirty-one the entitlement cache reaches its stated floor and the product degrades exactly as Lesson 34 wrote down.
+For thirty days: recording continues, operators log in, cameras are added within the entitlement's grace period, certificates renew, a server fails over. Nothing that was already working stops. What *cannot* happen is enumerated, not implied: no new appliance enrolls with BRSKI (approval still works), no new OS bundle arrives, and on day thirty-one the licence runs out of grace and the product degrades exactly as М12 Lesson 34 wrote down — and Lesson 44 here explains why that floor was set where it was.
 
 Then the vendor comes back, and the student shows what caught up and what was never affected.
 
@@ -47,6 +47,10 @@ Then the vendor comes back, and the student shows what caught up and what was ne
 | The vendor's position | **Outside the product, across a one-way boundary** | One customer is one domain; a domain is its own top. The vendor is a counterparty, not a layer. |
 | Trust | **The vendor holds no root over any customer** | A vendor-held root that signs the customer's CA can impersonate the customer's domain. The single cryptographic relationship is the MASA voucher, said once at enrollment. |
 | Entitlement | **Issued by the vendor, cached and degraded by the domain** | What degrades is the domain's decision (М12 L34); the vendor only supplies the number. Withholding it never stops recording. |
+| The licence system | **The vendor's system of record, with one signing key; the licence itself a signed document verified offline** | The domain must verify without calling anyone (Lesson 44). The vendor's database answers *who owns serial 4471* and *what did customer X buy*; the signed document is the only part that travels. |
+| What a licence binds to | **The domain, by its stable domain id — never a server, never a box** | A Node is not a server (М11), so a licence pinned to hardware would break on the first failover. Binding to the root's fingerprint would tie a licence to a rotation drill (М12 L36). The domain id is the one thing that outlives both. |
+| Where the count is enforced | **At admission, by placement — eventually consistent** | No consistent domain-wide counter exists (the directory of directories cannot be consistent, М12 L30). Refusing a *new* camera is safe to get slightly wrong; stopping an existing one is not, so runtime never enforces. |
+| Licence revocation | **None. Lifetimes only** | The same rule as certificates (М12 L36): revocation assumes you can reach something. A licence carries a validity window and a grace period; a perpetual licence carries neither and is the honest offer for *what if you are gone*. |
 | Updates | **Published by the vendor, pulled by the domain's own update server** | The vendor never reaches an appliance. An air-gapped domain is updated by carrying a bundle to its hawkBit. |
 | Inventory | **Reported by the domain, at the customer's discretion** | The vendor sees aggregates for support, never configuration or footage. |
 | Rented capacity | **A commercial option, not an architecture** | A rented cluster is a cluster (М12 L37). Whether the vendor is the landlord is the hosting-business question, kept separate from whether the product works. |
@@ -57,21 +61,21 @@ Then the vendor comes back, and the student shows what caught up and what was ne
 
 ## Prerequisites
 
-- **М12 entire** — especially Lesson 34 (the domain's update server and entitlement cache), Lesson 35 (enrollment, and where the MASA sits), Lesson 36 (the domain as its own root).
+- **М12 entire** — especially Lesson 34 (the domain's update server and entitlement cache — the consuming side of Lesson 44), Lesson 35 (enrollment, and where the MASA sits), Lesson 36 (the domain as its own root, and the lifetime rule the licence reuses).
 - **М9 Lesson 17** — the RAUC signing chain. Publishing a bundle is signing it, and the vendor's bundle-signing key is the one secret in this module that genuinely is the vendor's.
-- **М13** — the vendor-disappears demo is measured with its instruments, and Lesson 44's canary halt condition is М13 Lesson 40's alert rule.
+- **М13** — the vendor-disappears demo is measured with its instruments; `entitlement_seconds_remaining` is one of its gauges, and Lesson 45's canary halt condition is М13 Lesson 40's alert rule.
 
 ---
 
 ## Lessons
 
-*Four lessons, each about one thing the vendor does — and what the product must not need from it.*
+*Five lessons, each about one thing the vendor does — and what the product must not need from it.*
 
 ### Lesson 42 — The vendor's side, and the one-way boundary
 
 - The thesis, and the two-column table above, defended item by item
 - **Why one customer is one domain**, and therefore why nothing above the domain is the product's — the argument that dissolved the earlier drafts, retold so students can reproduce it rather than accept it
-- **What the vendor can see**, exactly: aggregated inventory the domain chose to report, entitlement consumption, bundle versions. And what it cannot, by construction: configuration, footage, credentials, the trust root
+- **What the vendor can see**, exactly: aggregated inventory the domain chose to report, licence consumption, bundle versions. And what it cannot, by construction: configuration, footage, credentials, the trust root
 - **The grace-period contract**, stated once for everything: entitlement, MASA availability, update availability. Each has a number the domain caches for, and the datasheet carries all three
 - The private-vendor case: a customer who *is* their own vendor — a large integrator, a government — and what changes (nothing in the product; everything in who runs a MASA)
 
@@ -82,7 +86,7 @@ Then the vendor comes back, and the student shows what caught up and what was ne
 ### Lesson 43 — MASA, and what running one commits you to
 
 - **The voucher**, from the vendor's side: a signed statement that *this* IDevID is *my* hardware and may trust *that* registrar. The one cryptographic thing a customer ever needs from the vendor, and it is said once
-- **Device → domain routing.** A pledge has no domain yet. Something above must know serial 4471 belongs to customer X — an entitlement lookup, and the only reason enrollment touches the vendor at all
+- **Device → domain routing.** A pledge has no domain yet. Something above must know serial 4471 belongs to customer X — a lookup in the licence system's database (Lesson 44), and the only reason enrollment touches the vendor at all
 - **The commitment, stated plainly:** a service with an availability requirement and a signing key that must never leak, **for the lifetime of every appliance ever shipped.** Ten years after the last unit sells, the MASA is still on call
 - **What happens when it is not:** the registration-with-approval fallback from М12 Lesson 35 is what a customer uses when the MASA is unreachable — and it is also the answer to *what if the vendor is gone.* The ladder from М12 read the other way round
 - Manufacturing: installing an IDevID at the factory, and the secret database that implies
@@ -91,9 +95,28 @@ Then the vendor comes back, and the student shows what caught up and what was ne
 
 ---
 
-### Lesson 44 — Entitlement, publishing, and rollout across customers
+### Lesson 44 — The licence system
 
-- **Issuing entitlement:** what a licence actually encodes — camera count, features, a validity window — and why it is signed rather than looked up, so the domain can verify it offline for the whole grace period
+*The vendor's side of М12 Lesson 34. That lesson decided what the domain does when the licence lapses; this one decides everything upstream of that — what a licence is, who it names, how it gets there, and what the vendor keeps to be able to issue the next one.*
+
+- **What the vendor runs**, and it is smaller than the word *system* suggests: a **database** (customers, what each bought, which appliance serials are theirs, which domain id each customer's installation carries), an **issuer** (one signing key, in an HSM, that turns a row of that database into a signed document), and a **consumption view** (whatever domains chose to report). The database is an ordinary multi-tenant Postgres at the vendor — the first ordinary database the course has seen since М8, and it is fine here because *nothing in a customer's domain depends on reaching it*
+- **What a licence is:** a signed document, not a lookup. Domain id; camera count; features (which detectors, which integrations); `not_before` / `not_after`; the grace period; a serial and the issuer's key id. Signed with the vendor's **licence key** — a second key beside the bundle-signing key of М9 Lesson 17, kept separate because losing one must not mean losing the other. The public half ships inside the product like a RAUC keyring, and rotates the same way: through a bundle, with the old key trusted until every licence it signed has expired
+- **What it binds to — the domain id, and nothing physical.** The course has spent three modules making sure a Node is not a server; a licence pinned to a serial or a MAC would undo that on the first failover. Binding to the root certificate's fingerprint is the next temptation, and it ties every licence to М12 Lesson 36's rotation drill — a vendor that is gone could never reissue. So the domain gets a **stable id at creation**, recorded in its Variables and carried in its root certificate's subject, and the licence names that. A copied licence in a second domain with the same id is *not prevented*, and the lesson says so plainly: offline licensing keeps honest customers honest, and the copy is found in the consumption view (Lesson 46), commercially, not by the product refusing to record
+- **How it arrives.** The same way everything from the vendor arrives — **pulled**. A licence is published to the domain's update server (М12 Lesson 34's hawkBit) as an artifact with no OS payload, fetched on the same poll as bundles, and carried in by hand on an air-gapped domain. No licence server is ever called at runtime; there is no *phone home* to fail. Renewal is the next document appearing on the same path
+- **Where the domain keeps it, and who checks it.** The document is small and must be consistent, so it lives in the **hosting cluster's Nomad Variables** and is republished to every cluster's Variables through the one-way configuration flow. Every Node verifies the signature *itself*, against the shipped public key — the relay is trusted to deliver, never to vouch. A `licensed` condition on each object (М10 Lesson 24 built the slot for it, with nothing wired in; this is where the wire goes)
+- **Where the count is enforced — and where it must not be.** There is no consistent domain-wide counter; М12 Lesson 30 proved the directory of directories cannot be one. So the count is checked **at admission, by placement**: a new camera is refused a cluster when the reported total is at the limit. That check is eventually consistent, and being wrong by a handful during a partition is a commercial rounding error. The check that is *never* made is at runtime against cameras already recording — the rule from М12 that anything cached from above may keep recording forever applies to the licence with no exception. Withholding a licence removes the right to grow, never the recording
+- **Lifetimes, not revocation.** The certificate argument of М12 Lesson 36, again: revocation assumes reachability, so the licence has none. What it has is `not_after` plus grace, and the two commercial shapes that follow from it — a **subscription** (short validity, auto-renewed on the pull path, so a lapsed payment becomes *cannot add cameras* after grace) and a **perpetual** licence (no `not_after`; only update access is time-boxed). The second is the honest answer to *what if you are gone*, and a vendor that will not offer it is asking the customer to bet the estate on the vendor's survival
+- **What the product reports upward**, at the customer's discretion, and it is the same channel as support inventory: domain id, licence serial, cameras in use, features in use. Enough for the vendor to bill and to spot a duplicate id; nothing else. The datasheet lists the fields
+- **What it looks like from the console.** `entitlement_seconds_remaining` is a gauge (М13 Lesson 38's emitted signals), placement exports `cameras_licensed` and `cameras_in_use`, and the alarm is on the product — *thirty days to the floor* — not on a licence server being unreachable, which the product cannot even observe
+- **Trial and feature gating** as the same mechanism with smaller numbers: a trial is a licence with a short window; a feature is a boolean in the document that a detector process reads at start. No second system
+
+**Deliverable:** a vendor-side issuer (a CLI that signs a JSON document with an Ed25519 key, and a table it reads from), a domain that verifies it with the shipped public key and refuses the twenty-first camera; the licence expires, the grace runs out, and the twenty cameras keep recording while the console counts down; a renewal arrives through hawkBit and the count reopens; and the same document dropped into a second domain works — and shows up in the consumption view as two domains with one id.
+
+---
+
+### Lesson 45 — Publishing, and rollout across customers
+
+- **A licence is a bundle with no payload.** It travels the path Lesson 44 chose — published by the vendor, pulled by the domain's update server, carried by hand when air-gapped — so the rollout machinery below already moves licences too
 - **Publishing a bundle:** signing with the vendor's key (М9 Lesson 17's chain, from the other side), and pushing to each domain's update server — never to a box
 - **Rollout as a population operation:** canary customers, rings, and **a halt condition that fires automatically** — М13 Lesson 40's alert rule, now pointed at a fleet
 - **Version skew across the fleet is the normal state.** You cannot update every customer at once, so the controller–worker contract tolerates N−1 and preferably N−2 — which is where М12's opaque config and revision ordering pay off across the fleet, not just within a domain
@@ -103,11 +126,11 @@ Then the vendor comes back, and the student shows what caught up and what was ne
 
 ---
 
-### Lesson 45 — The hosting business, support, and what a vault is actually for
+### Lesson 46 — The hosting business, support, and what a vault is actually for
 
 - **Rented capacity as a commercial offer.** A rented cluster is just a cluster (М12 L37). What changes when the vendor is the landlord: on-call for hardware the customer does not own, egress costs for video that is not yours, and a compliance surface. **The module frames this decision and does not take it**
 - **Multi-tenancy, if you are hosting.** One vendor, many customers' cloud credentials and integration secrets — and this, finally, is what **OpenBao** is for: dynamic credentials and secrets held on behalf of many tenants. Everything else the course once assigned to a vault was removed by giving machines identities
-- **Support inventory:** what a domain reports upward, at the customer's discretion; what the vendor's support view can and cannot answer; and the divergence idea from М12 Lesson 30 across customers — something running that no domain reported is a gap in the model
+- **Support inventory:** what a domain reports upward, at the customer's discretion; what the vendor's support view can and cannot answer; and the divergence idea from М12 Lesson 30 across customers — something running that no domain reported is a gap in the model, and two domains reporting one domain id is Lesson 44's copied licence, found the only way it can be
 - **What the vendor must never be able to reach**, restated as a test: a support engineer with full vendor access attempts to read a customer's configuration, footage, or credentials, and the attempt fails by construction rather than by policy
 
 **Deliverable:** the vendor-side view across three domains, and a written statement of every question it cannot answer — plus the test that a full-access vendor account cannot read a customer's camera password.
@@ -116,9 +139,9 @@ Then the vendor comes back, and the student shows what caught up and what was ne
 
 ## Verification plan
 
-**Track 1 — verified in the authoring sandbox.** Nearly all of it: a simulated MASA is an HTTP service signing vouchers; entitlement is a signed document verified offline; rollout is a state machine against fake domains; the boundary document is prose. The vendor-disappears demo needs only the domain from М12 and a switch.
+**Track 1 — verified in the authoring sandbox.** Nearly all of it: a simulated MASA is an HTTP service signing vouchers; the licence system is a signing CLI, a small database and a signed document verified offline with `openssl pkeyutl`; the count is enforced by a placement service against fake clusters; rollout is a state machine against fake domains; the boundary document is prose. The vendor-disappears demo needs only the domain from М12 and a switch.
 
-**Track 2 — needs real hardware.** An IDevID installed at manufacture, and a TPM — neither can be simulated in a way worth teaching. A student without them reads Lesson 39's first half and runs the approval fallback instead.
+**Track 2 — needs real hardware.** An IDevID installed at manufacture, and a TPM — neither can be simulated in a way worth teaching. A student without them reads Lesson 43's first half and runs the approval fallback instead.
 
 ---
 
@@ -137,4 +160,4 @@ Then the vendor comes back, and the student shows what caught up and what was ne
 - [Eclipse hawkBit](https://eclipse.dev/hawkbit/) — pull-based update delivery; the vendor publishes, the domain's server serves
 - [М12's design](../М12_DomainVMS/module-design.md) — the domain as its own root, and the contracts that let a fleet run on mixed versions
 
-*Written 5 September 2026 as FederatedVMS; became VendorVMS on 7 September; became VendorVMS the same day, when the layer it described turned out not to exist.*
+*Written 5 September 2026 as FederatedVMS; became OrchestratedVMS on 7 September; became VendorVMS the same day, when the layer it described turned out not to exist. The licence system became its own lesson on 8 September.*

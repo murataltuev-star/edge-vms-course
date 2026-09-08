@@ -68,7 +68,7 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — a Node that outlives its server, inside one cluster<br>4 · The cluster's own directory | **Designed** · 5 lessons (25–29) |
 | [**М12** — DomainVMS](./М12_DomainVMS) | 4 · Several clusters, one directory of directories<br>5 · The domain as its own root: enrollment, lifetimes, identity<br>7 · Its own update server, and clusters it rents for itself | **Designed** · 8 lessons (30–37) |
 | [**М13** — Observability](./М13_Observability) | 6 · Prometheus + logs — collecting what М9–М12 emit, from the domain's hosting cluster | **Designed** · 4 lessons (38–41) |
-| [**М14** — VendorVMS](./М14_VendorVMS) | *Not a layer.* MASA, entitlement, publishing, the hosting business — and what the vendor must never be able to do | **Designed** · 4 lessons (42–45) |
+| [**М14** — VendorVMS](./М14_VendorVMS) | *Not a layer.* MASA, the licence system, publishing, the hosting business — and what the vendor must never be able to do | **Designed** · 5 lessons (42–46) |
 
 **[GLOSSARY.md](./GLOSSARY.md)** defines every term the course uses precisely — Node versus Server, desired versus actual state, epoch and fencing, and the acronyms it would otherwise leave unexplained.
 
@@ -164,15 +164,15 @@ It also carries the course's second licensing finding, and a sharper one than No
 
 ## М14 — VendorVMS
 
-Four lessons, and a different kind of module: it builds no scope of the product, because the domain is the top of it. What sits above a domain is not a layer — **it is the vendor**, a separate organisation on the far side of a boundary the product is designed to work across in one direction only.
+Five lessons, and a different kind of module: it builds no scope of the product, because the domain is the top of it. What sits above a domain is not a layer — **it is the vendor**, a separate organisation on the far side of a boundary the product is designed to work across in one direction only.
 
-The thesis is the property enterprise security buyers ask for by name: **the product must work with the vendor unreachable, or gone.** The demo is built backwards from it — a year-old domain, and on a date the student picks, the vendor disappears entirely. For thirty days nothing that was working stops; what *cannot* happen is enumerated rather than implied; on day thirty-one the entitlement cache reaches its stated floor and degrades exactly as М12 wrote down.
+The thesis is the property enterprise security buyers ask for by name: **the product must work with the vendor unreachable, or gone.** The demo is built backwards from it — a year-old domain, and on a date the student picks, the vendor disappears entirely. For thirty days nothing that was working stops; what *cannot* happen is enumerated rather than implied; on day thirty-one the licence runs out of grace and degrades exactly as М12 wrote down.
 
 The module is the mirror image of the course so far. М9–М12 asked what the product must do; this one asks **what the vendor may do, and what it must never be able to do** — vouch for its hardware but never join a box to a domain on its own; issue an entitlement but never stop recording by withholding one; publish a bundle but never push it onto an appliance; rent a cluster but never hold the customer's root. The right-hand column is a list of things earlier drafts of this course would have let the vendor do.
 
-What genuinely belongs to the vendor: **the MASA** and the ten-year commitment running one implies; issuing entitlement; signing and publishing bundles, and rolling them out across customers with a canary that halts itself; support inventory at the customer's discretion; and the hosting business as a commercial option the module frames without taking. **OpenBao's real scope finally appears here** — dynamic credentials for a vendor holding many customers' secrets — after everything else once assigned to a vault was removed by giving machines identities.
+What genuinely belongs to the vendor: **the MASA** and the ten-year commitment running one implies; **the licence system** — a database, one signing key, and a signed document the domain verifies offline, bound to the domain id rather than to any hardware, counted at admission and never against a camera already recording; signing and publishing bundles, and rolling them out across customers with a canary that halts itself; support inventory at the customer's discretion; and the hosting business as a commercial option the module frames without taking. **OpenBao's real scope finally appears here** — dynamic credentials for a vendor holding many customers' secrets — after everything else once assigned to a vault was removed by giving machines identities.
 
-- [Module design](./М14_VendorVMS/module-design.md) — the one-way boundary, MASA, entitlement and rollout, the hosting business
+- [Module design](./М14_VendorVMS/module-design.md) — the one-way boundary, MASA, the licence system, publishing and rollout, the hosting business
 
 ## How these lessons are written
 

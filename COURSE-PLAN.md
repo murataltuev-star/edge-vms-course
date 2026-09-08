@@ -149,13 +149,14 @@ What is left for this module is what is genuinely *cross-cutting*:
 - **Logs:** journald, retention, and never letting a secret reach them — sharpened by М10 L20's finding that an RTSP URL carries the password inline, so the leak is a **log-formatting** bug rather than a storage one
 - **A second licensing finding, sharper than the Nomad one.** Grafana, Loki, Tempo and **Mimir** are all **AGPLv3**; Prometheus, VictoriaMetrics, Thanos, Cortex, the OTel Collector and Grafana Alloy are Apache 2.0. BUSL *permitted* this product; AGPL §6 triggers on **conveying at all**, modified or not, and Grafana's free Enterprise binary is explicitly not redistributable. The course's position: teach Prometheus and **ship no dashboard** — the customer installs Grafana and points it at an Apache-2.0 endpoint. Full reasoning in [`М13_Observability/module-design.md`](./М13_Observability/module-design.md)
 
-### М14 — VendorVMS: the far side of the boundary · 4 lessons (42–45) · [designed](./М14_VendorVMS/module-design.md)
+### М14 — VendorVMS: the far side of the boundary · 5 lessons (42–46) · [designed](./М14_VendorVMS/module-design.md)
 
 **Not a scope of the product.** Formerly FederatedVMS, then OrchestratedVMS — a layer above domains holding a root CA, an identity provider, a vault, a fleet inventory and rented capacity. Item by item, each turned out to be something the domain does for itself or something the vendor does across customers. What remained is the vendor, and the thesis is the property enterprise buyers ask for by name: **the product must work with the vendor unreachable, or gone.**
 
 - **What the vendor may do, and must never be able to:** vouch for its hardware but never join a box to a domain alone; issue an entitlement but never stop recording by withholding one; publish a bundle but never push it to an appliance; rent a cluster but never hold the customer's root
 - **The MASA**, and the ten-year commitment running one implies; device → domain routing as the only reason enrollment touches the vendor
-- **Entitlement, publishing and rollout across customers** — a canary that halts itself, and version skew across the fleet as the normal state
+- **The licence system** — the vendor's system of record and one signing key; a licence as a signed document bound to the domain id, pulled like a bundle, verified offline by every Node, counted at admission and never at runtime; lifetimes instead of revocation, and the perpetual licence as the honest answer to *what if you are gone*
+- **Publishing and rollout across customers** — a canary that halts itself, and version skew across the fleet as the normal state
 - **The hosting business** as a commercial option framed and not taken; **OpenBao's real scope** finally appearing — a multi-tenant vendor's secrets — after everything else once assigned to a vault was removed by giving machines identities
 ---
 
@@ -182,9 +183,9 @@ The order is dependency-driven, not layer-numbered:
 | М11 — ClusterVMS | 5 | 29 |
 | М12 — DomainVMS | 8 | 37 |
 | М13 — Observability | 4 | 41 |
-| М14 — VendorVMS | 4 | 45 |
+| М14 — VendorVMS | 5 | 46 |
 
-**45 lessons**, or a full semester — down from 49, because collapsing the layer above the domain removed four lessons of redundancy. М10–М14 are each a genuine module rather than an appendix.
+**46 lessons**, or a full semester — down from 49, because collapsing the layer above the domain removed four lessons of redundancy, and then up one when the licence system, which had been a bullet, turned out to be a lesson. М10–М14 are each a genuine module rather than an appendix.
 
 **М12 is now the largest at eight lessons**, with a visible seam between the domain's *structure* (30–34) and the domain *looking after itself* (35–37). If it needs splitting, that is where.
 
@@ -210,7 +211,7 @@ The order is dependency-driven, not layer-numbered:
 
 - ~~Where inference runs~~ — a deployment question, not a schema one. Opaque worker config means the controller is unchanged whether inference runs on the appliance, at the camera or in the cloud (М11)
 - ~~Where the write API belongs~~ — built on every Node in М12 Lesson 32, unauthenticated and marked as such; authentication arrives one lesson later from the domain signer, and enrollment replaces the hand-provisioned credential in Lesson 35
-- ~~Lesson numbering~~ — **superseded three times by restructuring.** Current: М9 is 16–19, М10 is 20–24, М11 is 25–29, М12 is 30–37, М13 Observability is 38–41, М14 VendorVMS is 42–45. **45 in total.** The М11/М12 split moved no lesson numbers at all — Part A and Part B were already contiguous
+- ~~Lesson numbering~~ — **superseded three times by restructuring.** Current: М9 is 16–19, М10 is 20–24, М11 is 25–29, М12 is 30–37, М13 Observability is 38–41, М14 VendorVMS is 42–46. **46 in total.** The М11/М12 split moved no lesson numbers at all — Part A and Part B were already contiguous
 - ~~Consul in or out~~ — out, and for a better reason than licensing alone: the product runs a PKI regardless, so a mesh CA is a second hierarchy that buys nothing. The comparison record was retired when OpenBao left the product too
 - ~~Identity split across М12 and М14~~ — they were one layer; merged into М12
 - ~~Where the domain database lives, and whether hosts replicate it~~ — **there is no domain database.** Each **Node** owns its configuration in its own Postgres and publishes one way upward; the domain's directory is a Nomad Variable per Node plus an object per Node; a **cluster** is the largest set of servers on a reliable network and a **domain** is the clusters under one directory ([`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md))

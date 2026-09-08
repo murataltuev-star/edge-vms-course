@@ -53,7 +53,7 @@ A wall showing four sites. Then, in order:
 2. **A server dies.** Its Node moves. **One** alert fires, naming the server, not two hundred naming cameras.
 3. **A cluster's uplink is cut.** The domain shows it as **unreachable, not healthy and not broken**, with the age of its last report and what is therefore unknown.
 4. **The uplink returns.** The backlog drains at a stated rate, the gap in the graphs is visible and labelled, and nothing was invented to fill it.
-5. Finally, a student greps the whole monitoring stack for a camera password **and finds nothing**, because Lesson 45 made that impossible.
+5. Finally, a student greps the whole monitoring stack for a camera password **and finds nothing**, because Lesson 41 made that impossible.
 
 If a lesson does not move that wall forward, it does not belong here.
 
@@ -78,7 +78,7 @@ If a lesson does not move that wall forward, it does not belong here.
 
 - **М9 Lesson 18** — the health-check ladder, and *a health check is not monitoring*. This module supplies the other half of that distinction.
 - **М9 Lesson 19** — `spool_oldest_seconds`, and why age beats count.
-- **М10 Lesson 20** — events are not metrics; and the credential hiding in `rtsp_url`, which Lesson 49 collects on.
+- **М10 Lesson 20** — events are not metrics; and the credential hiding in `rtsp_url`, which Lesson 41 collects on.
 - **М10 Lesson 24** — `camera_lag` and `camera_silent_seconds`, and positions versus reasons.
 - **М11 Lesson 28** and **М12 Lesson 30** — failover duration, epoch conflicts, replica lag.
 - **М12 Lesson 37** — regions, because a fleet view spans them.

@@ -80,7 +80,7 @@ A Node owns its own retention policy, so it cannot go stale on that. Entitlement
 
 plus the **registrar**, the door a box knocks on to join the domain. Every outage in that column is bounded, and none of it is recording or recovery.
 
-**At the vendor** (М14): the MASA that vouches for its own hardware; the entitlement issuer; the bundle signing key and the publishing pipeline; a support view of whatever inventory customers chose to report; and, optionally, a hosting business that rents clusters — the one place OpenBao appears, for a multi-tenant vendor holding many customers' secrets.
+**At the vendor** (М14): the MASA that vouches for its own hardware; the licence system — a customer database, one signing key, and a signed document naming a domain id that every Node verifies offline, pulled through the domain's own update server and counted only at admission; the bundle signing key and the publishing pipeline; a support view of whatever inventory customers chose to report; and, optionally, a hosting business that rents clusters — the one place OpenBao appears, for a multi-tenant vendor holding many customers' secrets.
 
 ### 1.5 The stores, chosen by shape
 
@@ -289,7 +289,9 @@ The rule that came out of it — *small and consistent in the scheduler's store;
 
 **And the security improvement hiding in it:** a vendor-held root that signs the customer's CA is a vendor who can impersonate the customer's domain. The self-signed CA that every earlier module had marked *temporary* was the right design all along, and was promoted to the customer's permanent root. Five hand-provisioned stand-ins were collected inside М12: four replaced by giving things identities, one promoted.
 
-**What М13 became:** VendorVMS — not a scope, a counterparty. Its thesis is the property enterprise buyers ask for by name: **the product must work with the vendor unreachable, or gone.** Its centrepiece is a table of what the vendor *may* do against what it *must never be able to* — and the right-hand column is a list of things earlier drafts of the course would have let the vendor do.
+**What М14 became:** VendorVMS — not a scope, a counterparty. Its thesis is the property enterprise buyers ask for by name: **the product must work with the vendor unreachable, or gone.** Its centrepiece is a table of what the vendor *may* do against what it *must never be able to* — and the right-hand column is a list of things earlier drafts of the course would have let the vendor do.
+
+**The one thing that grew on that side:** the licence system, which had been a bullet, became a lesson once the thesis was applied to it. A licence is a signed document the domain verifies offline, bound to the domain id (a Node is not a server, and the root has a rotation drill, so neither may anchor it), pulled through the domain's own update server like a bundle, and enforced only at admission — because no consistent domain-wide counter exists and the rule that *cached from above may keep recording forever* admits no exception for money. Revocation does not exist; lifetimes do, and a perpetual licence is the honest offer to a customer asking what happens if the vendor is gone.
 
 ### Step 11 — Observability is domain-level
 
