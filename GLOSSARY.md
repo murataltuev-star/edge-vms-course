@@ -8,6 +8,8 @@ Terms the course uses precisely, and acronyms it would otherwise leave unexplain
 |---|---|
 | **Node** | A VMS instance — its own database, its own cameras, its own archive index. М10 builds one. From М11 it is a scheduler allocation with stable identity that **moves between servers**, carrying its cameras with it. **A Node is not a server.** |
 | **Server** | A box with CPUs and disks, running whichever Nodes the scheduler places on it. A Nomad *client*. |
+| **Domain signer** | The one Nomad job at the domain that holds keys and signs — certificates for machines, tokens for people. The only domain service that cannot be re-provisioned from nothing, and the reason М13's delegated root matters. Hosted by one designated cluster. |
+| ~~**Domain controller**~~ | **Retired.** Named a component the design dissolved: its database became cluster Variables and object stores, its scheduler became Nomad, its API moved onto every Node, its restore point moved into the cluster. What remains at the domain is a signer, a stateless placement function and a read view — none of them authoritative, which is why the old name misleads. |
 | **Site** | Where cameras physically are — a building, a store. The only one of these an operator names. **Sites and clusters are many-to-many on purpose:** a campus is one domain with three clusters and three sites; a cloud deployment is one domain with one cluster serving fifty sites. |
 
 Two more that are easy to blur:

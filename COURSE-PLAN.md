@@ -203,7 +203,7 @@ Roughly **49 lessons**, or a full semester. Worth deciding deliberately rather t
 
 1. ~~**The BUSL decision, taken once.**~~ **Resolved** — the Additional Use Grant permits this product; the risk is the analytics-plugin roadmap, not the appliance. See the licensing section above. What remains open is a counsel review of that one question
 2. **Does the vendor run a MASA?** BRSKI is unimplementable without one, and it is a permanent operational commitment — a signing service that must outlive every appliance shipped
-3. **М13's position** — before or after the domain controller, and now also sharpened by М12 being nine lessons long
+3. **М14's position** — before or after М13, and sharpened by М13 being eleven lessons long. See the sequencing section
 4. **Does the product ship a database HA option?** [`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md) settles the architecture — each Node owns its configuration, the domain keeps a directory — but whether HA is offered for the directory, and priced, is commercial
 
 **Resolved since the first version of this plan:**

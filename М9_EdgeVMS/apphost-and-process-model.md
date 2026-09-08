@@ -10,7 +10,7 @@ No to both. The interesting part is *why*, because the usual reason given is the
 
 1. **Container-per-camera fails on lifecycle, not overhead.** The overhead is real but survivable. The lifecycle coupling is not.
 2. **Recording is not a second process.** It is a branch of the pipeline that already owns the camera connection.
-3. **Two supervisors, not one.** The orchestrator manages *workers*; a domain controller manages *cameras*. Merging them is the mistake this record exists to prevent.
+3. **Two supervisors, not one.** The orchestrator manages *workers*; the cluster's placement manages *cameras*. Merging them is the mistake this record exists to prevent. *(Written when the course still had a "domain controller"; the second supervisor turned out to be a stateless placement function in М11 Lesson 29, and the name was retired.)*
 
 ---
 
@@ -122,7 +122,7 @@ The controller is a reconciliation loop: desired state in Postgres, actual state
 
 ### Why not extend the process supervisor to cover cameras
 
-Because a process supervisor reconciles *services in dependency order* and a domain controller reconciles *thousands of runtime objects created by operators*. They look similar — both compare desired to actual and both carry a revision — and that resemblance is exactly the trap. A system that grows a second reconciliation loop without deciding which one is authoritative ends up unable to answer "has this configuration change actually taken effect?" with anything better than reasoning across two mechanisms that were never designed to agree.
+Because a process supervisor reconciles *services in dependency order* and a camera placement reconciles *thousands of runtime objects created by operators*. They look similar — both compare desired to actual and both carry a revision — and that resemblance is exactly the trap. A system that grows a second reconciliation loop without deciding which one is authoritative ends up unable to answer "has this configuration change actually taken effect?" with anything better than reasoning across two mechanisms that were never designed to agree.
 
 Keep them layered, not merged: the supervisor knows about workers, the controller knows about cameras, and only the controller knows which camera lives on which worker.
 

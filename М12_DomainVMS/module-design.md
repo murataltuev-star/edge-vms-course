@@ -34,6 +34,7 @@ Which is also why this is the first layer in the course **allowed to be unavaila
 
 | Decision | Choice | Why |
 |---|---|---|
+| Domain services | **One signer job (CA + token issuer), placement, and a read view — hosted by one designated cluster** | No controller and no authoritative state. The signer's key is the only thing that cannot be re-provisioned from nothing, and delegation from М13's root is what makes even that recoverable. |
 | Clusters per domain | **One or many. Nomad regions, federated** | A campus is three server rooms and one customer. Regions share no state and gossip-couple, which is exactly what a domain needs: each cluster schedules on with the others unreachable. |
 | A dead cluster | **Reported, never healed** | Its cameras are on its network and its footage on its disks. Rebalancing them elsewhere produces Nodes failing to reach a dead network and hides the real fault. |
 | Domain layer | **A directory of directories, and not consistent** | Cross-cluster lookup, choosing a cluster, and saying when an answer is partial. Within-cluster lookup, placement and rebalance are М11's. |
@@ -121,6 +122,40 @@ So the domain's job is **honesty, not recovery**:
 
 ---
 
+## The domain services: no controller, four processes, one key
+
+The word *domain controller* was retired from this course on purpose, because it names something that no longer exists and implies an authority the layer deliberately does not have. What runs at the domain is small enough to list:
+
+| Service | Kind | When it is down |
+|---|---|---|
+| **The CA** | holds a key, signs certificates | renewal stops — bounded by certificate lifetime minus margin |
+| **The token issuer** | holds a key, signs identity tokens | nobody *new* logs in; existing tokens run to expiry; break-glass (Lesson 33) |
+| **Cluster-level placement** | stateless computation | new cameras get no cluster |
+| **The aggregating read view** | stateless, federated reads | the console sees only its own cluster |
+
+Every outage in that column is bounded, and none of it is recording or recovery. That is the thesis, made into a table.
+
+**The CA and the token issuer are one service.** They are the same operational thing — a process that holds keys and signs — with one availability story bounded by the same arithmetic and one thing to protect. Run them as one Nomad job with two keys, not two jobs. Calling them *the domain signer* keeps the point visible.
+
+### One cluster hosts the domain, and that is a decision
+
+A Nomad job runs in one region. Regions share no state, and Nomad does not reschedule across them. So the domain services are hosted by **one designated cluster**, and if that cluster dies they die with it — there is nothing to fail over *to*, and the thesis says that is acceptable.
+
+Acceptable is not the same as accidental. **Which cluster hosts the domain is a stated deployment decision**, recorded where the directory can report it, and not wherever an installer happened to run the job first. The default is the cluster with the most reliable power and uplink, which is usually the one with the operators in it.
+
+### The one piece of state, and why it is recoverable
+
+Placement and the read view can be re-provisioned in another cluster from nothing. **The signer cannot: it holds the key every certificate in the domain chains to**, and losing the hosting cluster loses it. Two answers, and they are the delegation principle again:
+
+- **Once М13 exists**, the domain intermediate is delegated from an offline root, so a lost intermediate is **re-issued from above**. Delegation makes the key recoverable by construction, which is a better argument for the hierarchy than any the PKI lessons make on their own
+- **In this module alone**, before there is a root, the self-signed key needs an explicit backup somewhere the hosting cluster's death cannot reach — another cluster's object store, or offline. **One line, and nobody writes it down**, which is how a burned-out server room becomes a domain whose every Node must be re-enrolled by hand
+
+### Cold start, which the rehydration lesson never had to face
+
+М11's Lesson 27 walks a Node's restart step by step. A *domain's* first start has a step that sequence does not: **before the signer runs, no Node in the domain can present a certificate.** The order is Nomad up on its own install-time TLS → the signer scheduled → certificates issued → Nodes begin publishing. In that window a Node records — that is the whole design — but cannot yet be seen by anything above it. Lesson 30 walks this sequence, because a student who has not seen it will build a signer that depends on a Node that depends on the signer.
+
+---
+
 ## Lessons
 
 *Five lessons. The three things a cluster cannot know, and the discipline of a layer that may be down.*
@@ -134,6 +169,7 @@ So the domain's job is **honesty, not recovery**:
 - **Two-level placement, and each level decides only what it knows.** The **domain** picks the *cluster*, on **reachability** — which clusters can see this site's network at all. The **cluster** picks the *Node*, on **capacity**, which only it measures accurately. Neither level can do the other's job, and that is why this is not the same lesson as М11's
 - **The third level, named once.** Nomad places allocations on servers; the cluster places cameras on Nodes; the domain places cameras on clusters. Students who have now written two of the three stop finding schedulers mysterious
 - **What the domain holds and does not.** A federated read across regions, plus each cluster's object store for restore points — which the domain never touches, because recovery is cluster-local
+- **The domain's first start, step by step.** Nomad up → the signer scheduled in the hosting cluster → certificates issued → Nodes publish. Name the window in which a Node is recording and invisible, and say why nothing in the sequence is allowed to depend on a Node
 - **Why ordering beats equality**, from the section above: replica lag across clusters is a *distance*, and "four revisions behind for forty minutes" is an incident where "diverged" is an alert you learn to ignore
 - **Opaque config** — the domain stores and forwards what it does not parse, which is what lets a new worker class ship without touching it
 - **Where the domain ends:** at the first network link you would not bet *administration* on. Not recording — recording stopped being the test when the cluster boundary took that job
@@ -280,7 +316,7 @@ The directory aggregates grants for review, never for enforcement. And when a No
 2. **How much retention policy is domain design rather than infrastructure?** Schedules, per-camera overrides and legal hold may deserve their own lessons.
 3. **How short should a grant's lifetime be?** Lesson 33 makes students pick a number and defend it; the product must pick one too, trading an operator locked out during an outage against a revoked administrator retaining access.
 4. **What does an air-gapped domain use for object storage?** MinIO on the servers is the obvious answer, and then somebody has to back *that* up. This is what remains of the high-availability question after the domain database was removed.
-5. **Where does the domain CA run?** It is the domain's only stateful *service* — the directory is storage, and storage does not sign things. So it is a Nomad job, which means it can be rescheduled like anything else and its unavailability stops certificate renewal for as long as that takes, bounded by the certificate lifetime. A numbers problem rather than a design flaw, but the module should say it. Its key does not live in the directory; see [`where-the-database-lives.md`](where-the-database-lives.md).
+5. ~~**Where does the domain CA run?**~~ **Answered in *The domain services* above** — as one Nomad job with the token issuer, in a designated hosting cluster, its key backed up beyond that cluster until М13's root makes it re-issuable. What remains open is narrower: **should the hosting cluster be chosen automatically** when the designated one dies, or is that a human decision on purpose?
 
 **Resolved while designing the module:**
 
