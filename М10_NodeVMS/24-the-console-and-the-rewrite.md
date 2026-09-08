@@ -118,7 +118,7 @@ The console renders these for a human. The same two numbers are what the Node **
 
 Alarm on the second. A camera can be `converged`, `enabled`, phase `running`, `lag = 0` — every control-plane field agreeing the system is healthy — and have written nothing for forty minutes. That is Lesson 18's rule in its third instance: **alarm on the product, not on the process.**
 
-And a warning about the first that М14 spends a whole section on: `camera_lag` is **per camera**, so at a thousand cameras it is a thousand time series. That is exactly how a metrics system becomes more expensive than the thing it watches. Export the *distribution* — how many cameras are lagging, and the worst lag — and keep the per-camera number in the database where the console already reads it. **A metric is not a database, and the temptation to make it one is what kills a monitoring system.**
+And a warning about the first that М13 spends a whole section on: `camera_lag` is **per camera**, so at a thousand cameras it is a thousand time series. That is exactly how a metrics system becomes more expensive than the thing it watches. Export the *distribution* — how many cameras are lagging, and the worst lag — and keep the per-camera number in the database where the console already reads it. **A metric is not a database, and the temptation to make it one is what kills a monitoring system.**
 
 ## Step 3 — A login, marked temporary
 

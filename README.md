@@ -14,7 +14,7 @@ The module names are not decoration. They mark one idea getting harder three tim
 | **М10 · NodeVMS** | what it *should be* | in a database on the box | desired state and actual state, inside one process | closing the gap — and never persisting the half that must be re-derived |
 | **М11 · ClusterVMS** | what it should be, *on whichever server survived* | in each Node, unchanged when a server dies | **two instances of the same Node** | surviving a server's death without two writers reaching one archive |
 | **М12 · DomainVMS** | what it should be, *and which cluster holds it* | in each Node, with a directory across clusters | Nodes, with the directory | a layer that must stay useful while it is allowed to be down — and honest when a whole cluster is unreachable |
-| **М13 · VendorVMS** | *— not a scope of the product —* | nowhere the product depends on | the customer, with the vendor | **working with the vendor unreachable, or gone** |
+| **М14 · VendorVMS** | *— not a scope of the product —* | nowhere the product depends on | the customer, with the vendor | **working with the vendor unreachable, or gone** |
 
 **Every boundary in that table is a network you stopped trusting — except one, and it is set by administration instead.**
 
@@ -50,7 +50,7 @@ That rule was chosen for archive locality, and it turns out to put the fencing e
 
 The rule has a sharp edge, and it is the one worth carrying away: **anything a layer caches from above may keep recording forever, and must never delete anything.** Destructive operations expire; recording does not. A Node owns its own retention policy, so it cannot go stale on that — but entitlement and placement come from above, and those can.
 
-**М13 is the one module that is not a new scope.** Observability is how you see the four you already have, which is why it comes last and why it does not get a VMS name.
+**М13 is the one module that is not a new scope.** Observability is how you see the four you already have — and it is domain-level: the remote observer is one more domain service, and its thesis (*a silent cluster is unreachable, not broken*) is М12's honesty about incomplete answers applied to metrics. It comes **before** the vendor, because the vendor module's demo — *the vendor disappears for thirty days* — can only be demonstrated with instrumentation in place, and its canary halt condition is an alert rule. It does not get a VMS name because it builds nothing new to name.
 
 ---
 
@@ -65,8 +65,8 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — the Node's own state<br>4 · AppHost — the loop that acts on it | **Written** · 5 lessons (20–24) |
 | [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — a Node that outlives its server, inside one cluster<br>4 · The cluster's own directory | **Designed** · 5 lessons (25–29) |
 | [**М12** — DomainVMS](./М12_DomainVMS) | 4 · Several clusters, one directory of directories<br>5 · The domain as its own root: enrollment, lifetimes, identity<br>7 · Its own update server, and clusters it rents for itself | **Designed** · 8 lessons (30–37) |
-| [**М13** — VendorVMS](./М13_VendorVMS) | *Not a layer.* MASA, entitlement, publishing, the hosting business — and what the vendor must never be able to do | **Designed** · 4 lessons (38–41) |
-| [**М14** — Observability](./М14_Observability) | 6 · Prometheus + logs — collecting what М9–М12 emit | **Designed** · 4 lessons (42–45) |
+| [**М13** — Observability](./М13_Observability) | 6 · Prometheus + logs — collecting what М9–М12 emit, from the domain's hosting cluster | **Designed** · 4 lessons (38–41) |
+| [**М14** — VendorVMS](./М14_VendorVMS) | *Not a layer.* MASA, entitlement, publishing, the hosting business — and what the vendor must never be able to do | **Designed** · 4 lessons (42–45) |
 
 **[GLOSSARY.md](./GLOSSARY.md)** defines every term the course uses precisely — Node versus Server, desired versus actual state, epoch and fencing, and the acronyms it would otherwise leave unexplained.
 
@@ -145,19 +145,7 @@ Because the Node is the writer, it is also the thing that must be reachable and 
 - [Consul and OpenBao](./М12_DomainVMS/consul-and-openbao.md) — two answers to mTLS, and why the product needs only one
 - [Where the databases live](./М12_DomainVMS/where-the-database-lives.md) — five revisions ending with one database in the whole design, why a Node owns its configuration rather than caching someone else's, and the retention rule that protects customer footage
 
-## М13 — VendorVMS
-
-Four lessons, and a different kind of module: it builds no scope of the product, because the domain is the top of it. What sits above a domain is not a layer — **it is the vendor**, a separate organisation on the far side of a boundary the product is designed to work across in one direction only.
-
-The thesis is the property enterprise security buyers ask for by name: **the product must work with the vendor unreachable, or gone.** The demo is built backwards from it — a year-old domain, and on a date the student picks, the vendor disappears entirely. For thirty days nothing that was working stops; what *cannot* happen is enumerated rather than implied; on day thirty-one the entitlement cache reaches its stated floor and degrades exactly as М12 wrote down.
-
-The module is the mirror image of the course so far. М9–М12 asked what the product must do; this one asks **what the vendor may do, and what it must never be able to do** — vouch for its hardware but never join a box to a domain on its own; issue an entitlement but never stop recording by withholding one; publish a bundle but never push it onto an appliance; rent a cluster but never hold the customer's root. The right-hand column is a list of things earlier drafts of this course would have let the vendor do.
-
-What genuinely belongs to the vendor: **the MASA** and the ten-year commitment running one implies; issuing entitlement; signing and publishing bundles, and rolling them out across customers with a canary that halts itself; support inventory at the customer's discretion; and the hosting business as a commercial option the module frames without taking. **OpenBao's real scope finally appears here** — dynamic credentials for a vendor holding many customers' secrets — after everything else once assigned to a vault was removed by giving machines identities.
-
-- [Module design](./М13_VendorVMS/module-design.md) — the one-way boundary, MASA, entitlement and rollout, the hosting business
-
-## М14 — Observability
+## М13 — Observability
 
 **It does not introduce observability — it collects it.** Every module below already emits signals, defined where the failure that needed them was introduced: М9's health-check ladder and spool age, М10's `camera_silent_seconds`, М11's failover time, М12's replica lag. Six signals for a whole VMS, and the module opens by taking inventory rather than installing anything.
 
@@ -167,9 +155,21 @@ That collides with the rule everybody knows — **monitoring must not share a fa
 
 It also carries the course's second licensing finding, and a sharper one than Nomad's: **Grafana, Loki, Tempo and Mimir are AGPLv3**, and §6 triggers on shipping at all, modified or not. Prometheus, VictoriaMetrics, Thanos, Cortex, the OTel Collector and Grafana Alloy are Apache 2.0. The course's position is to teach Prometheus and **ship no dashboard** — which is a better product decision anyway, since an operator should not need two consoles.
 
-- [Module design](./М14_Observability/module-design.md) — the observer's paradox, what silence means, alert design, and the AGPL problem
+- [Module design](./М13_Observability/module-design.md) — the observer's paradox, what silence means, alert design, and the AGPL problem
 
 ---
+
+## М14 — VendorVMS
+
+Four lessons, and a different kind of module: it builds no scope of the product, because the domain is the top of it. What sits above a domain is not a layer — **it is the vendor**, a separate organisation on the far side of a boundary the product is designed to work across in one direction only.
+
+The thesis is the property enterprise security buyers ask for by name: **the product must work with the vendor unreachable, or gone.** The demo is built backwards from it — a year-old domain, and on a date the student picks, the vendor disappears entirely. For thirty days nothing that was working stops; what *cannot* happen is enumerated rather than implied; on day thirty-one the entitlement cache reaches its stated floor and degrades exactly as М12 wrote down.
+
+The module is the mirror image of the course so far. М9–М12 asked what the product must do; this one asks **what the vendor may do, and what it must never be able to do** — vouch for its hardware but never join a box to a domain on its own; issue an entitlement but never stop recording by withholding one; publish a bundle but never push it onto an appliance; rent a cluster but never hold the customer's root. The right-hand column is a list of things earlier drafts of this course would have let the vendor do.
+
+What genuinely belongs to the vendor: **the MASA** and the ten-year commitment running one implies; issuing entitlement; signing and publishing bundles, and rolling them out across customers with a canary that halts itself; support inventory at the customer's discretion; and the hosting business as a commercial option the module frames without taking. **OpenBao's real scope finally appears here** — dynamic credentials for a vendor holding many customers' secrets — after everything else once assigned to a vault was removed by giving machines identities.
+
+- [Module design](./М14_VendorVMS/module-design.md) — the one-way boundary, MASA, entitlement and rollout, the hosting business
 
 ## How these lessons are written
 

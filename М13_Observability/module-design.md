@@ -1,12 +1,12 @@
-# М14_Observability — Module Design
+# М13_Observability — Module Design
 
 **Seeing four layers you already built, from outside the one that failed.**
 
-Every module before this one added a scope. This one adds none — it is how you see the four that exist. That makes it the only module in the course whose subject is the other modules, and it is why it comes last: the material is far easier to teach against a system the student has already broken on purpose four times.
+Every module before this one added a scope. This one adds none — it is how you see the four that exist, and **it is domain-level**: the remote observer is one more domain service, hosted beside the signer, and the module's thesis is М12's honesty about incomplete answers applied to metrics. It comes directly after the domain, and before the vendor, because the vendor module's demo cannot be *demonstrated* without it.
 
 It also **does not introduce observability.** М9–М12 already emit signals, each defined where the failure that needed it was introduced, because a metric chosen at the moment you watch something break has a reason and one chosen in an observability chapter has only a name. This module collects them, and adds what is genuinely cross-cutting.
 
-> **Scope note.** Four lessons, 42–45. The position is still arguable: three of М13's lessons lean on instrumentation taught here — a thirty-day outage that can only be *asserted* without metrics, and a self-halting canary that **is** an alert rule. Emitting low softened that (М13 has numbers to work with), but did not remove it. See the sequencing section of [`COURSE-PLAN.md`](../COURSE-PLAN.md).
+> **Scope note.** Four lessons, 38–41. This module sat *after* the vendor module through three restructures, each time with a note that the vendor module leaned on instrumentation it had not taught. Recognising the remote observer as a domain service settled it: observability follows the domain, and [М14](../М14_VendorVMS/module-design.md) inherits alerting rather than presupposing it — its *vendor disappears for thirty days* demo is measured here, and its canary halt condition is Lesson 40's alert rule.
 
 ---
 
@@ -135,7 +135,7 @@ Not legal advice, and the anti-tivoisation clause in §6 deserves its own look f
 
 *Four lessons. The system already emits; this is how you see it from outside.*
 
-### Lesson 42 — What you already emit, and what silence means
+### Lesson 38 — What you already emit, and what silence means
 
 - **Take inventory first.** The six signals above, and for each one: what it cannot tell you. That column is the lesson
 - Build the exporter: a `/metrics` endpoint on the Node, exposing what М10 Lesson 24 already computes. **No new measurements** — this is plumbing over decisions already taken
@@ -147,7 +147,7 @@ Not legal advice, and the anti-tivoisation clause in §6 deserves its own look f
 
 ---
 
-### Lesson 43 — Where the observer runs
+### Lesson 39 — Where the observer runs
 
 - The observer's paradox from above, and the two-observer resolution
 - **Prometheus agent mode** — introduced in 2.32 behind a feature flag, now the `--agent` CLI flag. It disables the local TSDB, alerting and rule evaluation and optimises for scraping plus remote write. Built for small resource-constrained deployments, which is what a site is
@@ -161,7 +161,7 @@ Not legal advice, and the anti-tivoisation clause in §6 deserves its own look f
 
 ---
 
-### Lesson 44 — Alarms somebody will act on
+### Lesson 40 — Alarms somebody will act on
 
 - **Alarm on the product, not the process.** М9 Lesson 18's ladder, generalised: every alert names a thing the customer paid for
 - **Symptom, not cause.** One alert per failure, at the level a human acts on. М12's failure-domain grouping already does the work — a dead server is **one** alert, not two hundred
@@ -174,7 +174,7 @@ Not legal advice, and the anti-tivoisation clause in §6 deserves its own look f
 
 ---
 
-### Lesson 45 — Logs, secrets, and one failure through four layers
+### Lesson 41 — Logs, secrets, and one failure through four layers
 
 The capstone, and it is a reading exercise as much as a building one.
 

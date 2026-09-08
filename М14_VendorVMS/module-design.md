@@ -1,4 +1,4 @@
-# М13_VendorVMS — Module Design
+# М14_VendorVMS — Module Design
 
 **The side of the boundary the product must survive, not depend on.**
 
@@ -59,7 +59,7 @@ Then the vendor comes back, and the student shows what caught up and what was ne
 
 - **М12 entire** — especially Lesson 34 (the domain's update server and entitlement cache), Lesson 35 (enrollment, and where the MASA sits), Lesson 36 (the domain as its own root).
 - **М9 Lesson 17** — the RAUC signing chain. Publishing a bundle is signing it, and the vendor's bundle-signing key is the one secret in this module that genuinely is the vendor's.
-- **М14** would help and is not required: Lesson 40's canary halt condition is an alert rule, and a student who has met alerting reads it faster.
+- **М13** — the vendor-disappears demo is measured with its instruments, and Lesson 44's canary halt condition is М13 Lesson 40's alert rule.
 
 ---
 
@@ -67,7 +67,7 @@ Then the vendor comes back, and the student shows what caught up and what was ne
 
 *Four lessons, each about one thing the vendor does — and what the product must not need from it.*
 
-### Lesson 38 — The vendor's side, and the one-way boundary
+### Lesson 42 — The vendor's side, and the one-way boundary
 
 - The thesis, and the two-column table above, defended item by item
 - **Why one customer is one domain**, and therefore why nothing above the domain is the product's — the argument that dissolved the earlier drafts, retold so students can reproduce it rather than accept it
@@ -79,7 +79,7 @@ Then the vendor comes back, and the student shows what caught up and what was ne
 
 ---
 
-### Lesson 39 — MASA, and what running one commits you to
+### Lesson 43 — MASA, and what running one commits you to
 
 - **The voucher**, from the vendor's side: a signed statement that *this* IDevID is *my* hardware and may trust *that* registrar. The one cryptographic thing a customer ever needs from the vendor, and it is said once
 - **Device → domain routing.** A pledge has no domain yet. Something above must know serial 4471 belongs to customer X — an entitlement lookup, and the only reason enrollment touches the vendor at all
@@ -91,11 +91,11 @@ Then the vendor comes back, and the student shows what caught up and what was ne
 
 ---
 
-### Lesson 40 — Entitlement, publishing, and rollout across customers
+### Lesson 44 — Entitlement, publishing, and rollout across customers
 
 - **Issuing entitlement:** what a licence actually encodes — camera count, features, a validity window — and why it is signed rather than looked up, so the domain can verify it offline for the whole grace period
 - **Publishing a bundle:** signing with the vendor's key (М9 Lesson 17's chain, from the other side), and pushing to each domain's update server — never to a box
-- **Rollout as a population operation:** canary customers, rings, and **a halt condition that fires automatically** — an alert rule, and the reason М14 would have been useful first
+- **Rollout as a population operation:** canary customers, rings, and **a halt condition that fires automatically** — М13 Lesson 40's alert rule, now pointed at a fleet
 - **Version skew across the fleet is the normal state.** You cannot update every customer at once, so the controller–worker contract tolerates N−1 and preferably N−2 — which is where М12's opaque config and revision ordering pay off across the fleet, not just within a domain
 - Schema migration across a skewed fleet: expand, migrate, contract — never a breaking change in one step, because some domain is always a version behind
 
@@ -103,7 +103,7 @@ Then the vendor comes back, and the student shows what caught up and what was ne
 
 ---
 
-### Lesson 41 — The hosting business, support, and what a vault is actually for
+### Lesson 45 — The hosting business, support, and what a vault is actually for
 
 - **Rented capacity as a commercial offer.** A rented cluster is just a cluster (М12 L37). What changes when the vendor is the landlord: on-call for hardware the customer does not own, egress costs for video that is not yours, and a compliance surface. **The module frames this decision and does not take it**
 - **Multi-tenancy, if you are hosting.** One vendor, many customers' cloud credentials and integration secrets — and this, finally, is what **OpenBao** is for: dynamic credentials and secrets held on behalf of many tenants. Everything else the course once assigned to a vault was removed by giving machines identities
@@ -127,7 +127,7 @@ Then the vendor comes back, and the student shows what caught up and what was ne
 1. **Is the vendor in the hosting business?** The sentence *provide allocations in the cloud* decides it, and the module frames the choice without taking it.
 2. **Does the vendor run a MASA at all?** Without one, BRSKI is unimplementable and approval is the only enrollment path — which many customers prefer anyway.
 3. **How much inventory does a customer report?** The default should be minimal and the datasheet should say what it is; a vendor that asks for more has to say why.
-4. **Should М14 come before this module?** Lesson 40's halt condition is an alert rule. The case for observability preceding the vendor module is at least as strong as the case for it preceding the old orchestration one.
+4. ~~**Should observability come before this module?**~~ It does now. Resolved when the remote observer was recognised as a domain service.
 
 ---
 

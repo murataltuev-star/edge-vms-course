@@ -13,8 +13,8 @@ A shipped edge VMS is seven layers deep. The course builds them in dependency or
 | 3 | **Postgres** | What does this system know about itself? | М10 | Designed |
 | 4 | **The directory** | Which Node, which cluster — and is that answer complete? | М11 (a cluster's) · М12 (across clusters) | Designed |
 | 5 | **The domain signer** | Who is allowed to know what, and how do they prove it? | М12 — the domain is its own root; *OpenBao only for a multi-tenant vendor, М13* | Designed |
-| 6 | **Prometheus + logs** | Is it working, and how would I know? | М14 | Designed |
-| 7 | **The vendor boundary** | What may the vendor do, and what must it never be able to? | М13 | Designed |
+| 6 | **Prometheus + logs** | Is it working, and how would I know? | М13 — domain-level; the remote observer is a domain service | Designed |
+| 7 | **The vendor boundary** | What may the vendor do, and what must it never be able to? | М14 | Designed |
 
 Layers 1–2 are the two update planes М9 is built around: the OS underneath, the workload on top — both visible on a single box, which is all М9 needs. М9 also owns the **third** thing on that box, which is neither: the data. A spool of recorded-but-not-yet-uploaded segments outlives both planes, and the segments it writes are what М10 turns into the archive. Layers 3–5 are the product, and **the domain is its top** — one customer is one domain. Layer 7 is not a layer of the product at all: it is the far side of a boundary the product must work across in one direction only.
 
@@ -80,7 +80,7 @@ Worth recording because it inverts the layer table above. Auditing the course's 
 
 > **Most secrets exist because something was not given an identity.** Give the machine an identity and the secret it stood in for disappears.
 
-That leaves a genuinely narrow scope for OpenBao — **dynamic credentials, and the secrets a multi-tenant operator holds for many customers** — and makes layer 5 a smaller layer than the table implies. What a vault does that Postgres cannot is *issue and revoke*: the encryption key must not sit beside the data, and a stored `valid_until` cannot revoke anything by itself. If the orchestration layer stays single-tenant, the honest answer may be that the product does not need one, and М13 Lesson 41 is written to reach that conclusion rather than avoid it.
+That leaves a genuinely narrow scope for OpenBao — **dynamic credentials, and the secrets a multi-tenant operator holds for many customers** — and makes layer 5 a smaller layer than the table implies. What a vault does that Postgres cannot is *issue and revoke*: the encryption key must not sit beside the data, and a stored `valid_until` cannot revoke anything by itself. If the orchestration layer stays single-tenant, the honest answer may be that the product does not need one, and М14 Lesson 45 is written to reach that conclusion rather than avoid it.
 
 **The exception, and it is the course's only real secrets problem:** camera credentials. An RTSP URL carries `user:pass@` inline, so М10's `rtsp_url` column silently held every customer's camera password in plaintext until Lesson 20 was corrected. Those must work with everything above the Node unreachable, so a central vault is the wrong answer by construction — they stay at the site under a key the database backup does not contain.
 
@@ -126,16 +126,7 @@ What is left once a cluster works alone: **everything that stops being knowable 
 - **A cluster the domain rents for itself**, from the customer's cloud account — and proof the Node cannot tell where it runs. The bandwidth arithmetic (fifty cameras at 4 Mbps is 200 Mbps up) makes *mixed* the default shape, and closes the arc with М8's rented cloud
 - **Its own update server and entitlement cache**, which is what lets it run with the vendor gone
 
-### М13 — VendorVMS: the far side of the boundary · 4 lessons (38–41) · [designed](./М13_VendorVMS/module-design.md)
-
-**Not a scope of the product.** Formerly FederatedVMS, then OrchestratedVMS — a layer above domains holding a root CA, an identity provider, a vault, a fleet inventory and rented capacity. Item by item, each turned out to be something the domain does for itself or something the vendor does across customers. What remained is the vendor, and the thesis is the property enterprise buyers ask for by name: **the product must work with the vendor unreachable, or gone.**
-
-- **What the vendor may do, and must never be able to:** vouch for its hardware but never join a box to a domain alone; issue an entitlement but never stop recording by withholding one; publish a bundle but never push it to an appliance; rent a cluster but never hold the customer's root
-- **The MASA**, and the ten-year commitment running one implies; device → domain routing as the only reason enrollment touches the vendor
-- **Entitlement, publishing and rollout across customers** — a canary that halts itself, and version skew across the fleet as the normal state
-- **The hosting business** as a commercial option framed and not taken; **OpenBao's real scope** finally appearing — a multi-tenant vendor's secrets — after everything else once assigned to a vault was removed by giving machines identities
-
-### М14 — Observability: Prometheus and logs · 4 lessons (42–45) · [designed](./М14_Observability/module-design.md)
+### М13 — Observability: Prometheus and logs · 4 lessons (38–41) · [designed](./М13_Observability/module-design.md)
 
 **This module does not introduce observability — it collects it.** Every module below already emits signals, defined where the failure that needs them was introduced, because a metric chosen at the moment you watch something break has a reason, and one chosen in an observability chapter has only a name:
 
@@ -156,8 +147,16 @@ What is left for this module is what is genuinely *cross-cutting*:
 - **Alarm on the product, not the process** — М9 L18's rule, stated once for everything above it. Fragment write rate and camera-offline, not CPU graphs
 - **The thin uplink:** remote-write with downsampling, or local retention with pull-on-demand — and what an operator is shown for a site whose uplink is down, which is *not* "healthy"
 - **Logs:** journald, retention, and never letting a secret reach them — sharpened by М10 L20's finding that an RTSP URL carries the password inline, so the leak is a **log-formatting** bug rather than a storage one
-- **A second licensing finding, sharper than the Nomad one.** Grafana, Loki, Tempo and **Mimir** are all **AGPLv3**; Prometheus, VictoriaMetrics, Thanos, Cortex, the OTel Collector and Grafana Alloy are Apache 2.0. BUSL *permitted* this product; AGPL §6 triggers on **conveying at all**, modified or not, and Grafana's free Enterprise binary is explicitly not redistributable. The course's position: teach Prometheus and **ship no dashboard** — the customer installs Grafana and points it at an Apache-2.0 endpoint. Full reasoning in [`М14_Observability/module-design.md`](./М14_Observability/module-design.md)
+- **A second licensing finding, sharper than the Nomad one.** Grafana, Loki, Tempo and **Mimir** are all **AGPLv3**; Prometheus, VictoriaMetrics, Thanos, Cortex, the OTel Collector and Grafana Alloy are Apache 2.0. BUSL *permitted* this product; AGPL §6 triggers on **conveying at all**, modified or not, and Grafana's free Enterprise binary is explicitly not redistributable. The course's position: teach Prometheus and **ship no dashboard** — the customer installs Grafana and points it at an Apache-2.0 endpoint. Full reasoning in [`М13_Observability/module-design.md`](./М13_Observability/module-design.md)
 
+### М14 — VendorVMS: the far side of the boundary · 4 lessons (42–45) · [designed](./М14_VendorVMS/module-design.md)
+
+**Not a scope of the product.** Formerly FederatedVMS, then OrchestratedVMS — a layer above domains holding a root CA, an identity provider, a vault, a fleet inventory and rented capacity. Item by item, each turned out to be something the domain does for itself or something the vendor does across customers. What remained is the vendor, and the thesis is the property enterprise buyers ask for by name: **the product must work with the vendor unreachable, or gone.**
+
+- **What the vendor may do, and must never be able to:** vouch for its hardware but never join a box to a domain alone; issue an entitlement but never stop recording by withholding one; publish a bundle but never push it to an appliance; rent a cluster but never hold the customer's root
+- **The MASA**, and the ten-year commitment running one implies; device → domain routing as the only reason enrollment touches the vendor
+- **Entitlement, publishing and rollout across customers** — a canary that halts itself, and version skew across the fleet as the normal state
+- **The hosting business** as a commercial option framed and not taken; **OpenBao's real scope** finally appearing — a multi-tenant vendor's secrets — after everything else once assigned to a vault was removed by giving machines identities
 ---
 
 ## Sequencing
@@ -167,11 +166,10 @@ The order is dependency-driven, not layer-numbered:
 - **М9 before М10** — an appliance has to exist before it can be scheduled onto
 - **М10 before М11** — the loop has to work on one box before a scheduler above it, or contested ownership, means anything
 - **М11 before М12** — a Node has to survive its server, inside one cluster, before a layer across several clusters means anything
-- **М12 before М13** — the vendor boundary means nothing until there is a self-sufficient domain on the near side of it
-- **М13 before М14** — so that "never log a secret" is a rule students already understand — though Lesson 40's canary halt condition is an alert rule, and the case for observability first is now at least as strong
+- **М12 before М13** — observability collects what М9–М12 emit, and its remote observer is a domain service; there has to be a domain to host it
+- **М13 before М14** — the vendor module's demo is *the vendor disappears for thirty days*, which can only be demonstrated with instrumentation in place, and its canary halt condition is an alert rule
 
-**Partly resolved by emitting low.** Now that М9–М12 each define their own signals, М13's thirty-day-outage demo and its self-halting canary have numbers to work with before М14 arrives, so the ordering problem is smaller than it looked. What remains: **one defensible alternative** is to move observability before М13. You cannot operate what you cannot see, М10's reconciliation loop is far easier to debug with metrics in front of you, and **three of М13's lessons still lean on instrumentation it has not taught** — the thirty-day outage can only be asserted without it, and a self-halting canary is an alert rule. The cost is teaching monitoring slightly before there is much worth monitoring.
-
+**Resolved.** Observability sat after the vendor module for three restructures, each time with a note that the vendor module leaned on instrumentation it had not taught. Recognising the remote observer as a *domain service* settled it: observability is domain-level, so it follows the domain directly, and the vendor module inherits alerting rather than presupposing it.
 ---
 
 ## Scale
@@ -183,8 +181,8 @@ The order is dependency-driven, not layer-numbered:
 | М10 — NodeVMS | 5 | 24 |
 | М11 — ClusterVMS | 5 | 29 |
 | М12 — DomainVMS | 8 | 37 |
-| М13 — VendorVMS | 4 | 41 |
-| М14 — Observability | 4 | 45 |
+| М13 — Observability | 4 | 41 |
+| М14 — VendorVMS | 4 | 45 |
 
 **45 lessons**, or a full semester — down from 49, because collapsing the layer above the domain removed four lessons of redundancy. М10–М14 are each a genuine module rather than an appendix.
 
@@ -205,14 +203,14 @@ The order is dependency-driven, not layer-numbered:
 
 1. ~~**The BUSL decision, taken once.**~~ **Resolved** — the Additional Use Grant permits this product; the risk is the analytics-plugin roadmap, not the appliance. See the licensing section above. What remains open is a counsel review of that one question
 2. **Does the vendor run a MASA?** BRSKI is unimplementable without one, and it is a permanent operational commitment — a signing service that must outlive every appliance shipped
-3. **М14's position** — before or after М13, and sharpened by М13 being eleven lessons long. See the sequencing section
+3. ~~**Observability's position**~~ — resolved: domain-level, directly after М12. See the sequencing section
 4. **Does the product ship a database HA option?** [`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md) settles the architecture — each Node owns its configuration, the domain keeps a directory — but whether HA is offered for the directory, and priced, is commercial
 
 **Resolved since the first version of this plan:**
 
 - ~~Where inference runs~~ — a deployment question, not a schema one. Opaque worker config means the controller is unchanged whether inference runs on the appliance, at the camera or in the cloud (М11)
 - ~~Where the write API belongs~~ — built in М11, unauthenticated and marked as such; authentication arrives with OpenBao in М12
-- ~~Lesson numbering~~ — **superseded three times by restructuring.** Current: М9 is 16–19, М10 is 20–24, М11 is 25–29, М12 is 30–37, М13 is 38–41, М14 is 42–45. **45 in total.** The М11/М12 split moved no lesson numbers at all — Part A and Part B were already contiguous
+- ~~Lesson numbering~~ — **superseded three times by restructuring.** Current: М9 is 16–19, М10 is 20–24, М11 is 25–29, М12 is 30–37, М13 Observability is 38–41, М14 VendorVMS is 42–45. **45 in total.** The М11/М12 split moved no lesson numbers at all — Part A and Part B were already contiguous
 - ~~Consul in or out~~ — out, and for a better reason than licensing alone ([`consul-and-openbao.md`](./М12_DomainVMS/consul-and-openbao.md))
 - ~~Identity split across М12 and М14~~ — they were one layer; merged into М12
 - ~~Where the domain database lives, and whether hosts replicate it~~ — **there is no domain database.** Each **Node** owns its configuration in its own Postgres and publishes one way upward; the domain's directory is a Nomad Variable per Node plus an object per Node; a **cluster** is the largest set of servers on a reliable network and a **domain** is the clusters under one directory ([`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md))

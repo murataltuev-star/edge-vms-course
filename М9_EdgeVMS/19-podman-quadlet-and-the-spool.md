@@ -364,12 +364,12 @@ The first is the one that matters, and it is worth understanding why it beats th
 
 The threshold comes from Lesson 16's arithmetic rather than from taste. If you sized the partition for a 24-hour outage, alarm at something like **6 hours** — early enough that somebody can act while there is still three quarters of the buffer left, late enough that a router reboot does not page anyone at 3am.
 
-Two properties worth noticing now, because М14 generalises both:
+Two properties worth noticing now, because М13 generalises both:
 
 - **This is a product signal, not a process one.** Nothing here reports CPU or memory. `spool_oldest_seconds` says *how much of the customer's footage is currently at risk*, which is the alarm-on-the-product rule from Lesson 18 in its second instance
-- **It has to be readable when the uplink is down**, which is precisely when it is interesting — so it is exported locally and scraped from wherever the box can be reached, never pushed to a centre that by definition is unreachable at that moment. М14 turns that into a scrape topology
+- **It has to be readable when the uplink is down**, which is precisely when it is interesting — so it is exported locally and scraped from wherever the box can be reached, never pushed to a centre that by definition is unreachable at that moment. М13 turns that into a scrape topology
 
-**Do not build a metrics endpoint yet.** Write the two numbers where the health check can read them; М14 gives them a proper exporter. Deciding *what to measure* is this lesson's job, and it is the half that is actually hard.
+**Do not build a metrics endpoint yet.** Write the two numbers where the health check can read them; М13 gives them a proper exporter. Deciding *what to measure* is this lesson's job, and it is the half that is actually hard.
 
 ## Step 10 — Why this is not premature
 
@@ -378,7 +378,7 @@ You have just built a buffer in a module about operating-system updates. That de
 The spool exists here because **the link can fail here**, and nothing else in the course is yet in a position to catch it. But it is not thrown away:
 
 - **М10 puts an index over the same files and they become the archive.** The same `splitmuxsink` writes the same segments; nothing deletes them on upload; a database row is written instead. The pipeline barely changes — what changes is who owns the footage.
-- **М13 makes the upload conditional.** An on-prem Node has nobody to upload to. A cloud Node *is* the destination. A cloud site with no appliance has no spool at all, which is why the camera's own SD card becomes the buffer there.
+- **М12 makes the upload conditional.** An on-prem Node has nobody to upload to. A cloud Node *is* the destination. A cloud site with no appliance has no spool at all, which is why the camera's own SD card becomes the buffer there.
 
 Same segments, three meanings. It is the first thing in this course that a later module **upgrades rather than replaces**, and it is worth noticing as a design property: the parts that survive contact with later requirements are usually the ones that were forced by a physical fact rather than chosen for convenience.
 
@@ -405,7 +405,7 @@ Same segments, three meanings. It is the first thing in this course that a later
 - Credentials are provisioned at commissioning onto the data partition, because both slots ship identical. This is the course's **first temporary secret**; М12 collects all five — four replaced, one promoted.
 - `kvssink` with nothing behind it loses footage on every uplink blink. The fix is local segments plus a separate uploader — the one media change this module makes.
 - **Delete on acknowledgement, never on send.** The bound needs a policy the product states. Catch-up needs a rate limit, or recovery becomes its own outage.
-- The spool is not thrown away: М10 indexes the same files into an archive, М13 makes the upload conditional.
+- The spool is not thrown away: М10 indexes the same files into an archive, М12 makes the upload conditional.
 
 ## Exercises
 

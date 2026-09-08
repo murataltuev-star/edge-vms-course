@@ -6,7 +6,7 @@
 
 Exactly three things. This module builds them, and spends as much effort on what it refuses to do as on what it does.
 
-> **There is nothing above the domain in the product.** Earlier drafts had a layer above it — a root CA, a federated identity, a fleet inventory, a vault. Every one of those turned out to be either a thing the domain can do for itself, or a thing the *vendor* does across customers. One customer is one domain, because a domain can be as large as their whole estate. What sits above it is [М13 — the vendor's side](../М13_VendorVMS/module-design.md), and the property this module must deliver is the one that makes that module honest: **the product works with the vendor unreachable, or gone.**
+> **There is nothing above the domain in the product.** Earlier drafts had a layer above it — a root CA, a federated identity, a fleet inventory, a vault. Every one of those turned out to be either a thing the domain can do for itself, or a thing the *vendor* does across customers. One customer is one domain, because a domain can be as large as their whole estate. What sits above it is [М13 — the vendor's side](../М14_VendorVMS/module-design.md), and the property this module must deliver is the one that makes that module honest: **the product works with the vendor unreachable, or gone.**
 
 > **Domain is not cluster, and a domain is bigger.** М11 built a **cluster** — servers close enough to share a network you would bet recording on, a boundary set by physics. This module builds a **domain**: the clusters under one directory, one CA and one set of operators, a boundary set by **administration**. A campus is one domain with three clusters and three server rooms; a cloud deployment is one domain with one cluster serving fifty sites. Sites and clusters are many-to-many on purpose.
 >
@@ -36,7 +36,7 @@ Which is also why this is the first layer in the course **allowed to be unavaila
 
 | Decision | Choice | Why |
 |---|---|---|
-| Domain services | **One signer job (CA + token issuer), placement, a read view, an update server — hosted by one designated cluster; Nomad picks the server** | No controller and no authoritative state. The signer's key is the only thing that cannot be re-provisioned from nothing, and it is backed up beyond the hosting cluster for exactly that reason. |
+| Domain services | **One signer job (CA + token issuer), placement, a read view, an update server, and the remote observer — hosted by one designated cluster; Nomad picks the server** | No controller and no authoritative state. The signer's key is the only thing that cannot be re-provisioned from nothing, and it is backed up beyond the hosting cluster for exactly that reason. |
 | The signer's key | **A Nomad Variable in the hosting cluster's raft — a software key, on purpose** | A TPM-sealed key pins the signer to one server and defeats failover. A software key can be stolen — and the answer is **short leaf lifetimes**, so a compromise is bounded by hours, plus a key-rotation procedure the module makes students run. Not delegation: there is nobody above to delegate from, and that is the point. |
 | Domain correctness | **From CAS writes, never from instance count** | `count = 1` is not exactly-one during a reschedule. Placement is safe against two instances because it writes with check-and-set, not because Nomad promises one placer. |
 | Clusters per domain | **One or many. Nomad regions, federated** | A campus is three server rooms and one customer. Regions share no state and gossip-couple, which is exactly what a domain needs: each cluster schedules on with the others unreachable. |
@@ -136,6 +136,7 @@ The word *domain controller* was retired from this course on purpose, because it
 | **The token issuer** | holds a key, signs identity tokens | nobody *new* logs in; existing tokens run to expiry; break-glass (Lesson 33) |
 | **Cluster-level placement** | stateless computation | new cameras get no cluster |
 | **The aggregating read view** | stateless, federated reads | the console sees only its own cluster |
+| **The remote observer** | stateless, scrapes the other clusters | nobody is told a cluster went silent — [М13](../М13_Observability/module-design.md) |
 
 Every outage in that column is bounded, and none of it is recording or recovery. That is the thesis, made into a table.
 

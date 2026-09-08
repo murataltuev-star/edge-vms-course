@@ -129,7 +129,7 @@ capture ──▶ splitmuxsink ──▶ /data/spool/<camera>/<ts>.mp4
 - **The spool needs a bound, and hitting it is a decision the student makes, not the disk.** When the partition fills: drop the oldest, or stop recording? Both are defensible and they are different products. Pick one, write it down, and make the appliance say which it did rather than failing silently
 - **Catch-up is its own outage if you let it be.** Ten minutes of backlog from every camera arrives the instant the link returns, competing with live upload — and the live stream is the one someone is watching. Rate-limit the drain, prioritise live over backlog, and know how long full recovery takes. A recovery that saturates the uplink for an hour has turned a ten-minute fault into a seventy-minute one
 
-> **Why this is not premature.** The spool exists here because the link can fail here. **М10 does not throw it away** — it puts an index over the same files and they become the archive. **М13 makes the upload conditional**: an on-prem Node has nobody to upload to, and a cloud Node *is* the destination. Same segments, three meanings.
+> **Why this is not premature.** The spool exists here because the link can fail here. **М10 does not throw it away** — it puts an index over the same files and they become the archive. **М12 makes the upload conditional**: an on-prem Node has nobody to upload to, and a cloud Node *is* the destination. Same segments, three meanings.
 
 **Deliverable:** the VMS running under systemd on the appliance, surviving reboot, publishing to KVS — and then the uplink pulled for ten minutes with **nothing lost**, plus a stated number for how long the spool can survive an outage before the policy you chose takes effect.
 
