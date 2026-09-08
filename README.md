@@ -88,6 +88,7 @@ Fifteen lessons take a student who knows Python but has never built a web applic
 - [Project specification](./М8_KVS_VMS/module-design.md) — the complete brief the project is built from
 - [KVS capability map](./М8_KVS_VMS/kvs-capability-map.md) — every Kinesis Video Streams feature a VMS can use, tiered by distance from the MVP
 - [`reference/web`](./М8_KVS_VMS/reference) — the finished frontend, for comparison rather than copying
+- [`kvsvms/`](./М8_KVS_VMS/kvsvms/README.md) — the project, whole: server, edge, scripts, web, the agent image М9 runs, and the acknowledged spool uploader
 
 ## М9 — EdgeVMS
 
@@ -102,6 +103,7 @@ The same lesson has the module's other sharp edge. **Pull the network cable for 
 - [Lesson index](./М9_EdgeVMS/README.md) — start here
 - [Module design](./М9_EdgeVMS/module-design.md) — lesson plan, partition layout, verification strategy, ARM porting appendix
 - [RAUC alternatives](./М9_EdgeVMS/rauc-alternatives.md) — SWUpdate, Mender, bootc, systemd-sysupdate, and where each wins
+- [`edgevms/`](./М9_EdgeVMS/edgevms/README.md) — the module's artifacts, whole: the bench, the PKI, RAUC config and bundle builder, the GRUB state machine, the health check (now reading the Node's own signal), Quadlet units, the spool
 - [One container per camera?](./М9_EdgeVMS/apphost-and-process-model.md) — the process model at 1000 cameras, and why the orchestrator must not own camera lifecycle
 
 Both reach the same shape of conclusion, as does the orchestrator record now filed with М11: the tool that teaches best is not always the tool that ships best, and the documents say which is which.
@@ -115,6 +117,7 @@ Its organising rule is that **desired state is persisted and actual state is der
 - [Lesson index](./М10_NodeVMS/README.md) — start here
 - [Module design](./М10_NodeVMS/module-design.md) — lesson plan, the Python shard model, and what the operator is never asked to decide
 - [`reference/shard-memory-probe.py`](./М10_NodeVMS/reference/shard-memory-probe.py) — measures what sharding actually saves, in PSS rather than RSS
+- [`nodevms/`](./М10_NodeVMS/nodevms/README.md) — the module's code, whole: migrations, reconciler, GStreamer actuator, retention, console, tests, Quadlet units
 
 ## М11 — ClusterVMS
 

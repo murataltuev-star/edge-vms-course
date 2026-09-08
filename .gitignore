@@ -3,3 +3,6 @@
 domain-controller-v1/
 __pycache__/
 *.pyc
+
+# М9 signing keys — never commit
+М9_EdgeVMS/edgevms/pki/out/

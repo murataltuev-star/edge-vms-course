@@ -14,5 +14,6 @@ assertions respectively, reproduced verbatim in Lessons 14 and 15.
 `timeline-rendered.png` is one of those renders: four runs, three gaps, the tick
 ruler, and the meta row, at 1240px.
 
-Not included: `server/` and `edge/`, which the lessons build incrementally and which
-are listed in full in Lessons 5–13.
+`server/` and `edge/` are not here: the lessons build them incrementally and list
+them in full in Lessons 5–13. The assembled tree — with these three web files
+copied in beside it — is [`../kvsvms/`](../kvsvms/README.md).

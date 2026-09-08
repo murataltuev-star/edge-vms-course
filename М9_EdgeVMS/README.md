@@ -60,6 +60,14 @@ Written alongside the module, with their costs attached rather than quietly omit
 
 The multi-node half of this module moved to [М11](../М11_ClusterVMS/module-design.md), where Nodes are scheduled across servers. A module called EdgeVMS should not build a raft cluster. The orchestrator comparison that shaped it is recorded in [Kubernetes vs Nomad](../М11_ClusterVMS/kubernetes-vs-nomad.md).
 
+## The artifacts, whole
+
+[`edgevms/`](./edgevms/README.md) assembles what the four lessons leave on the box: `bench/build-disk.sh` builds the A/B disk with everything that must be *in the image* installed before slot A is copied to B; `pki/` is the two-level CA and the three `openssl cms` proofs; `rauc/` is `system.conf`, the manifest and a bundle builder with `--broken-kernel`, `--broken-config`, `--rogue` and `--wrong-hardware` for Lessons 17–18; `boot/grub.cfg` is the ORDER/OK/TRY state machine; `quadlet/` and `spool/` are Lesson 19. One thing in it is newer than the lessons: **the health check's third row is no longer a stand-in.** When М10's Node is installed it reads `nodevms_camera_silent_seconds_max` from the Node's own `/metrics`, locally, with the uplink down — so Lesson 18's rollback decision is finally made on *is footage being written*, which is what the lesson said it had to be.
+
+```bash
+cd edgevms && pki/make-ca.sh && pki/verify-chain.sh && python3 spool/test_spool.py   # no VM needed
+```
+
 ## Where this goes
 
 **М9 has no desired state.** You flash an image and containers run; actual state is the only state there is, and this module's entire job is making that replaceable safely.

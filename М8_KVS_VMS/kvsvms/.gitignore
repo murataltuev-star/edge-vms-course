@@ -1,0 +1,5 @@
+.env
+.venv/
+media/
+edge.log
+__pycache__/

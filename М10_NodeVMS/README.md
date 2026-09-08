@@ -52,6 +52,15 @@ Two corrections worth knowing before you start, both found by running the thing 
 
 - **PostgreSQL has no `DROP PARTITION` statement** — that is Oracle and MySQL. It is `ALTER TABLE … DETACH PARTITION` then `DROP TABLE`.
 - **Partition pruning needs a predicate on the partition key.** `span && …` alone opens every partition's index; the bound on `lower(span)` is what prunes.
+- **The `revision` trigger must name the operator-owned columns.** `WHEN (OLD.* IS DISTINCT FROM NEW.*)` bumps `revision` on the AppHost's own status write, and the lag never clears. Found when the code was assembled; Lesson 20 now carries the corrected trigger.
+
+## The code, whole
+
+[`nodevms/`](./nodevms/README.md) is the five lessons assembled into one runnable Node: the migrations, the reconciler, the GStreamer actuator, retention with all three disk-full policies, the console, the commissioning tools, the Quadlet units, and the test suite Lesson 23 lays out. Its README maps every sentence in the lessons to the line that implements it, and says exactly what was executed where — the reconciler, retention, AppHost glue and every SQL statement ran; the GStreamer path and the HTTP layer need a bench with `python3-gi` and `asyncpg`.
+
+```bash
+cd nodevms && python3 tests/run.py       # 27 tests, no database, no GStreamer, milliseconds
+```
 
 ## The stand-ins, and where they get collected
 
@@ -68,4 +77,4 @@ The course names its temporary things where they appear rather than discovering 
 
 Everything in this module holds because there is exactly one box — one writer, one AppHost, a convention where М11 needs a fencing token, and one API surface to protect.
 
-[**М11 — DomainVMS**](../М11_ClusterVMS/module-design.md) adds the second box. A Node becomes a scheduler allocation that moves between servers, and nothing built here changes — that is the design working. But two instances of one Node can briefly exist during a failover, and Lesson 23's one-line rule (*on restart, never resume the previous segment*) has to become an epoch the archive itself enforces.
+[**М11 — ClusterVMS**](../М11_ClusterVMS/module-design.md) adds the second box. A Node becomes a scheduler allocation that moves between servers, and nothing built here changes — that is the design working. But two instances of one Node can briefly exist during a failover, and Lesson 23's one-line rule (*on restart, never resume the previous segment*) has to become an epoch the archive itself enforces.

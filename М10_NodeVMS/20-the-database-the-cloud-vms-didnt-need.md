@@ -155,9 +155,19 @@ BEGIN
 END $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER cameras_bump BEFORE UPDATE ON cameras
-    FOR EACH ROW WHEN (OLD.* IS DISTINCT FROM NEW.*)
+    FOR EACH ROW WHEN (
+        OLD.enabled        IS DISTINCT FROM NEW.enabled        OR
+        OLD.rtsp_url       IS DISTINCT FROM NEW.rtsp_url       OR
+        OLD.cred_username  IS DISTINCT FROM NEW.cred_username  OR
+        OLD.cred_secret    IS DISTINCT FROM NEW.cred_secret    OR
+        OLD.retention_days IS DISTINCT FROM NEW.retention_days OR
+        OLD.site_id        IS DISTINCT FROM NEW.site_id        OR
+        OLD.name           IS DISTINCT FROM NEW.name
+    )
     EXECUTE FUNCTION bump_revision();
 ```
+
+**The `WHEN` clause names the operator-owned columns, and that is not fussiness.** The first draft of this lesson wrote `WHEN (OLD.* IS DISTINCT FROM NEW.*)`, which reads well and is wrong: the AppHost's own status write — `observed_revision`, `phase`, `last_seen` — is an `UPDATE` too, so every report bumped `revision`. Measured: report `observed_revision = 2` and `revision` goes to 3; the lag is 1 forever and the Node chases its own tail. The line through the middle of the table is enforced here, by the database, rather than remembered by whoever writes the next `UPDATE`.
 
 Monotonic, controller-assigned, one per object. Three candidates and only one survives:
 

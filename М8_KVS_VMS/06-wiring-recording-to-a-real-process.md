@@ -134,7 +134,8 @@ def _find_external_camera_pid():
             continue
         pid_str, args = parts
         tokens = args.split()
-        if len(tokens) < 2 or os.path.basename(tokens[1]) != CHILD_SCRIPT:
+        if len(tokens) < 2 or os.path.basename(tokens[1]) != CHILD_SCRIPT \
+                or not os.path.basename(tokens[0]).startswith("python"):
             continue
         try:
             pid = int(pid_str)
@@ -146,7 +147,7 @@ def _find_external_camera_pid():
     return None
 ```
 
-`tokens[1]` is "whatever comes right after the interpreter" — for a process started as `python3 camera_sim.py`, that's `tokens[0] == "python3"` and `tokens[1] == "camera_sim.py"`, exactly the shape you're looking for. `os.path.basename(...)` handles the case where someone ran it as `python3 ./camera_sim.py` or with a full path. Nothing about *editing*, *viewing*, or *mentioning* the file produces that specific shape, because in each of those cases the filename is not immediately after the interpreter token.
+`tokens[1]` is "whatever comes right after the interpreter" — for a process started as `python3 camera_sim.py`, that's `tokens[0] == "python3"` and `tokens[1] == "camera_sim.py"`, exactly the shape you're looking for. `os.path.basename(...)` handles the case where someone ran it as `python3 ./camera_sim.py` or with a full path. Nothing about *mentioning* the file in a longer command line produces that shape. **Editing and viewing it, though, do** — `vim camera_sim.py` and `less camera_sim.py` are two tokens with the script second, exactly like `python3 camera_sim.py`, which is why the check also asks that the token *before* the script be a `python*` binary. The first draft of this lesson checked position alone and claimed it ruled editors out; the test in [`kvsvms/tests/test_recording.py`](./kvsvms/tests/test_recording.py) put `vim`, `less`, `tail -f` and `grep` in a fake process table and found `vim` immediately. Position *and* interpreter is what the rule actually needs.
 
 Now wire it in:
 

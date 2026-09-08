@@ -82,6 +82,8 @@ Once these modules are done, the reference spec's implementation will read as *f
 
 By the end of Module 7 there is nothing left to map: the lessons have built the whole reference implementation, and Lesson 15 closes by running it against the spec's own acceptance criteria.
 
+The whole of it, assembled as Lesson 13 lays it out, is [`kvsvms/`](./kvsvms/README.md): `server/`, `edge/`, `scripts/`, `web/`, the IAM policy, the Makefile, the two Containerfiles, and the lessons' fake-client checks as a test suite (`python3 tests/run.py`, no AWS needed). It also carries the two things М9's appliance needed from this module and the lessons never wrote — a `/health` route, and `vms-upload-segment`, the spool uploader that exits 0 only once the archive holds the segment — and one correction to Lesson 6's process matcher that its own test found.
+
 ## Running any lesson's code
 
 Module 1 (Lessons 1–4) uses this skeleton:
