@@ -34,7 +34,9 @@ Which is also why this is the first layer in the course **allowed to be unavaila
 
 | Decision | Choice | Why |
 |---|---|---|
-| Domain services | **One signer job (CA + token issuer), placement, and a read view — hosted by one designated cluster** | No controller and no authoritative state. The signer's key is the only thing that cannot be re-provisioned from nothing, and delegation from М13's root is what makes even that recoverable. |
+| Domain services | **One signer job (CA + token issuer), placement, and a read view — hosted by one designated cluster; Nomad picks the server** | No controller and no authoritative state. The signer's key is the only thing that cannot be re-provisioned from nothing, and delegation from М13's root is what makes even that recoverable. |
+| The signer's key | **A Nomad Variable in the hosting cluster's raft — a software key, on purpose** | A TPM-sealed key pins the signer to one server and defeats failover. A software key can be stolen — and that is acceptable only because the intermediate is a *bounded* authority: short-lived, and re-issued from the root. The delegation principle choosing a storage location. |
+| Domain correctness | **From CAS writes, never from instance count** | `count = 1` is not exactly-one during a reschedule. Placement is safe against two instances because it writes with check-and-set, not because Nomad promises one placer. |
 | Clusters per domain | **One or many. Nomad regions, federated** | A campus is three server rooms and one customer. Regions share no state and gossip-couple, which is exactly what a domain needs: each cluster schedules on with the others unreachable. |
 | A dead cluster | **Reported, never healed** | Its cameras are on its network and its footage on its disks. Rebalancing them elsewhere produces Nodes failing to reach a dead network and hides the real fault. |
 | Domain layer | **A directory of directories, and not consistent** | Cross-cluster lookup, choosing a cluster, and saying when an answer is partial. Within-cluster lookup, placement and rebalance are М11's. |
@@ -149,6 +151,26 @@ Placement and the read view can be re-provisioned in another cluster from nothin
 
 - **Once М13 exists**, the domain intermediate is delegated from an offline root, so a lost intermediate is **re-issued from above**. Delegation makes the key recoverable by construction, which is a better argument for the hierarchy than any the PKI lessons make on their own
 - **In this module alone**, before there is a root, the self-signed key needs an explicit backup somewhere the hosting cluster's death cannot reach — another cluster's object store, or offline. **One line, and nobody writes it down**, which is how a burned-out server room becomes a domain whose every Node must be re-enrolled by hand
+
+### Who decides which server, and what that forces
+
+The operator names the hosting **cluster**. **Nomad names the server**, continuously, and nobody types a hostname — the same rule the course has for Nodes, one layer up. Three things follow, and one is a real decision.
+
+**The domain services fail over within the hosting cluster like any allocation.** A server dies; Nomad reschedules the signer job elsewhere in the same cluster, exactly as it would a Node. So the domain's availability is *as good as its hosting cluster's* — no better, and no worse. Only a whole-cluster death has nothing to fail over to.
+
+**Which decides where the key lives.** A signer that can land on any server cannot keep its key on a server's disk — that disk just died. It lives in a **Nomad Variable in the hosting cluster's raft**: encrypted, ACL'd, delivered to the task, and the same mechanism М11 uses for Node identity. That is a *software* key, and the alternative should be named to be refused: sealing it in a TPM pins the signer to one server and **defeats the failover it just gained.** The tradeoff — hardware-bound keys cannot move, software keys can be stolen — is settled by the delegation principle rather than by preference: **a stolen intermediate is bounded by its lifetime and re-issued from the root**, so a software key is acceptable *because* it is a bounded authority and not a permanent secret. This is the first place that principle stops being a slogan and picks a storage location.
+
+**And the two-instances problem is here too.** `count = 1` does not mean exactly one during a reschedule — a partitioned server may still run the old instance, which is М11 Lesson 28's entire subject. Sort the services by what that does:
+
+| Service | Two instances briefly | Why |
+|---|---|---|
+| Signer | harmless | same key, same signatures |
+| Read view | harmless | read-only |
+| **Placement** | **a writer** — two placers could give one camera two clusters | **safe anyway**, because a placement is a **check-and-set write** into the directory's raft: the second gets a 409 and retries |
+
+> **At the domain, correctness comes from how a write is made, never from how many instances Nomad promises.** Placement is safe because it writes with CAS, not because there is one of it.
+
+**What the operator may still say:** a **constraint**, never a server. *The signer runs on a server with a TPM* or *not on a server carrying fifty cameras* — a requirement Nomad satisfies, which is М10's *physics leaks* table again: the operator names what must be true, the scheduler decides where.
 
 ### Cold start, which the rehydration lesson never had to face
 
