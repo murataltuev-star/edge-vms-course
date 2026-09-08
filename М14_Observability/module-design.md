@@ -6,7 +6,7 @@ Every module before this one added a scope. This one adds none — it is how you
 
 It also **does not introduce observability.** М9–М12 already emit signals, each defined where the failure that needed it was introduced, because a metric chosen at the moment you watch something break has a reason and one chosen in an observability chapter has only a name. This module collects them, and adds what is genuinely cross-cutting.
 
-> **Scope note.** Four lessons, 46–49. The position is still arguable: three of М13's lessons lean on instrumentation taught here — a thirty-day outage that can only be *asserted* without metrics, and a self-halting canary that **is** an alert rule. Emitting low softened that (М13 has numbers to work with), but did not remove it. See the sequencing section of [`COURSE-PLAN.md`](../COURSE-PLAN.md).
+> **Scope note.** Four lessons, 42–45. The position is still arguable: three of М13's lessons lean on instrumentation taught here — a thirty-day outage that can only be *asserted* without metrics, and a self-halting canary that **is** an alert rule. Emitting low softened that (М13 has numbers to work with), but did not remove it. See the sequencing section of [`COURSE-PLAN.md`](../COURSE-PLAN.md).
 
 ---
 
@@ -30,7 +30,7 @@ A Prometheus running as a Nomad job inside the domain it watches dies with that 
 
 Both halves are true, so there is no single correct place, and the resolution is that **there are two observers with different jobs**:
 
-| | **Local** — at the site | **Remote** — at the centre |
+| | **Local** — in the cluster | **Remote** — in the domain's hosting cluster |
 |---|---|---|
 | Sees | everything, at full resolution | whether the site is alive, and a handful of aggregates |
 | Dies with | the site | nothing the site can cause |
@@ -51,9 +51,9 @@ A wall showing four sites. Then, in order:
 
 1. **A camera stops recording** while every control-plane field says it is healthy — and the console goes amber on `camera_silent_seconds` alone.
 2. **A server dies.** Its Node moves. **One** alert fires, naming the server, not two hundred naming cameras.
-3. **A site's uplink is cut.** The centre shows it as **unreachable, not healthy and not broken**, with the age of its last report and what is therefore unknown.
+3. **A cluster's uplink is cut.** The domain shows it as **unreachable, not healthy and not broken**, with the age of its last report and what is therefore unknown.
 4. **The uplink returns.** The backlog drains at a stated rate, the gap in the graphs is visible and labelled, and nothing was invented to fill it.
-5. Finally, a student greps the whole monitoring stack for a camera password **and finds nothing**, because Lesson 49 made that impossible.
+5. Finally, a student greps the whole monitoring stack for a camera password **and finds nothing**, because Lesson 45 made that impossible.
 
 If a lesson does not move that wall forward, it does not belong here.
 
@@ -81,7 +81,7 @@ If a lesson does not move that wall forward, it does not belong here.
 - **М10 Lesson 20** — events are not metrics; and the credential hiding in `rtsp_url`, which Lesson 49 collects on.
 - **М10 Lesson 24** — `camera_lag` and `camera_silent_seconds`, and positions versus reasons.
 - **М11 Lesson 28** and **М12 Lesson 30** — failover duration, epoch conflicts, replica lag.
-- **М13 Lesson 36** — regions, because a fleet view spans them.
+- **М12 Lesson 37** — regions, because a fleet view spans them.
 
 ---
 
@@ -135,7 +135,7 @@ Not legal advice, and the anti-tivoisation clause in §6 deserves its own look f
 
 *Four lessons. The system already emits; this is how you see it from outside.*
 
-### Lesson 46 — What you already emit, and what silence means
+### Lesson 42 — What you already emit, and what silence means
 
 - **Take inventory first.** The six signals above, and for each one: what it cannot tell you. That column is the lesson
 - Build the exporter: a `/metrics` endpoint on the Node, exposing what М10 Lesson 24 already computes. **No new measurements** — this is plumbing over decisions already taken
@@ -147,7 +147,7 @@ Not legal advice, and the anti-tivoisation clause in §6 deserves its own look f
 
 ---
 
-### Lesson 47 — Where the observer runs
+### Lesson 43 — Where the observer runs
 
 - The observer's paradox from above, and the two-observer resolution
 - **Prometheus agent mode** — introduced in 2.32 behind a feature flag, now the `--agent` CLI flag. It disables the local TSDB, alerting and rule evaluation and optimises for scraping plus remote write. Built for small resource-constrained deployments, which is what a site is
@@ -155,13 +155,13 @@ Not legal advice, and the anti-tivoisation clause in §6 deserves its own look f
 - **What crosses the uplink**, and the arithmetic beside М13's: metrics measured in kilobits per second against footage measured in megabits. Monitoring must not compete with the product for the link
 - **Remote write**: v1.0 is the stable spec (April 2023) and mandates **Snappy** compression; v2.0 is still marked experimental. Say which you are using and why
 - **Federation** is for pulling *selected*, typically *aggregated*, series between servers. The widespread advice not to federate everything is community practice rather than a documented warning — **teach the reasoning, and attribute it honestly**
-- Where the *remote* observer lives: М13's layer, which is allowed to be down — so it may not be the thing that decides anything
+- Where the *remote* observer lives: **the domain's hosting cluster**, as one more domain service — a different failure domain from every other cluster, and the same one as the signer. It is allowed to be down, so it may not be the thing that decides anything; and it watches the hosting cluster itself only from *inside*, which is the one blind spot the design accepts and names
 
-**Deliverable:** kill an entire domain and show that the centre still reports it as unreachable within a stated window — and that nothing at the site stopped recording.
+**Deliverable:** kill an entire cluster and show that the domain still reports it as unreachable within a stated window — and that nothing in that cluster stopped recording.
 
 ---
 
-### Lesson 48 — Alarms somebody will act on
+### Lesson 44 — Alarms somebody will act on
 
 - **Alarm on the product, not the process.** М9 Lesson 18's ladder, generalised: every alert names a thing the customer paid for
 - **Symptom, not cause.** One alert per failure, at the level a human acts on. М12's failure-domain grouping already does the work — a dead server is **one** alert, not two hundred
@@ -174,7 +174,7 @@ Not legal advice, and the anti-tivoisation clause in §6 deserves its own look f
 
 ---
 
-### Lesson 49 — Logs, secrets, and one failure through four layers
+### Lesson 45 — Logs, secrets, and one failure through four layers
 
 The capstone, and it is a reading exercise as much as a building one.
 
@@ -202,7 +202,7 @@ The capstone, and it is a reading exercise as much as a building one.
 
 1. **Does this module belong before М13?** Three of М13's lessons lean on instrumentation taught here. Emitting low softened it; the argument is not dead.
 2. **One Prometheus per domain, or per site?** They are the same thing when a domain is one building and different when a domain is a cloud region serving fifty small sites — which М13's mixed deployment makes routine.
-3. **Does the remote observer belong in М13's layer at all?** That layer is *allowed to be down*. A monitoring system that is allowed to be down is a monitoring system that will be down during the incident.
+3. **Who watches the hosting cluster?** The remote observer lives there, so it cannot see its own cluster from outside. The vendor could host a second-level heartbeat as a support service — but the product must not *depend* on it, so the honest answer may be that the hosting cluster's death is discovered by a human noticing the console is gone.
 4. **Is a customer-installed Grafana an acceptable answer**, or does the product need a dashboard it ships? The licensing section takes a position; a product manager may not accept it.
 5. **What is the retention for metrics at a site?** Sized against the same partition as the spool and the archive, and therefore competing with footage for disk. Nobody has costed this.
 

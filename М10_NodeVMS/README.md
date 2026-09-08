@@ -62,7 +62,7 @@ The course names its temporary things where they appear rather than discovering 
 3. **Lesson 24 — one hand-provisioned operator account**
 4. М12 Lesson 33 — a per-Node credential, and a self-signed domain CA
 
-М13 Lesson 41 collects them all. The `valid_until` column in Lesson 20's `grants` table is the mirror image: dead code here, present so that М12 *populates* rather than *migrates*.
+М12 collects them all — four replaced, one promoted. The `valid_until` column in Lesson 20's `grants` table is the mirror image: dead code here, present so that М12 *populates* rather than *migrates*.
 
 ## Where this goes
 

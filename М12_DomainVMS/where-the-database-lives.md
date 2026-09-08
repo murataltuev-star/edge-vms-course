@@ -1,6 +1,6 @@
 # Where the Databases Live
 
-**A decision record for М10_NodeVMS and М11_ClusterVMS.** Companion to [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) and [`consul-and-openbao.md`](../М13_OrchestratedVMS/consul-and-openbao.md), written in answer to *"a domain exists when its Postgres exists — so is Postgres installed on every host, and how do they sync?"*, and then revised in answer to a second question that corrected it: *if the host needs an event store and an index anyway, why not Postgres locally too?*
+**A decision record for М10_NodeVMS and М11_ClusterVMS.** Companion to [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) and [`consul-and-openbao.md`](../М12_DomainVMS/consul-and-openbao.md), written in answer to *"a domain exists when its Postgres exists — so is Postgres installed on every host, and how do they sync?"*, and then revised in answer to a second question that corrected it: *if the host needs an event store and an index anyway, why not Postgres locally too?*
 
 It was revised a third time, and that revision **inverted the second verdict below.** The question that did it: *the Node is a Nomad allocation, not a server — its configuration does not change when Nomad moves it from one server to another, so why does anything need to write ownership at all?* That is right, and the design changed because of it.
 
@@ -148,7 +148,7 @@ Stated once, it becomes a design rule rather than three separate accidents — a
 The PKI split exposed a second mechanism the rule had been hiding, and it is the better one where it is available.
 
 - **Caching** hands down a *value*. It goes stale, and everything above about grace periods and destructive operations exists to manage that staleness.
-- **Delegation** hands down an *authority*. A domain given an intermediate CA does not hold a cached certificate that expires — it **mints fresh ones indefinitely** with the centre gone, which is why routine issuance never leaves the site.
+- **Delegation** hands down an *authority*. A domain that is its own root does not hold a cached certificate that expires — it **mints fresh ones indefinitely** with everything above it gone, which is why routine issuance never leaves the site. *(Earlier drafts delegated an intermediate from a vendor root; that root was removed because a vendor who can sign your CA can impersonate your domain. The argument survives without it — the domain delegates to itself.)*
 
 Delegation is strictly stronger, and it is available exactly when the thing handed down can be bounded and withdrawn on a schedule — which is what a certificate lifetime *is*. That also says precisely what cannot be delegated: **a secret has no such operation.** You cannot hand a domain a bounded, expiring piece of a password; you can only give it a copy, which is another place to steal it from. So the CA moves down into the domain and the vault does not, and that asymmetry — not a preference about topology — is why М12's appliance holds certificates and runs no vault.
 
@@ -227,9 +227,9 @@ What remains is weaker still: **Nomad's raft is replicated because the scheduler
 | **repmgr** | A witness node holding no data, as referee before a standby promotes | Reasonable when a customer asks for HA |
 | **pg_auto_failover** | A monitor node that actively coordinates state changes | Same class, arguably simpler to reason about |
 | **Patroni** | A distributed configuration store — etcd, Consul, ZooKeeper or Kubernetes | **The trap** |
-| Domain database in the federated layer | A working uplink | Never. Inverts М13's thesis |
+| Domain database at the vendor | A working uplink | Never. The product must work with the vendor gone |
 
-**The Patroni trap is why this section survives its own obsolescence**, because it is exactly the kind of dependency that arrives sideways. Patroni requires a DCS, and the obvious candidates are etcd or Consul. [`consul-and-openbao.md`](../М13_OrchestratedVMS/consul-and-openbao.md) had just argued Consul out of the stack — so choosing Patroni meant either bringing it back or adding etcd instead, and the database's availability would then depend on a consensus cluster the product otherwise has no use for.
+**The Patroni trap is why this section survives its own obsolescence**, because it is exactly the kind of dependency that arrives sideways. Patroni requires a DCS, and the obvious candidates are etcd or Consul. [`consul-and-openbao.md`](../М12_DomainVMS/consul-and-openbao.md) had just argued Consul out of the stack — so choosing Patroni meant either bringing it back or adding etcd instead, and the database's availability would then depend on a consensus cluster the product otherwise has no use for.
 
 Which is the general lesson, and it applies to more than Patroni: **when making a component highly available requires a second component that is already highly available, ask whether the state could simply live in the second one.** For the epoch, and then for the whole directory, the answer was yes — the Nomad servers were already a replicated consensus cluster, sitting there, doing scheduling. The database was the thing that did not need to exist.
 
@@ -297,7 +297,7 @@ Most events are never read. A filtered subset — alarms an operator must acknow
 ## Sources
 
 - [PostgreSQL HA: repmgr vs Patroni vs pg_auto_failover](https://tomasz-gintowt.medium.com/postgresql-high-availability-repmgr-vs-patroni-vs-pg-auto-failover-a16fd0bfbc1e) — external dependencies of each, witness versus monitor versus DCS, and the closing argument that a system the team understands beats a more advanced one it does not
-- [`consul-and-openbao.md`](../М13_OrchestratedVMS/consul-and-openbao.md) — why Patroni's DCS requirement is a step backwards for this stack
+- [`consul-and-openbao.md`](../М12_DomainVMS/consul-and-openbao.md) — why Patroni's DCS requirement is a step backwards for this stack
 - [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) — camera lifecycle must survive a control-plane outage, which is the rule this record generalises
 - М11 Lesson 26 — replicate metadata, let footage be local
 - [`module-design.md`](module-design.md) — the epoch issuer, the fencing argument it comes from, and М12 Lesson 33's mTLS on the Node↔directory streams

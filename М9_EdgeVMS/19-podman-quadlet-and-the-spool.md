@@ -164,7 +164,7 @@ This is Lesson 13's rule — configuration is read, credentials are injected —
 
 It is also **a stand-in, and the course says so where it appears.** A long-lived static AWS key in a plaintext file on a device in a warehouse is not a security design; it is a placeholder with a note attached. Somebody has to type it during commissioning, it never rotates, and extracting it needs physical access and about a minute.
 
-Three modules from now, М13 replaces it: the box proves who it is with a hardware-rooted identity and receives short-lived credentials it never stores. **Mark it in your own notes as the first of the course's temporary secrets** — М10 adds a database password, М12 adds a per-Node credential and a self-signed domain CA, and М13 Lesson 41 collects all five.
+Three modules from now, М12 replaces it: the domain provisions its own object storage (Lesson 37) and the box reaches it by workload identity, so there is no key to store. **Mark it in your own notes as the first of the course's temporary secrets** — М10 adds a database password and an operator account, М12 adds a per-Node credential and a self-signed CA, and **М12 collects all five**: four replaced by giving things identities, and the fifth *promoted* rather than replaced, because the self-signed CA turned out to be the customer's own root.
 
 ## Step 5 — The failure this module has been shipping
 
@@ -402,7 +402,7 @@ Same segments, three meanings. It is the first thing in this course that a later
 - Three kinds of thing on an appliance: the **OS** (replaced by a bundle), the **application** (replaced by an image), and the **data** (never replaced). Podman's `graphroot` must move to the data partition, in the image, or the first OS update destroys it.
 - Quadlet turns a declarative `.container` file into a systemd service. `Image` is the only required key, `[Install]` is applied by the generator, and you must never `systemctl enable` the result.
 - `systemd-analyze verify` cannot check a Quadlet file. The generator's `--dryrun` can, and belongs in CI.
-- Credentials are provisioned at commissioning onto the data partition, because both slots ship identical. This is the course's **first temporary secret**; М13 Lesson 41 collects all five.
+- Credentials are provisioned at commissioning onto the data partition, because both slots ship identical. This is the course's **first temporary secret**; М12 collects all five — four replaced, one promoted.
 - `kvssink` with nothing behind it loses footage on every uplink blink. The fix is local segments plus a separate uploader — the one media change this module makes.
 - **Delete on acknowledgement, never on send.** The bound needs a policy the product states. Catch-up needs a rate limit, or recovery becomes its own outage.
 - The spool is not thrown away: М10 indexes the same files into an archive, М13 makes the upload conditional.

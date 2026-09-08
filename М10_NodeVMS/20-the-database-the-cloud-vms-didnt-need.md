@@ -346,7 +346,7 @@ Release N+1:  read new
 Release N+2:  stop writing old, drop column
 ```
 
-Three releases to rename a column. That is what shipping to hardware you cannot visit costs, and М13 Lesson 44 generalises it to a fleet on mixed versions.
+Three releases to rename a column. That is what shipping to hardware you cannot visit costs, and М13 Lesson 40 generalises it to a fleet of customers on mixed versions.
 
 ## Step 9 — `PGDATA` on the data partition
 

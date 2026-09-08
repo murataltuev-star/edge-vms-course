@@ -49,7 +49,7 @@ One correction worth knowing before you try it: **`systemd-analyze verify` canno
 
 **Every step produces a result you can see.** A partition table you print, a signature that fails in front of you, a boot menu showing its own state variables, ten minutes of footage that is either there or is not.
 
-**Each lesson replaces a stand-in from the one before.** The hand-selected boot menu becomes a signed bundle; the signed bundle becomes a self-healing rollback; the hand-started container becomes a systemd unit. What this module *adds* to that discipline is naming its stand-ins as debts to be collected later — the AWS credentials in Lesson 19 Step 4 are the first of five temporary secrets, and М13 Lesson 41 collects them all.
+**Each lesson replaces a stand-in from the one before.** The hand-selected boot menu becomes a signed bundle; the signed bundle becomes a self-healing rollback; the hand-started container becomes a systemd unit. What this module *adds* to that discipline is naming its stand-ins as debts to be collected later — the AWS credentials in Lesson 19 Step 4 are the first of five temporary secrets, and М12 collects them all — four replaced by giving things identities, and one promoted to the customer's permanent root.
 
 ## Decision records
 

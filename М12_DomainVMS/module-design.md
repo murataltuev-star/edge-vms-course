@@ -1,10 +1,12 @@
 # М12_DomainVMS — Module Design
 
-**The smallest layer that can sit above a set of Nodes, and be switched off.**
+**The smallest layer that can sit above a set of clusters, be switched off — and be the top of the product.**
 
 [М11](../М11_ClusterVMS/module-design.md) made a Node survive its server. It did that without any coordinating layer at all — a Node owns its own configuration, so failover rewrites nothing and needs nobody's permission. That is the unusual starting position this module has to justify itself from: **almost everything already works, so what is a domain layer actually for?**
 
 Exactly three things. This module builds them, and spends as much effort on what it refuses to do as on what it does.
+
+> **There is nothing above the domain in the product.** Earlier drafts had a layer above it — a root CA, a federated identity, a fleet inventory, a vault. Every one of those turned out to be either a thing the domain can do for itself, or a thing the *vendor* does across customers. One customer is one domain, because a domain can be as large as their whole estate. What sits above it is [М13 — the vendor's side](../М13_VendorVMS/module-design.md), and the property this module must deliver is the one that makes that module honest: **the product works with the vendor unreachable, or gone.**
 
 > **Domain is not cluster, and a domain is bigger.** М11 built a **cluster** — servers close enough to share a network you would bet recording on, a boundary set by physics. This module builds a **domain**: the clusters under one directory, one CA and one set of operators, a boundary set by **administration**. A campus is one domain with three clusters and three server rooms; a cloud deployment is one domain with one cluster serving fifty sites. Sites and clusters are many-to-many on purpose.
 >
@@ -34,17 +36,17 @@ Which is also why this is the first layer in the course **allowed to be unavaila
 
 | Decision | Choice | Why |
 |---|---|---|
-| Domain services | **One signer job (CA + token issuer), placement, and a read view — hosted by one designated cluster; Nomad picks the server** | No controller and no authoritative state. The signer's key is the only thing that cannot be re-provisioned from nothing, and delegation from М13's root is what makes even that recoverable. |
-| The signer's key | **A Nomad Variable in the hosting cluster's raft — a software key, on purpose** | A TPM-sealed key pins the signer to one server and defeats failover. A software key can be stolen — and that is acceptable only because the intermediate is a *bounded* authority: short-lived, and re-issued from the root. The delegation principle choosing a storage location. |
+| Domain services | **One signer job (CA + token issuer), placement, a read view, an update server — hosted by one designated cluster; Nomad picks the server** | No controller and no authoritative state. The signer's key is the only thing that cannot be re-provisioned from nothing, and it is backed up beyond the hosting cluster for exactly that reason. |
+| The signer's key | **A Nomad Variable in the hosting cluster's raft — a software key, on purpose** | A TPM-sealed key pins the signer to one server and defeats failover. A software key can be stolen — and the answer is **short leaf lifetimes**, so a compromise is bounded by hours, plus a key-rotation procedure the module makes students run. Not delegation: there is nobody above to delegate from, and that is the point. |
 | Domain correctness | **From CAS writes, never from instance count** | `count = 1` is not exactly-one during a reschedule. Placement is safe against two instances because it writes with check-and-set, not because Nomad promises one placer. |
 | Clusters per domain | **One or many. Nomad regions, federated** | A campus is three server rooms and one customer. Regions share no state and gossip-couple, which is exactly what a domain needs: each cluster schedules on with the others unreachable. |
 | A dead cluster | **Reported, never healed** | Its cameras are on its network and its footage on its disks. Rebalancing them elsewhere produces Nodes failing to reach a dead network and hides the real fault. |
 | Domain layer | **A directory of directories, and not consistent** | Cross-cluster lookup, choosing a cluster, and saying when an answer is partial. Within-cluster lookup, placement and rebalance are М11's. |
 | Directory storage | **No database at all.** A federated read across each cluster's Variables | The clusters already hold the answer; the domain aggregates rather than copies. Restore points stay in each cluster's own object store and the domain never reads them. |
 | Convergence token | **Monotonic revision**, not token equality | Ordering expresses *distance*; equality only *difference*. See below. |
-| Transport | **mTLS, from a self-signed domain CA marked temporary** | The Node↔directory streams carry configuration, grants and status. A credential says who is calling; it says nothing about the channel. М13 replaces the self-signed root with a delegated intermediate. |
-| Authentication | **A hand-provisioned credential per Node, marked temporary** | The course's existing discipline: the stand-in is named where it appears. М13 replaces it with a federated identity. |
-| Human identity | **A token signed by a domain issuer; Nodes hold the public key, never a password hash** | М10's per-Node `operators` table becomes N Alices and N stealable hashes. Verifying a signature needs no network, so this survives the domain being down. The issuer is hand-provisioned and marked temporary; М13 federates it. |
+| Transport | **mTLS, from the domain's own self-signed root** | The Node↔directory streams carry configuration, grants and status. A credential says who is calling; it says nothing about the channel. **The root is the customer's and stays self-signed on purpose** — a vendor-held root above it would be a vendor that can impersonate the customer's whole trust domain. |
+| Authentication | **A hand-provisioned credential per Node, marked temporary — until Lesson 35** | The course's existing discipline: the stand-in is named where it appears. Lesson 35's enrollment replaces it with an LDevID issued by the domain's own signer. |
+| Human identity | **A token signed by the domain signer; Nodes hold the public key, never a password hash** | М10's per-Node `operators` table becomes N Alices and N stealable hashes. Verifying a signature needs no network, so this survives the domain being down. **The signer federates to the customer's own IdP** where one exists — one domain, one Alice, and nothing above either. |
 | Authorization | **Node-local grants carrying an expiry** | Enforcement must survive the domain being down, so it cannot be a lookup. Expiry is what bounds the revocation window. |
 | Status model | **Positions and reasons kept apart** | Kubernetes shipped a phase enum and then documented why it was a mistake. |
 
@@ -149,8 +151,8 @@ Acceptable is not the same as accidental. **Which cluster hosts the domain is a 
 
 Placement and the read view can be re-provisioned in another cluster from nothing. **The signer cannot: it holds the key every certificate in the domain chains to**, and losing the hosting cluster loses it. Two answers, and they are the delegation principle again:
 
-- **Once М13 exists**, the domain intermediate is delegated from an offline root, so a lost intermediate is **re-issued from above**. Delegation makes the key recoverable by construction, which is a better argument for the hierarchy than any the PKI lessons make on their own
-- **In this module alone**, before there is a root, the self-signed key needs an explicit backup somewhere the hosting cluster's death cannot reach — another cluster's object store, or offline. **One line, and nobody writes it down**, which is how a burned-out server room becomes a domain whose every Node must be re-enrolled by hand
+- **The domain's root is self-signed and it is the top.** There is no authority above it to re-issue from, and that is deliberate: a vendor-held root that signs the customer's CA is a vendor that can impersonate the customer's entire trust domain, and no serious security buyer accepts it. So recoverability comes from **backup**, not delegation: the key is kept somewhere the hosting cluster's death cannot reach — another cluster's object store, or offline — and Lesson 36 makes students **rotate** it while the domain runs, because a backup nobody has restored from is a hope
+- **Lose it anyway and every Node re-enrolls.** That is the honest cost of the customer owning their own trust, and the module says the number — how long a full re-enrollment takes at N Nodes — rather than leaving it as a feeling
 
 ### Who decides which server, and what that forces
 
@@ -158,7 +160,7 @@ The operator names the hosting **cluster**. **Nomad names the server**, continuo
 
 **The domain services fail over within the hosting cluster like any allocation.** A server dies; Nomad reschedules the signer job elsewhere in the same cluster, exactly as it would a Node. So the domain's availability is *as good as its hosting cluster's* — no better, and no worse. Only a whole-cluster death has nothing to fail over to.
 
-**Which decides where the key lives.** A signer that can land on any server cannot keep its key on a server's disk — that disk just died. It lives in a **Nomad Variable in the hosting cluster's raft**: encrypted, ACL'd, delivered to the task, and the same mechanism М11 uses for Node identity. That is a *software* key, and the alternative should be named to be refused: sealing it in a TPM pins the signer to one server and **defeats the failover it just gained.** The tradeoff — hardware-bound keys cannot move, software keys can be stolen — is settled by the delegation principle rather than by preference: **a stolen intermediate is bounded by its lifetime and re-issued from the root**, so a software key is acceptable *because* it is a bounded authority and not a permanent secret. This is the first place that principle stops being a slogan and picks a storage location.
+**Which decides where the key lives.** A signer that can land on any server cannot keep its key on a server's disk — that disk just died. It lives in a **Nomad Variable in the hosting cluster's raft**: encrypted, ACL'd, delivered to the task, and the same mechanism М11 uses for Node identity. That is a *software* key, and the alternative should be named to be refused: sealing it in a TPM pins the signer to one server and **defeats the failover it just gained.** The tradeoff — hardware-bound keys cannot move, software keys can be stolen — is settled by lifetimes rather than by preference: **leaf certificates live hours to days**, so a stolen signing key is worth exactly as long as it takes to rotate it, and Lesson 36 makes rotation a drill rather than an emergency. A software key is acceptable *because* everything it signs is short-lived.
 
 **And the two-instances problem is here too.** `count = 1` does not mean exactly one during a reschedule — a partitioned server may still run the old instance, which is М11 Lesson 28's entire subject. Sort the services by what that does:
 
@@ -239,8 +241,8 @@ The course's own convention — the stand-in before the real thing — at the to
 Lesson 32 built a write API on every Node. That is **N endpoints where there used to be one**, and the module has to say what protects them before it moves on.
 
 - **The surface, counted honestly.** Node-owned configuration is why an operator can edit a camera while the domain is unreachable — and it is also why the thing to protect is now per-Node. This is a real cost of the design, and it belongs next to the benefit rather than three modules later
-- **The channel, before the caller.** Every stream in this module — configuration upward, grants downward, status both ways — runs **mTLS**, from a **self-signed domain CA, hand-provisioned here and marked temporary**. The certificate names the **Node**, never the server it happens to be running on: failover relocates the Node, and a hostname-shaped name would have to be reissued on every move. Certificates are short-lived and renewed against the domain's own CA, so renewal never reaches outside the domain — which is what lets the whole channel keep working while the layer above is down. М13 replaces the self-signed root with an intermediate delegated from a real one; **the CA changes, and nothing else here does**
-- **Authentication, hand-provisioned and marked temporary.** A credential per Node, exactly as М9 hand-provisions AWS keys and М10 a database password. М13 replaces it with a federated identity, and the replacement is the lesson
+- **The channel, before the caller.** Every stream in this module — configuration upward, grants downward, status both ways — runs **mTLS**, from the **domain's own self-signed root**. It is hand-provisioned here in the sense that a student runs `openssl` to make it, and **it is not a stand-in** — this is the customer's root, permanently, and Lesson 36 gives it lifetimes and rotation. The certificate names the **Node**, never the server it happens to be running on: failover relocates the Node, and a hostname-shaped name would have to be reissued on every move. Certificates are short-lived and renewed against this root, so renewal never reaches outside the domain — which is what lets the channel keep working with everything above it gone
+- **Authentication, hand-provisioned and marked temporary.** A credential per Node, exactly as М9 hand-provisions AWS keys and М10 a database password. **Lesson 35 replaces it** with an LDevID the box earns by enrolling, and the replacement is that lesson
 - **Grants are Node-local.** Each Node stores *subject X may do Y here*. Enforcement is a local query — no lookup, no token exchange — which is the only way authorization survives the domain being down. It also **partitions privilege**: a compromised Node can only grant rights on itself, where a central store compromised is total
 
 #### The asymmetry that makes rights different from configuration
@@ -282,7 +284,7 @@ Alice ──▶ domain identity service ──▶ short-lived signed token (subj
 ```
 
 - **N Nodes holding password hashes is N places to steal them from. N Nodes holding a public key is zero.** That is a security improvement, not just a tidiness one
-- **The issuer is hand-provisioned here and marked temporary**, exactly like the self-signed domain CA in this same lesson. It is the second stand-in this lesson creates and М13's Lesson 42 collects both: the CA becomes a delegated intermediate, the issuer becomes federated, and *one Alice* finally spans domains
+- **The issuer is the domain signer**, the same job that runs the CA, and it is permanent too. Where the customer already has an identity provider — and enterprises do — the signer **federates to it** over OIDC: Alice authenticates against her employer's IdP, the signer issues a domain token naming her, and the Nodes never learn the IdP exists. One domain, one Alice, and nothing above either of them
 - **М10's `operators` table is superseded, not extended.** Say so explicitly — a student who keeps it and adds a `node_id` column has built the N-Alices problem on purpose
 
 #### Two lifetimes, and they are not independent
@@ -302,20 +304,83 @@ The grant now has `valid_until` and the token has its own expiry, and picking th
 
 The directory aggregates grants for review, never for enforcement. And when a Node is unreachable, the answer to *"what can Alice access?"* is **incomplete** — the console must say so rather than render a short list, because a short list read as complete is how an access review misses something.
 
-**Identity itself is not Node-local.** Alice is an employee of the customer and exists whether or not any Node does; storing her *in* Node 3 would create N Alices whose records can disagree about who she is. Nodes store grants against a subject; **this module supplies the subject locally, and М13 federates it** — see below.
+**Identity itself is not Node-local.** Alice is an employee of the customer and exists whether or not any Node does; storing her *in* Node 3 would create N Alices whose records can disagree about who she is. Nodes store grants against a subject; **the domain signer supplies the subject**, from the customer's own IdP where there is one.
 
 **Deliverable:** grant an operator rights on a Node, then revoke them while that Node is unreachable — and state, in advance and then by measurement, exactly when their access ends.
 
 ---
 
-### Lesson 34 — Packaging, delivery, and the licence
+### Lesson 34 — Packaging, updates, and the licence
 
-- **Nomad Pack**: templating, variables and registries; per-site differences without per-site forks
-- **The honest GitOps gap.** Fleet is pull-based — a site catches up by itself. Nomad Pack driven from CI is push-based; your pipeline must reach each region. For flaky edge links that is materially worse, and the module says so rather than glossing it. hawkBit in М12 restores it on the OS plane
-- **Reading the licence you just built on.** Nomad Community Edition is under the **Business Source License (BUSL)**, a source-available licence whose grant converts to an open-source one after a Change Date. Licensor IBM; production use is granted provided the work is not offered to third parties on a hosted or *embedded* basis to compete with IBM's paid versions; the Change Date is four years per version, converting to MPL 2.0. Full analysis in [`kubernetes-vs-nomad.md`](../М11_ClusterVMS/kubernetes-vs-nomad.md)
-- Acceptance criteria for the module
+- **Nomad Pack**: templating, variables and registries; per-cluster differences without per-cluster forks
+- **The honest GitOps gap.** Fleet is pull-based — a site catches up by itself. Nomad Pack driven from CI is push-based; your pipeline must reach each cluster. For flaky links that is materially worse, and the module says so rather than glossing it
+- **The domain runs its own update server.** Eclipse hawkBit, pull-based, hosted like every other domain service. Appliances poll it; **the vendor publishes to it** and never reaches an appliance directly. That restores pull on the OS plane, and it is what makes an air-gapped domain updatable at all — somebody carries a bundle to the update server, and the boxes fetch it as if nothing were unusual
+- **Entitlement, from the domain's side.** The vendor issues it; the domain **caches** it and degrades on a grace period, exactly like placement and identity. What degrades is decided here — record-but-don't-add-cameras is the usual answer — and the number is stated. Nothing that is already recording stops because a licence server is unreachable
+- **Reading the licence you just built on.** Nomad Community Edition is under the **Business Source License (BUSL)**: Licensor IBM; production use granted unless the work is offered to third parties hosted or *embedded* to compete with IBM's paid versions; Change Date four years per version, to MPL 2.0. The competitive test is what decides it for a VMS, and the analysis is in [`COURSE-PLAN.md`](../COURSE-PLAN.md) and [`kubernetes-vs-nomad.md`](../М11_ClusterVMS/kubernetes-vs-nomad.md)
+- Acceptance criteria for the module's structural half
 
-**Deliverable:** one pack, three simulated sites, per-site differences — plus a written analysis of what breaks when a site is offline for a day.
+**Deliverable:** one pack, three clusters, per-cluster differences; an OS update delivered through the domain's own hawkBit with the vendor unreachable; and a written analysis of what degrades when the licence server is unreachable for a month — and what does not.
+
+---
+
+### Lesson 35 — Secure introduction: a box joins the domain
+
+The hardest problem in the course, and it belongs here because **a box joins a domain** — and the signer that issues its certificate is already running two lessons back.
+
+A device with no secret must obtain one, over a network it does not yet trust, from a service it cannot yet authenticate. Every option is a trade, and М9 removed the easiest: **the appliance image is byte-identical across every unit**, so nothing device-specific can be inside it.
+
+| Approach | How it fails |
+|---|---|
+| **Shared secret in the image** | One extracted image is every device's identity. This is how vendors get breached; not a trade-off, a defect |
+| **Per-device token written at manufacture** | Works, but it is a factory process, a secret database, and a secret in transit — the problem moved to logistics |
+| **Hardware root** (TPM 2.0, or a manufacturer-installed certificate) | Strongest. A key that cannot be exported, and with attestation, evidence of *what software is running* — at the cost of a hardware requirement |
+| **Registration with human approval** | The device presents itself; an administrator approves it in **the domain's console**. Pragmatic, widely deployed, judgement lives in the approval — but it trusts the network at first contact |
+
+- **The registrar is the domain's.** RFC 8995 says so and the design agrees: it is the door a box knocks on to join *this* domain, it decides yes or no, and it hands the box to the signer for an **LDevID** — a certificate from *this* domain, replacing Lesson 33's hand-provisioned credential. Enrollment is a domain service, hosted like the others
+- **BRSKI's vocabulary, because it names the parts precisely:** the *pledge* carries a factory **IDevID**; the *registrar* decides; the manufacturer's **MASA** issues a *voucher* telling the pledge which registrar to trust; the pledge enrolls over **EST** and receives its LDevID. **The only part of that which is not the domain's is the MASA** — the vendor vouching for its own hardware, which is М13's — and the voucher is the single cryptographic thing a customer ever needs from the vendor
+- **TPM 2.0:** sealing, attestation, and precisely what attestation does and does not prove
+- **Registration-with-approval, built properly** as the shipped fallback: a queue, an audit trail, and an expiry on unapproved requests
+- **The ladder:** never a shared secret in an image; approval as the honest start; hardware identity where the box has a TPM; BRSKI when the customer wants zero-touch and the vendor runs a MASA
+
+**Deliverable:** a box enrolls from cold with nobody typing a secret, receives an LDevID from the domain signer, and the enrollment is auditable afterwards. Then the hand-provisioned per-Node credential is deleted, and nothing stops.
+
+---
+
+### Lesson 36 — Lifetimes, rotation, and revocation that works offline
+
+The domain's root is self-signed and it is the top. That removes a layer and adds a duty: **nobody above will re-issue anything**, so this lesson is where the domain learns to look after its own trust.
+
+- **The tension, with an arithmetic answer.** Short certificates revoke by expiring but a cluster offline longer than the lifetime goes dark; long ones survive outages and keep a stolen device trusted for months. There is no lifetime good at both — **split the certificates by job**:
+
+| Certificate | Lifetime | Renewed by | Needs anything outside the cluster? |
+|---|---|---|---|
+| The domain root | years | a rotation drill | — |
+| Service-to-service | hours to days | the signer | **never** |
+| Device identity (LDevID) | long | the signer, on enrollment and renewal | never |
+
+- **The number to state:** `maximum tolerable outage = certificate lifetime − renewal margin`. Pick lifetimes from the outage you must survive; a product promising thirty days of autonomy cannot issue seven-day certificates
+- **Renewal without downtime:** overlapping validity, and reloading without dropping connections
+- **Root rotation as a drill, not a disaster.** Cross-signing or an overlap window; the domain keeps running throughout; the old root is retired on a date. Students rotate a live domain's root, because a backup nobody has restored from is a hope and a rotation nobody has run is a plan
+- **Revocation is a lifetime problem, not a list problem.** CRL and OCSP both assume you can reach something; let short certificates expire, and treat the device certificate as the one slow case, compensated by entitlement
+- **Clock skew**, which breaks certificate validation in ways that look like everything else
+
+**Deliverable:** simulate a thirty-day cluster outage; everything keeps working. Rotate the root under load. Then revoke a device and show it losing access on a schedule stated in advance.
+
+---
+
+### Lesson 37 — A cluster you rent, and a Node that does not know where it is
+
+М11 built clusters from servers in a room. This lesson changes one thing: **where the servers come from** — and proves the software cannot tell.
+
+- **A cloud region is just a cluster.** Rented instances on one provider network satisfy М11's definition exactly as a rack does, and Nomad cannot tell the difference. The domain's hosting cluster **provisions** it, using the customer's own cloud account — which is why this is a domain feature and not something above it
+- **Deploy М10's Node three ways** — local server, rented instance, and split so a site's Nodes are local while the domain services are not — and diff the artifacts. **They are identical.** If they are not, this lesson found a bug in М10 or М11
+- **The bandwidth arithmetic, done before the demo:** fifty cameras at 4 Mbit/s is 200 Mbit/s sustained upstream and ~2 TB a day. Most sites cannot buy that, so **recording stays at the edge and operation moves to the cloud** — *mixed* is the shape a real deployment takes, and a cloud-only site is for a handful of cameras with no hardware to install
+- **What differs by placement**, and it is a short list: storage class and its cost curve, how the camera's stream reaches the Node, who is paged when hardware dies. **What must never differ:** configuration ownership, the epoch, the certificate chain, the update mechanism
+- **A cloud site has no spool.** Its cameras stream over the internet to a Node that writes locally; an uplink outage is not buffered, it is lost — so **the camera becomes the buffer**, edge recording backfilled over ONVIF when the link returns. Say this to the customer before they choose it
+- **Cost as a design input:** six cameras for thirty days is ~5.8 TB, about $130/month on hot object storage and one $150 disk on-prem. The cloud option is not cheaper; it is *operationally simpler*, and a datasheet that implies otherwise loses money per camera
+- **Closing the arc with М8.** The course opened renting a cloud VMS from Kinesis. Rebuild that shape here — your Nodes, your object storage, your cloud account — and М9's hand-provisioned AWS credentials are retired by no longer being needed
+
+**Deliverable:** one domain, two clusters — one local, one rented from the customer's cloud account by the domain itself — both recording, both in one directory, and a written bandwidth-and-cost estimate for a fifty-camera site saying which it should be.
 
 ---
 ## Verification plan
@@ -326,9 +391,11 @@ The directory aggregates grants for review, never for enforcement. And when a No
 - The divergence taxonomy, one-way replication and revision handling, resume tokens, idempotency
 - **Grant expiry and the revocation window** — pure logic; Lesson 33's measurement needs a clock and a fake Node, no cameras at all
 - Streaming behaviour against a fake Node, in the style of Lessons 11–15
-- The mTLS chain, with real `openssl`, exactly as М9 Lesson 17 built the RAUC chain
+- The mTLS chain, with real `openssl`, exactly as М9 Lesson 17 built the RAUC chain — and now the whole of Lesson 36: lifetimes, expiry, root rotation with an overlap window, and clock-skew failures, all by issuing short certificates and moving time rather than waiting
+- **Enrollment end to end with a simulated MASA** — the registrar, the voucher, EST, the LDevID — and the approval fallback with its queue and audit trail. A student without a TPM reads Lesson 35's attestation section rather than running it, and the lesson says at which paragraph that starts
+- The bandwidth and cost arithmetic of Lesson 37, which is a spreadsheet
 
-**Track 2 — needs the real bench.** Anything that needs several real Nodes on several real servers: shadow mode against live traffic, the rebalance budget under load, and the packaging exercise.
+**Track 2 — needs the real bench.** Anything that needs several real Nodes on several real servers: shadow mode against live traffic, the rebalance budget under load, the packaging exercise, and a rented cluster provisioned from a real cloud account. **TPM 2.0** cannot be faked in any way worth teaching.
 
 ---
 
@@ -338,7 +405,7 @@ The directory aggregates grants for review, never for enforcement. And when a No
 2. **How much retention policy is domain design rather than infrastructure?** Schedules, per-camera overrides and legal hold may deserve their own lessons.
 3. **How short should a grant's lifetime be?** Lesson 33 makes students pick a number and defend it; the product must pick one too, trading an operator locked out during an outage against a revoked administrator retaining access.
 4. **What does an air-gapped domain use for object storage?** MinIO on the servers is the obvious answer, and then somebody has to back *that* up. This is what remains of the high-availability question after the domain database was removed.
-5. ~~**Where does the domain CA run?**~~ **Answered in *The domain services* above** — as one Nomad job with the token issuer, in a designated hosting cluster, its key backed up beyond that cluster until М13's root makes it re-issuable. What remains open is narrower: **should the hosting cluster be chosen automatically** when the designated one dies, or is that a human decision on purpose?
+5. ~~**Where does the domain CA run?**~~ **Answered in *The domain services* above** — as one Nomad job with the token issuer, in a designated hosting cluster, its key backed up beyond that cluster and rotated on a drill. What remains open is narrower: **should the hosting cluster be chosen automatically** when the designated one dies, or is that a human decision on purpose?
 
 **Resolved while designing the module:**
 
@@ -349,6 +416,8 @@ The directory aggregates grants for review, never for enforcement. And when a No
 
 ## Sources
 
+- [RFC 8995 — BRSKI](https://datatracker.ietf.org/doc/html/rfc8995) — pledge, registrar, MASA, voucher, IDevID and LDevID; the registrar belongs to the domain
+- [Eclipse hawkBit](https://eclipse.dev/hawkbit/) — pull-based update delivery, run as a domain service
 - [Nomad Variables HTTP API](https://developer.hashicorp.com/nomad/api-docs/variables/variables) — the `cas` parameter compared against `ModifyIndex`, 409 on conflict, and the 64 KiB item limit
 - [Configurable max entry size for Nomad Variables](https://github.com/hashicorp/nomad/issues/14763) — why a limit exists at all: the impact of Variables on a memory-resident raft store
 - [Nomad Pack](https://developer.hashicorp.com/nomad/tools/nomad-pack) · [Nomad LICENSE](https://raw.githubusercontent.com/hashicorp/nomad/main/LICENSE)

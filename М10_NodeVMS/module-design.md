@@ -61,7 +61,7 @@ If a lesson does not move that demo forward, it does not belong in this module.
 | Authentication | **One hand-provisioned operator, marked temporary** | On one Node there is nothing to decide. The `grants` table exists from Lesson 20 so М12 adds policy rather than schema — but the `operators` table is **superseded** there rather than extended: with N Nodes a local password hash is N Alices, and М12 replaces it with an issuer's public key. |
 | Local storage engine | **Postgres, not SQLite** | The archive index and the event stream need a real database regardless, so a second engine for a small cache is pure cost. Partitioning is the deciding feature. |
 | Camera credentials | **Split out of the URL and encrypted at rest** | An RTSP URL carries the password inline, so `rtsp_url text` silently stores a thousand customer passwords in plaintext — and in every log line that URL reaches. The key placement is the real problem: the data partition here, a Nomad Variable or the TPM later. |
-| DB credentials | **Hand-provisioned, marked temporary** | Follows the course's existing discipline. М13 replaces this, and the replacement is the lesson — but the temporariness is stated here, not discovered there. |
+| DB credentials | **Hand-provisioned, marked temporary** | Follows the course's existing discipline. М12 replaces this with certificate auth once the box has an identity, and the replacement is the lesson — but the temporariness is stated here, not discovered there. |
 
 ---
 
@@ -195,7 +195,7 @@ All five are written: see [`README.md`](README.md) for the index and what can be
 - `revision` as a monotonic, controller-assigned integer per object — not a hash, not a timestamp
 - Migrations as a shipped artifact, and the appliance constraint: they run at boot on a box nobody visits, so they must be idempotent and must never be able to leave it unbootable
 - **`PGDATA` on the data partition.** Postgres as a Quadlet unit with its volume outside both rootfs slots — М9's boundary with teeth
-- The database password and the operator credential are both hand-provisioned and **marked temporary in the lesson text**; М13 replaces them
+- The database password and the operator credential are both hand-provisioned and **marked temporary in the lesson text**; М12 replaces them
 
 **Deliverable:** schema and migrations applied, Postgres surviving a simulated A/B update with its data intact.
 
