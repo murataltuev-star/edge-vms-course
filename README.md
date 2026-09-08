@@ -72,7 +72,9 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 
 **[GLOSSARY.md](./GLOSSARY.md)** defines every term the course uses precisely — Node versus Server, desired versus actual state, epoch and fencing, and the acronyms it would otherwise leave unexplained.
 
-**[COURSE-PLAN.md](./COURSE-PLAN.md)** carries the full reasoning: why the modules run in this order, what each contains, and two structural decisions worth taking before М11 — a licensing concentration (Nomad, Consul and Vault are all BUSL under IBM) and the fact that secrets appear three modules before the module that manages them.
+**[COURSE-PLAN.md](./COURSE-PLAN.md)** carries the full reasoning: why the modules run in this order, what each contains, and the two structural decisions that were taken along the way — the Nomad licence (BUSL, permitted for this use; version floor ≥ 1.8.0) and where secrets live once there is no secrets manager in the product.
+
+**[ARCHITECTURE.md](./ARCHITECTURE.md)** is the system as it stands — the five words, what runs where, the three stores, the trust table, the failure matrix — followed by the fourteen steps that produced it, in order, each with the question that forced it and what it removed. Read it before the modules if you want the destination first.
 
 ---
 
