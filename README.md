@@ -144,7 +144,6 @@ Because the Node is the writer, it is also the thing that must be reachable and 
 **The second half is the domain looking after itself.** A box enrolls into the domain (Lesson 35) and receives its certificate from the domain's own signer; the root gets lifetimes and a rotation drill (36), because nobody above will re-issue anything; and the domain provisions a cluster in the customer's own cloud account (37) and proves the Node cannot tell where it is running. That last one closes the arc: **М8 rented a cloud VMS from Kinesis, and here the same product exists with nothing rented** — М9's hand-provisioned AWS credentials retired by no longer being needed. Its own update server and its entitlement cache (34) are what let it run with the vendor gone, which is М13's whole subject.
 
 - [Module design](./М12_DomainVMS/module-design.md) — the directory of directories, placement, the domain services, enrollment, lifetimes and rotation, and a cluster the domain rents for itself
-- [Consul and OpenBao](./М12_DomainVMS/consul-and-openbao.md) — two answers to mTLS, and why the product needs only one
 - [Where the databases live](./М12_DomainVMS/where-the-database-lives.md) — five revisions ending with one database in the whole design, why a Node owns its configuration rather than caching someone else's, and the retention rule that protects customer footage
 
 ## М13 — Observability

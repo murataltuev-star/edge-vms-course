@@ -91,7 +91,7 @@ Two more that are easy to blur:
 
 | | |
 |---|---|
-| **BUSL** — Business Source License | A source-available licence: the source is published, production use is granted subject to conditions, and each version converts to an open-source licence after a **Change Date**. Nomad and Consul are BUSL with IBM as Licensor. |
+| **BUSL** — Business Source License | A source-available licence: the source is published, production use is granted subject to conditions, and each version converts to an open-source licence after a **Change Date**. **Nomad is the only BUSL component in the design** — Consul and Vault were designed out — with IBM as Licensor. Permitted for this product by the competitive test; see [`COURSE-PLAN.md`](./COURSE-PLAN.md). |
 | **Change Date** | When a given version's BUSL grant converts — four years after that version is published, to MPL 2.0 (Nomad 1.8.0 → 28 May 2028). Not an escape route: a version reaches its Change Date about two years *after* its support ends, so the MPL build is always the unpatched one. |
 | **Additional Use Grant** | The clause defining what production use is permitted. Nomad's forbids offering the software to third parties *hosted or embedded* **in competition with the licensor's paid products** — and "embedded" is itself defined relative to *a competitive product*, so embedding alone is not the trigger. A VMS does not overlap Nomad Enterprise, so shipping an appliance with Nomad inside is permitted; see [`COURSE-PLAN.md`](./COURSE-PLAN.md). |
 | **MPL 2.0** | Mozilla Public License 2.0 — a weak-copyleft open-source licence; what BUSL components convert to. |

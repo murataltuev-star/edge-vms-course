@@ -135,7 +135,6 @@ Then the vendor comes back, and the student shows what caught up and what was ne
 
 - [RFC 8995 — BRSKI](https://datatracker.ietf.org/doc/html/rfc8995) — pledge, registrar, MASA, voucher, IDevID and LDevID; the registrar belongs to the domain, the MASA to the manufacturer
 - [Eclipse hawkBit](https://eclipse.dev/hawkbit/) — pull-based update delivery; the vendor publishes, the domain's server serves
-- [`consul-and-openbao.md`](../М12_DomainVMS/consul-and-openbao.md) — why mTLS comes from the PKI, and what is left for a vault
 - [М12's design](../М12_DomainVMS/module-design.md) — the domain as its own root, and the contracts that let a fleet run on mixed versions
 
 *Written 5 September 2026 as FederatedVMS; became VendorVMS on 7 September; became VendorVMS the same day, when the layer it described turned out not to exist.*

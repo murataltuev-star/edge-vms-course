@@ -30,7 +30,7 @@ Layers 1–2 are the two update planes М9 is built around: the OS underneath, t
 
 ### 1. The licensing concentration is worse than it looks
 
-The natural stack for layers 2 and 5 — Nomad, Consul, Vault — is **three components under one vendor's source-available licence.** Read from the licence files, not marketing:
+The stack this course *would* have reached for — Nomad, Consul, Vault — is **three components under one vendor's source-available licence.** Read from the licence files, not marketing, and kept here because the design's shape is partly a response to it. **Only the first row survived.**
 
 | Component | Licensor | Licence | Change Date |
 |---|---|---|---|
@@ -40,7 +40,7 @@ The natural stack for layers 2 and 5 — Nomad, Consul, Vault — is **three com
 
 Three of seven layers under IBM's BUSL, in a product that is *shipped to customers on hardware* — which is exactly the "embedded" word the Additional Use Grant uses. Two mitigations, both real:
 
-- **Vault → OpenBao.** A Linux Foundation fork, MPL-2.0, with serious adopters (Nvidia migrated to it). This is why layer 5 is written as OpenBao in the table above rather than Vault.
+- **Vault → nothing.** The product has no vault. Most of the secrets a vault would have held were removed by giving machines identities (the domain signer, М12), and the one that remains — camera credentials — must work with everything above the Node unreachable, so a central vault is the wrong answer by construction. **OpenBao**, the MPL-2.0 Linux Foundation fork, appears only in М14, and only if the vendor is a multi-tenant host holding many customers' secrets.
 - **Consul → drop it.** Nomad has **native service discovery** that needs no Consul, and HashiCorp's own documentation says it "suits edge computing… and minimal single-cluster setups prioritizing simplicity." It gives templated service addresses but *not* dynamic DNS, *not* HTTP/TCP/gRPC health checks with healthy-instance filtering, and *not* service mesh. For a handful of services per site, that is likely enough.
 
 That leaves **Nomad as the only unavoidable BUSL dependency**, and no fork of it exists — unlike Terraform (OpenTofu) and Vault (OpenBao). If that single dependency is unacceptable, the decision is to teach Kubernetes instead, and it should be taken now rather than at М13.
@@ -72,7 +72,7 @@ Each BUSL release converts to **MPL 2.0 four years after it is published** — 1
 
 **So the version decision is an engineering decision, not a licensing one:** ship a supported release, and treat BUSL as settled by the competitive test above.
 
-**This is now settled**, in [`consul-and-openbao.md`](./М12_DomainVMS/consul-and-openbao.md). The short version: Consul and OpenBao are not alternatives — they overlap on exactly one thing, mTLS between services — and Consul's mesh CA turns out to be the *same* root → per-locality intermediate → short-leaf design М12 arrives at independently. The decision turns on scope instead: no service mesh issues an identity to a device that has never been on the network, so the product runs a PKI regardless, and a second certificate hierarchy buys nothing. The accepted cost is health-check-filtered discovery, which Nomad's native discovery does not provide.
+**Both are out, and the comparison record between them was retired** once neither survived. The reasoning worth keeping: Consul and a vault overlapped on exactly one thing — mTLS between services — and the product runs a PKI regardless, because no service mesh issues an identity to a device that has never been on the network. Once the domain became its own CA (М12 Lesson 36), a second certificate hierarchy bought nothing. **The accepted cost is health-check-filtered service discovery**, which Nomad's native discovery does not provide and a handful of services per cluster does not need.
 
 #### A vault is not what removes most of these secrets
 
@@ -209,9 +209,9 @@ The order is dependency-driven, not layer-numbered:
 **Resolved since the first version of this plan:**
 
 - ~~Where inference runs~~ — a deployment question, not a schema one. Opaque worker config means the controller is unchanged whether inference runs on the appliance, at the camera or in the cloud (М11)
-- ~~Where the write API belongs~~ — built in М11, unauthenticated and marked as such; authentication arrives with OpenBao in М12
+- ~~Where the write API belongs~~ — built on every Node in М12 Lesson 32, unauthenticated and marked as such; authentication arrives one lesson later from the domain signer, and enrollment replaces the hand-provisioned credential in Lesson 35
 - ~~Lesson numbering~~ — **superseded three times by restructuring.** Current: М9 is 16–19, М10 is 20–24, М11 is 25–29, М12 is 30–37, М13 Observability is 38–41, М14 VendorVMS is 42–45. **45 in total.** The М11/М12 split moved no lesson numbers at all — Part A and Part B were already contiguous
-- ~~Consul in or out~~ — out, and for a better reason than licensing alone ([`consul-and-openbao.md`](./М12_DomainVMS/consul-and-openbao.md))
+- ~~Consul in or out~~ — out, and for a better reason than licensing alone: the product runs a PKI regardless, so a mesh CA is a second hierarchy that buys nothing. The comparison record was retired when OpenBao left the product too
 - ~~Identity split across М12 and М14~~ — they were one layer; merged into М12
 - ~~Where the domain database lives, and whether hosts replicate it~~ — **there is no domain database.** Each **Node** owns its configuration in its own Postgres and publishes one way upward; the domain's directory is a Nomad Variable per Node plus an object per Node; a **cluster** is the largest set of servers on a reliable network and a **domain** is the clusters under one directory ([`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md))
 
