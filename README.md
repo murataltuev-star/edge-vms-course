@@ -134,6 +134,7 @@ The answer is that fencing belongs at the archive rather than at a coordinator: 
 - [Lesson index](./М11_ClusterVMS/README.md) — start here
 - [Module design](./М11_ClusterVMS/module-design.md) — the cluster, what must outlive a server, the zombie writer, and fencing at the archive
 - [`reference/`](./М11_ClusterVMS/reference/README.md) — the zombie with two real processes, the CAS issuer, the lease arithmetic, the restore and its RPO, placement with property tests; the jobspec and agent configs
+- [`clustervms/`](./М11_ClusterVMS/clustervms/README.md) — the module's code, whole, built on М10's `nodevms/`: identity from a Variable, the epoch by CAS, publish-then-point, the restore, the lease that fences the zombie, the directory, placement; jobspec renderer, agent configs, MinIO job, tests
 - [Kubernetes vs Nomad](./М11_ClusterVMS/kubernetes-vs-nomad.md) — why the orchestrator is Nomad, what it cost, and why neither belongs on one box
 
 ## М12 — DomainVMS

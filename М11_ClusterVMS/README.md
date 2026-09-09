@@ -55,6 +55,14 @@ Three things in this module were checked against the projects' own trackers rath
 - **The allocation index has had a duplicate-index bug** — [#10727](https://github.com/hashicorp/nomad/issues/10727), fixed, and a label was never promised to carry correctness.
 - **A Nomad variable lock's ID is an opaque UUID** — the Locks API; it is the lock Kleppmann's fencing-token argument is about.
 
+## The code, whole
+
+[`clustervms/`](./clustervms/README.md) is the five lessons as one runnable package, built **on** М10's `nodevms/` — `ClusterAppHost` subclasses М10's AppHost and adds the prologue (identity, restore, epoch, lease) and three tasks (publish, lease, heartbeat). `reference/` proves each mechanism in isolation; `clustervms/` is the mechanisms wired into the Node, with the jobspec renderer, the agent configurations, the MinIO job and the placement tool. Its 24 tests run with no Nomad and no Postgres:
+
+```bash
+cd clustervms && python3 tests/run.py
+```
+
 ## The two numbers this module exports
 
 | Signal | Is | Report |
