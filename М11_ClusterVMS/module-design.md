@@ -54,6 +54,7 @@ Node 3 reappears on another server with its configuration intact and resumes its
 | Failover scope | **Within a cluster. A Node never crosses one** | Two independent reasons, and either alone would decide it: footage lives on the cluster's disks, and **the epoch comes from Nomad's raft, which is per-cluster** — regions share no state, so there is no domain-wide issuer and no need for one. |
 | The restore point | **Cluster-scoped object storage — a backup, not a directory** | Failover needs somewhere off-box to restore configuration from. That is not the same thing as knowing *which Node has camera 7*, which is М12's and does not exist yet here. |
 | **Minimum version** | **Nomad ≥ 1.8.0. Target 1.10.x LTS or 2.0.x** | The `disconnect` block Lesson 4 is built on arrived in **1.8.0**; before that there is only `max_client_disconnect`/`stop_after_client_disconnect` and **no `reconcile` strategies at all**. Those predecessors were then *removed* in 1.10.0, so writing against 1.7.x teaches syntax that no longer exists. 1.7.x is also EOL with an allocation-directory-escape CVE fixed only in Enterprise. |
+| Language of the controller | **Designed in Python, shippable in Go — both exist, both pass the same tests** | [`clustervms-go/`](./clustervms-go/README.md) ports the whole module with the 29 tests unchanged in meaning; a Node in either language restores from the other's publication. Measured: 7.1 MB vs 28.5 MB at idle, within 2× on the work. The win is memory and the artifact, not throughput — М10 Lesson 5's argument, confirmed on a whole module (Lesson 5, *The module in Go, measured*). |
 | Single-server deployments | **No orchestrator at all** | М9's Quadlet stack is better on one box, and Lesson 1 makes students argue that rather than assert it. |
 
 The decisions about the layer *above* these Nodes — what a directory holds, how it is stored, and who may call it — are [М12's](../М12_DomainVMS/module-design.md).
@@ -314,6 +315,7 @@ The lesson that costs almost nothing to build, because **you already built it in
 - **Fencing is fully testable with a filesystem and no cameras at all.** `kill -STOP`, restart the Node elsewhere, `kill -CONT`, assert on the directory tree. The correctness property has nothing to do with video
 - The lease state machine, the epoch issuer's check-and-set behaviour, and revision handling
 - The rehydration sequence against a fake directory, in the style of М8 Lessons 5–8
+- **The Go port**, with the same suite (30 tests, race-detector clean), the cross-language restore in both directions, and `measure.sh` — all run in the sandbox (Go 1.24.7, Python 3.11); the Postgres adapter `pgstore.go` was type-checked against pgx's signatures only, the module proxy being unreachable there
 
 **Track 2 — needs the real bench.** All of the scheduling: cluster formation, `nomad job validate`, Nomad Pack rendering, CSI attach and detach, and the power-pull exercise. Plus anything with real GStreamer and real cameras. Each lesson carries an explicit *expected output* block so a deviation is recognisable rather than mysterious.
 

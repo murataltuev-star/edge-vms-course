@@ -112,6 +112,7 @@ The only module where getting it wrong corrupts customer data rather than merely
 - **Leases, epochs and the zombie writer.** Dead, partitioned and paused are indistinguishable, and the design must be correct without resolving that. Fencing happens **at the archive, not the controller** — the epoch is in the segment path, so a stale writer produces orphaned files rather than corruption
 - **The restore point is the cluster's**, in its own object store — a backup, not a directory. Both of failover's dependencies live on the servers it fails over between, so a cluster is a complete product on its own
 - **The cluster directory, which was already built.** Each Node's Variable holds its camera ids; scanning them answers *where is camera 7*, in one raft, strongly consistent. Placement onto Nodes by measured capacity, the stability rule, and why consistent hashing is the reflexive wrong answer
+- **The whole module exists twice** — `clustervms/` in Python and `clustervms-go/` in Go, passing the same tests, restoring from each other's publications, and measured side by side: the language argument from М10 confirmed on a module rather than a file
 
 ### М12 — DomainVMS: several clusters, and the top of the product · 8 lessons · [designed](./М12_DomainVMS/module-design.md)
 

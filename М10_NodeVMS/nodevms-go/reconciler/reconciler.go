@@ -205,6 +205,13 @@ func (r *Reconciler) Actual() map[int64]int64 {
 	return out
 }
 
+// Clear forgets every applied revision. This is what a fence does: the
+// pipelines were stopped underneath the loop, so the next pass must see
+// nothing running and try (and, gated, fail) to start each camera again.
+func (r *Reconciler) Clear() {
+	r.actual = map[int64]int64{}
+}
+
 // SetActual is the mistake, kept only so a test can make it on purpose.
 // Do not call it from anything that ships.
 func (r *Reconciler) SetActual(saved map[int64]int64) {

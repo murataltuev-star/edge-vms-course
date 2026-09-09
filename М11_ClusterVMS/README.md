@@ -63,6 +63,12 @@ Three things in this module were checked against the projects' own trackers rath
 cd clustervms && python3 tests/run.py
 ```
 
+[`clustervms-go/`](./clustervms-go/README.md) is the same package in Go — every mechanism, the 29 tests ported unchanged in meaning plus a cross-language restore, and `measure.sh`, which puts the whole Node in each language at idle and times the six things it does. The numbers are in Lesson 5 (*The module in Go, measured*): 7.1 MB against 28.5 MB at idle, and within 2× on the work — the win М10 named, and only that one.
+
+```bash
+cd clustervms-go && go test ./cluster/          # 30 tests
+```
+
 ## The two numbers this module exports
 
 | Signal | Is | Report |

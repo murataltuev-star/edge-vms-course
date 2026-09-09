@@ -209,6 +209,27 @@ One boundary, stated so the next module can cross it: **placement here chooses a
 
 ---
 
+## The module in Go, measured
+
+М10 Lesson 5 made the language argument on one file — the reconciler — and promised that the rewrite touches only the actuator. A promise about one file is cheap. This module is five lessons of mechanisms, so the course checks the promise on all of them: [`clustervms-go/`](./clustervms-go/README.md) is `clustervms/` ported to Go, **with the Python suite's 29 tests ported alongside, unchanged in meaning**, and one test the Python version could not have written — a Go Node restoring a configuration a Python Node published. All thirty pass, and the CAS race runs on four real goroutines under the race detector rather than four threads under the GIL.
+
+Then it puts the **whole Node** in each language at idle — fifty cameras restored from the directory, the epoch taken, every task running, a console listener, fakes for Nomad and Postgres — and reads PSS. And because a cluster controller is not a hot loop, it also times the six things this module actually does, with the same inputs:
+
+| | Go | Python | |
+|---|---|---|---|
+| Node at idle, 50 cameras, every task running | **7.1 MB** | **28.5 MB** | 4.0× — the same ratio М10 saw on the reconciler alone |
+| Static binary (x86-64 / arm64) | 6.6 / 6.2 MB | interpreter + wheels | |
+| SigV4 sign, 64 kB object | 56 µs | 69 µs | 1.2× — SHA-256 is C in both |
+| Issue an epoch by CAS | 0.84 µs | 1.75 µs | 2.1× |
+| Directory scan, 1,000 Nodes, then *where is camera N* | 5.3 ms | 8.0 ms | 1.5× |
+| Place 120 cameras on 4 Nodes with labels | 0.92 ms | 1.79 ms | 1.9× |
+| Parse one segment path | 0.77 µs | 12.3 µs | 16× — the re-index sweep, the one place with a hundred thousand of anything |
+| Encode + decode a 200-camera configuration | 0.57 ms | 0.72 ms | 1.3× |
+
+Read the second half of the table before drawing the conclusion the first half invites. **The controller’s work runs within 2× in Python, and the hashing within 20 %**, because the hot part of each operation is already C. What Python cannot shed is the twenty megabytes it costs to be Python, and the interpreter-plus-wheels rootfs that М9’s bundle has to carry. So the win is exactly the one М10 named — memory per Node and the deployable artifact — and not the one people reach for, throughput. The port cost twice the lines (error returns and types), one dependency the standard library could not replace (a Postgres driver; Nomad and S3 needed none), and no redesign: every `>=`, every *object before the pointer*, every `TTL − margin` went across as it was. That last fact is the point of the exercise. The tests were written against a design, not a language, and the design is what survived.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
