@@ -9,7 +9,7 @@ buses, report, retention, the console — is inherited unchanged.
 clustervms/
   cluster/
     variables.py     Nomad Variables over HTTP with the task's own token; and a fake with the promised semantics (ModifyIndex, cas, 409, ACL)
-    objectstore.py   the restore point: HTTP PUT/GET (MinIO), or a directory
+    objectstore.py   the restore point: a directory, anonymous HTTP PUT/GET, or S3 with SigV4 (s3.py — verified against Amazon's published examples)
     identity.py      L2 — who am I: the Variable the scheduler delivered, never the allocation index
     epoch.py         L4 — next_epoch by CAS; Lease on a monotonic clock, renewal = reading my own epoch
     configio.py      L3 — what travels: the configuration as one blob; dump/restore on М10's PgStore
@@ -27,8 +27,10 @@ clustervms/
     node-3-policy.hcl            L2 — one writer per key
     minio.nomad.hcl              L3 — the object store on the cluster's own servers
     Containerfile                the image the job runs: nodevms + cluster
+    verify-bench.sh              the five checks that need a real cluster, PASS/FAIL — including the ACL open question
+    failover-drill.sh            the power pull, measured: three runs, worst case kept
   tools/place.py                 L5 — the placement service as a command
-  tests/                         27 tests, no Nomad, no Postgres, milliseconds: python3 tests/run.py
+  tests/                         29 tests, no Nomad, no Postgres, milliseconds: python3 tests/run.py
 ```
 
 ## What happens when the Node starts
@@ -45,11 +47,11 @@ clustervms/
    then М10's loop, plus:
    publish()     each second: if the local revision moved and the floor has passed — object, then Variable (cas)
    lease_task()  every (ttl − margin)/3: read my epoch. Moved → FENCED: stop every pipeline, start nothing, count it
-   heartbeat()   every 30 s: a wall-clock timestamp in nodes/<node>/heartbeat
+   heartbeat()   every 10 s: a wall-clock timestamp, as a tiny OBJECT <node>/heartbeat — never a raft write
    reindex()     at start and every 10 min: segment files with no index row become rows, epoch from the path
 ```
 
-`node_failover_seconds` is recording-resumed minus the old instance's last heartbeat, recorded on the first pass that starts a pipeline after a restore, and kept as `last` and `worst` in `nodes/<node>/failover`. `node_epoch_conflicts` is the lease's count of finding a foreign epoch in its own Variable; it should be zero forever.
+`node_failover_seconds` is recording-resumed minus the old instance's last heartbeat, recorded on the first pass that starts a pipeline after a restore, and kept as `last` and `worst` in `nodes/<node>/failover`. The heartbeat itself lives in the object store, not in Variables: small, frequent and never queried is the one shape raft must not carry (a thousand Nodes at ten seconds would be a hundred replicated commits a second), and an object store does not notice. `node_epoch_conflicts` is the lease's count of finding a foreign epoch in its own Variable; it should be zero forever.
 
 ## Bringing up a Node (Lessons 1 and 2)
 
@@ -119,9 +121,9 @@ in its Variable, logs `FENCED`, stops every pipeline, and
 
 ## Known gaps, named
 
-- **The ACL scoping of Variable writes per job is the module's open question.** `render.py --bootstrap` prints the `nomad acl policy apply -job` line the docs describe; whether the task's workload-identity token then gets exactly `nodes/node-3*` and nothing else is what to verify on the bench before trusting one-writer-per-key.
+- **The ACL scoping of Variable writes per job is the module's open question, and `deploy/verify-bench.sh node-3` answers it on a bench.** Item 4 creates a client token carrying only the Node's policy and tries its own path and another Node's; item 5 does the same from inside the running allocation with the task's own workload-identity token, expecting `own=200 other=403`. Until that prints PASS, one-writer-per-key is a convention.
+- `deploy/failover-drill.sh node-3 10.0.0.11:8080` is Lesson 4's Step 6 as a script: three pulls, `node_failover_seconds` read from `/cluster/node` each time, the worst case printed as the datasheet number, and `node_epoch_conflicts` read after each server returns.
 - The lease numbers are the module's decision (Lesson 4): TTL 30 s, margin 5 s, `stop_on_client_after` 25 s, `lost_after` 45 s. `render.py` ships them as defaults; measure `node_failover_seconds` on the bench before changing them.
 - `reindex()` rebuilds a returned server's index from its segments and re-indexes a fenced instance's footage with its epoch (Lesson 4's decision: re-index, never delete). The console shows a row whose epoch is older than the Node's current one as *recorded by a fenced instance*; the flag is the `epoch` column М10's `timeline` already returns.
 - A camera move decided by `tools/place.py` is recorded in `placement/<camera>`; the Nodes do not yet *act* on it — the wire from a placement row to М10's `cameras` table on the losing and gaining Nodes is the two-writer handover Lesson 5 describes, and it belongs with М12's placement-at-the-level-above.
-- `HttpObjectStore` assumes anonymous PUT/GET on the bucket; a signed-S3 adapter is twenty lines of boto3 on the same two methods, left out to keep the Node image dependency-free.
-- `HEARTBEAT_INTERVAL=30` is a raft write per Node per 30 s. At a thousand Nodes that is 33 writes/s to the servers; the interval should scale with the cluster, and `node_failover_seconds` is measured at that granularity.
+- `S3ObjectStore` signs with SigV4 in the standard library and reproduces both of Amazon's published worked examples (`tests/test_s3.py`); it has not been run against a live MinIO from the authoring sandbox. `OBJECT_STORE_URL=s3+http://minio:9000/cluster-restore?region=us-east-1`, credentials from `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` in the task's template.

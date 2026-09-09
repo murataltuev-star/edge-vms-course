@@ -322,7 +322,7 @@ The lesson that costs almost nothing to build, because **you already built it in
 ## Open questions
 
 1. ~~**Is 2a ever right?**~~ — **Decided: no.** The product offers 2b only. 2a stays in Lesson 3 as the cautionary comparison, not as an option.
-2. **Can a task write Variables under workload identity, and can an ACL policy scope it to that Node's own prefix?** Load-bearing rather than incidental: Node identity and the epoch both live in Variables, and М12's whole one-writer-per-key property rests on Node 3 being unable to write `nodes/node-4`. The Variables documentation does not settle it. **Check before building.**
+2. **Can a task write Variables under workload identity, and can an ACL policy scope it to that Node's own prefix?** *(`clustervms/deploy/verify-bench.sh` tests exactly this, from outside with a policy-only token and from inside the allocation with the task's own; it needs a bench.)* Load-bearing rather than incidental: Node identity and the epoch both live in Variables, and М12's whole one-writer-per-key property rests on Node 3 being unable to write `nodes/node-4`. The Variables documentation does not settle it. **Check before building.**
 3. ~~**How long should a Node wait before concluding its old instance is gone?**~~ — **Decided, with the reasoning in Lesson 4:** TTL 30 s, margin 5 s each side, renewal every ~8 s, `stop_on_client_after` = TTL − margin = 25 s, `lost_after` = TTL + margin = 45 s. Two-writer window ≤ 10 s on a partition, zero on a pause; tolerates a 29 % clock-rate error; failover ≈ 45 s + restore, datasheet *under 90 s worst case*. A fenced instance's footage is **re-indexed with its epoch**, not deleted.
 
 **Resolved while designing the module:**

@@ -63,6 +63,14 @@ class FsObjectStore:
 
 
 def open_store(url: str) -> ObjectStore:
+    """file:///path · http(s)://host/bucket (anonymous) · s3+http(s)://host/bucket?region=r (SigV4,
+    credentials from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY — on a Node, from its Variable)."""
+    if url.startswith(("s3+http://", "s3+https://")):
+        from urllib.parse import parse_qs, urlsplit
+        from .s3 import S3ObjectStore
+        u = urlsplit(url[3:])
+        region = parse_qs(u.query).get("region", ["us-east-1"])[0]
+        return S3ObjectStore(f"{u.scheme}://{u.netloc}", u.path.strip("/"), region)
     if url.startswith(("http://", "https://")):
         return HttpObjectStore(url)
     if url.startswith("file://"):

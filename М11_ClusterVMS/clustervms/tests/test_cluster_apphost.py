@@ -30,7 +30,7 @@ async def _seen_node(v, objs, cams):
 async def test_prologue_restores_and_records_into_a_new_epoch():
     v, objs = world(); clk = Clock(); wall = Clock(10_000.0)
     ident = await _seen_node(v, objs, [7, 8])
-    v.put("nodes/node-3/heartbeat", {"ts": "9950.0", "epoch": "1"})       # the old instance's last sign of life
+    objs.put("node-3/heartbeat", b'{"ts": 9950.0, "epoch": 1}')          # the old instance's last sign of life
     b = FakeClusterStore()
     host = ClusterAppHost(settings(), b, v, objs, ident, actuator=FakeActuator(), clock=clk, wall=wall)
     r = await host.prologue()

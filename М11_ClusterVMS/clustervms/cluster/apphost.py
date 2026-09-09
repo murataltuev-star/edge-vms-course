@@ -1,9 +1,9 @@
 """The Node under a scheduler: М10's AppHost plus what М11 adds.
 
     prologue      identity → migrate → rehydrate → epoch by CAS → lease
-    publish()     every second: publish on change, with a floor           (Lesson 3)
-    lease()       renew by reading my epoch; fence myself if it moved      (Lesson 4)
-    heartbeat()   a timestamp in my Variable, for node_failover_seconds    (Lesson 4)
+    publish()     every second: publish on change, with a floor           (Lesson 27)
+    lease()       renew by reading my epoch; fence myself if it moved      (Lesson 28)
+    heartbeat()   a timestamp in my Variable, for node_failover_seconds    (Lesson 28)
 
 Everything М10 does — reconcile, pump_buses, report, retention, console —
 is inherited unchanged. Only the actuator's gate and the report grow:
@@ -36,7 +36,7 @@ class ClusterAppHost(AppHost):
     def __init__(self, settings, store, vars_: Variables, objects: ObjectStore,
                  identity: identity_mod.Identity, actuator=None, key=None,
                  lease_ttl: float = 30.0, lease_margin: float = 5.0,
-                 publish_floor: float = 5.0, heartbeat_interval: float = 30.0,
+                 publish_floor: float = 5.0, heartbeat_interval: float = 10.0,
                  clock=time.monotonic, wall=time.time):
         super().__init__(settings, store, actuator, key)
         self.vars, self.objects, self.identity = vars_, objects, identity
@@ -56,7 +56,7 @@ class ClusterAppHost(AppHost):
         node = self.identity.node
         self.restore = await rehydrate(self.identity, self.store, self.objects)     # steps 2–4
         self.publisher.published_rev = self.identity.config_revision
-        hb, _ = self.vars.get(f"nodes/{node}/heartbeat")
+        hb = self._read_heartbeat()
         epoch, idx = next_epoch(self.vars, node)                                   # step 5
         self.settings = dataclasses.replace(self.settings, epoch=epoch)            # step 6: EPOCH in the path
         self.actuator.settings = self.settings           # the epoch in every new segment path
@@ -139,15 +139,34 @@ class ClusterAppHost(AppHost):
                 log.exception("reindex sweep failed")
             await asyncio.sleep(interval)
 
+    # The heartbeat is small and FREQUENT and never queried — the three-stores
+    # rule (Lesson 2) says that is not raft. A thousand Nodes writing a raft
+    # entry every ten seconds is a hundred commits a second replicated to every
+    # server; a thousand tiny objects a second is nothing to an object store.
+    # So the heartbeat is an object, and node_failover_seconds is measured at
+    # HEARTBEAT_INTERVAL granularity without touching the servers.
+    def _read_heartbeat(self) -> dict | None:
+        try:
+            raw = self.objects.get(f"{self.identity.node}/heartbeat")
+        except Exception:                                # noqa: BLE001
+            return None
+        if not raw:
+            return None
+        try:
+            import json
+            return json.loads(raw)
+        except ValueError:
+            return None
+
     async def heartbeat(self) -> None:
+        import json
         while not self.stopping.is_set():
             try:
                 if self.lease is not None and self.lease.may_write():
-                    _, idx = self.vars.get(f"nodes/{self.identity.node}/heartbeat")
-                    self.vars.put(f"nodes/{self.identity.node}/heartbeat",
-                                  {"ts": f"{self.wall():.3f}", "epoch": self.settings.epoch}, cas=idx)
+                    self.objects.put(f"{self.identity.node}/heartbeat",
+                                     json.dumps({"ts": self.wall(), "epoch": self.settings.epoch}).encode())
             except Exception:                            # noqa: BLE001
-                log.debug("heartbeat write failed (cluster unreachable?)")
+                log.debug("heartbeat write failed (object store unreachable?)")
             await asyncio.sleep(self.heartbeat_interval)
 
     # -- lifecycle --------------------------------------------------------------
@@ -225,7 +244,7 @@ async def main() -> None:
                               lease_ttl=float(os.environ.get("LEASE_TTL", "30")),
                               lease_margin=float(os.environ.get("LEASE_MARGIN", "5")),
                               publish_floor=float(os.environ.get("PUBLISH_FLOOR", "5")),
-                              heartbeat_interval=float(os.environ.get("HEARTBEAT_INTERVAL", "30")))
+                              heartbeat_interval=float(os.environ.get("HEARTBEAT_INTERVAL", "10")))
         await host.run()
     finally:
         await store.close()

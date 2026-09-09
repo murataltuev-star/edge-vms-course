@@ -57,7 +57,7 @@ Three things in this module were checked against the projects' own trackers rath
 
 ## The code, whole
 
-[`clustervms/`](./clustervms/README.md) is the five lessons as one runnable package, built **on** М10's `nodevms/` — `ClusterAppHost` subclasses М10's AppHost and adds the prologue (identity, restore, epoch, lease) and three tasks (publish, lease, heartbeat). `reference/` proves each mechanism in isolation; `clustervms/` is the mechanisms wired into the Node, with the jobspec renderer, the agent configurations, the MinIO job and the placement tool. Its 27 tests run with no Nomad and no Postgres:
+[`clustervms/`](./clustervms/README.md) is the five lessons as one runnable package, built **on** М10's `nodevms/` — `ClusterAppHost` subclasses М10's AppHost and adds the prologue (identity, restore, epoch, lease) and three tasks (publish, lease, heartbeat). `reference/` proves each mechanism in isolation; `clustervms/` is the mechanisms wired into the Node, with the jobspec renderer, the agent configurations, the MinIO job and the placement tool. Its 29 tests run with no Nomad and no Postgres:
 
 ```bash
 cd clustervms && python3 tests/run.py
