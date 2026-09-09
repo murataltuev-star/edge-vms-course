@@ -118,6 +118,7 @@ Its organising rule is that **desired state is persisted and actual state is der
 - [Module design](./М10_NodeVMS/module-design.md) — lesson plan, the Python shard model, and what the operator is never asked to decide
 - [`reference/shard-memory-probe.py`](./М10_NodeVMS/reference/shard-memory-probe.py) — measures what sharding actually saves, in PSS rather than RSS
 - [`nodevms/`](./М10_NodeVMS/nodevms/README.md) — the module's code, whole: migrations, reconciler, GStreamer actuator, retention, console, tests, Quadlet units
+- [`nodevms-go/`](./М10_NodeVMS/nodevms-go/README.md) — the reconciler ported to Go with the same tests, and the controller baseline measured in both languages
 
 ## М11 — ClusterVMS
 

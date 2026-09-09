@@ -62,6 +62,8 @@ Two corrections worth knowing before you start, both found by running the thing 
 cd nodevms && python3 tests/run.py       # 27 tests, no database, no GStreamer, milliseconds
 ```
 
+[`nodevms-go/`](./nodevms-go/README.md) is Lesson 5's rewrite argument made into a number: the reconciler in Go, the same eight tests passing, and the two controllers measured at idle — 6.0 MB against 25.7 MB, one 5.5 MB static binary against an interpreter and its packages.
+
 ## The stand-ins, and where they get collected
 
 The course names its temporary things where they appear rather than discovering them later. This module adds two of the five:

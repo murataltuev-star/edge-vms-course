@@ -214,7 +214,19 @@ If the team is Rust-shaped rather than C++-shaped, `gstreamer-rs` is a genuinely
 
 That is the honest defence of building it in Python first, and it is not "Python is easier". It is that **the risky part of this system was never the code; it was the design**, and you de-risked the design cheaply. Lesson 3's backoff policy needing no changes when the actuator went from `print()` to GStreamer was the same property, demonstrated one layer down.
 
-**Deliverable:** the console view behind a login, and a written statement of every decision the operator is never asked to make.
+### The claim, measured
+
+That argument is cheap to make and cheap to check, so the module checks it. [`nodevms-go/`](./nodevms-go/README.md) ports Lesson 2's reconciler to Go — the same `>=`, the same stop loop over *actual*, the same jitter — and runs **the Python suite's seven tests plus the cap test against it, unchanged in meaning**. All eight pass. Then it puts a controller-shaped process in each language at idle — fifty converged cameras, a status map, a JSON encoder, an HTTP listener, no GStreamer in either — and reads PSS:
+
+| | Go | Python |
+|---|---|---|
+| Controller at idle, 50 cameras | **6.0 MB** | **25.7 MB** |
+| Bare runtime | 1.9 MB | 6.2 MB |
+| Deployable artifact | one static binary, 5.5 MB; arm64 cross-compiled in one command, 5.1 MB | interpreter 55 MB + ≈ 28 MB of packages, in a rootfs М9 ships twice and signs |
+
+Four times the controller's share of `B`, and the thing М9's bundle carries shrinks by an interpreter. What the table does *not* show is the media worker, because GStreamer's 24 MB of libraries cost the same in every language and the per-frame rule from Lesson 3 survives in Go — which is why the worker is the C++ half of the split, not the Go half.
+
+**Deliverable:** the console view behind a login, and a written statement of every decision the operator is never asked to make. Then `go test ./reconciler/` in `nodevms-go/` — and `measure.sh`, to produce the table above on your own hardware.
 
 ---
 
