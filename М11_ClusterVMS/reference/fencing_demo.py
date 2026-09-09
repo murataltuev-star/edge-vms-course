@@ -94,7 +94,7 @@ def main():
         print(f"\n{root}/{node}/")
         for e in (epoch_a, epoch_b):
             print(f"  epoch-{e:06d}/cam-7/   {len(files(root, node, e)):3d} files   "
-                  f"{'<- the index points here' if e == epoch_b else '<- retention deletes this'}")
+                  f"{'<- the index points here' if e == epoch_b else '<- re-indexed as fenced, then retention'}")
         print("\nYou cannot stop a zombie from writing. You can only make its writes harmless.")
     else:
         print(f"5. after the zombie woke, ONE shared path: {len(overwritten)} of the {len(index['segments'])} "

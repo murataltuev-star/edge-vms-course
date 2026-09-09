@@ -21,9 +21,9 @@ job "node-3" {
     # Lesson 4, Step 2: the default (lost immediately, replaced while the
     # partitioned client keeps running its tasks) is wrong for a recorder.
     disconnect {
-      lost_after           = "2m"      # how long a silent client keeps its allocation
+      lost_after           = "45s"     # TTL + margin (Lesson 4): how long a silent client keeps its allocation
       replace              = true      # then place a replacement elsewhere
-      stop_on_client_after = "2m"      # the partitioned client stops the old one itself
+      stop_on_client_after = "25s"     # TTL − margin: the partitioned client stops the old one itself
       reconcile            = "keep_replacement"   # when it comes back, the new one wins
     }
 

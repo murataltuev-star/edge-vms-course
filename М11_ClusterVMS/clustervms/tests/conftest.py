@@ -40,6 +40,7 @@ class FakeClusterStore:
     async def report(self, rows): self.reports.append(list(rows))
     async def set_condition(self, cid, cond, status, reason=None): self.conditions[(cid, cond)] = (status, reason)
     async def index_segment(self, *row): self.segments.append(row)
+    async def indexed_paths_under(self, prefix): return {r[3] for r in self.segments if r[3].startswith(prefix)}
     async def log_event(self, kind, camera_id=None, payload=None): self.events.append((kind, camera_id, payload))
     async def cameras(self): return [dict(r) for r in self.rows.values()]
     # ClusterStoreMixin surface

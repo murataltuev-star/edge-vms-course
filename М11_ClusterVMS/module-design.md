@@ -48,6 +48,8 @@ Node 3 reappears on another server with its configuration intact and resumes its
 | Configuration authority | **The Node, replicating one way upward** | Configuration stays next to the software using it, and survives the domain layer being down. |
 | Fencing | **At the archive, not at the controller** | You cannot stop a zombie from writing. You can make its writes land where nobody reads. |
 | Epoch issuer | **A Nomad Variable with check-and-set** | Atomic, monotonic and raft-replicated, so it survives losing a server. Nomad's *variable lock* is the trap: its lock ID is an opaque UUID, not a fencing token. |
+| Lease numbers | **TTL 30 s, margin 5 s, `stop_on_client_after` 25 s, `lost_after` 45 s** | Nomad and the lease arithmetic agree on when a replacement may start; two-writer window ≤ 10 s on a partition, zero on a pause; tolerates a 29 % clock-rate error. Lesson 4 carries the reasoning. |
+| A fenced instance's footage | **Re-indexed with its epoch, never deleted** | It is real footage of the partition minute. The epoch that made it harmless is what makes it identifiable; the console shows it as *recorded by a fenced instance*. |
 | Orchestrator | **Nomad** | Non-container workloads, Podman kept as the runtime, far smaller operational surface. See [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md). |
 | Failover scope | **Within a cluster. A Node never crosses one** | Two independent reasons, and either alone would decide it: footage lives on the cluster's disks, and **the epoch comes from Nomad's raft, which is per-cluster** — regions share no state, so there is no domain-wide issuer and no need for one. |
 | The restore point | **Cluster-scoped object storage — a backup, not a directory** | Failover needs somewhere off-box to restore configuration from. That is not the same thing as knowing *which Node has camera 7*, which is М12's and does not exist yet here. |
@@ -153,7 +155,7 @@ archive/node-3/epoch-000005/cam-7/seg-00042.mkv   <- the old instance
 archive/node-3/epoch-000006/cam-7/seg-00000.mkv   <- the live one
 ```
 
-The old instance cannot corrupt the new one's segments because **it cannot name them.** It writes valid files into a path the index no longer references, and retention deletes them.
+The old instance cannot corrupt the new one's segments because **it cannot name them.** It writes valid files into a path the index no longer references — and, because the epoch is in the path, those files are identifiable afterwards: the sweep **re-indexes them with their epoch** as footage *recorded by a fenced instance*, and retention treats them like any other.
 
 > **You cannot stop a zombie from writing. You can only make its writes harmless.**
 
@@ -319,9 +321,9 @@ The lesson that costs almost nothing to build, because **you already built it in
 
 ## Open questions
 
-1. **Is 2a ever right?** The course builds 2b, and the CSI detach problem means 2a cannot fail over unattended — so 2a is only defensible where an operator is on call. Whether any VMS deployment meets that description is a product question, not a technical one.
+1. ~~**Is 2a ever right?**~~ — **Decided: no.** The product offers 2b only. 2a stays in Lesson 3 as the cautionary comparison, not as an option.
 2. **Can a task write Variables under workload identity, and can an ACL policy scope it to that Node's own prefix?** Load-bearing rather than incidental: Node identity and the epoch both live in Variables, and М12's whole one-writer-per-key property rests on Node 3 being unable to write `nodes/node-4`. The Variables documentation does not settle it. **Check before building.**
-3. **How long should a Node wait before concluding its old instance is gone?** Lesson 4 makes students pick the TTL and the margin either side of it; the product must pick them too, trading recovery time against the length of the window in which two instances exist.
+3. ~~**How long should a Node wait before concluding its old instance is gone?**~~ — **Decided, with the reasoning in Lesson 4:** TTL 30 s, margin 5 s each side, renewal every ~8 s, `stop_on_client_after` = TTL − margin = 25 s, `lost_after` = TTL + margin = 45 s. Two-writer window ≤ 10 s on a partition, zero on a pause; tolerates a 29 % clock-rate error; failover ≈ 45 s + restore, datasheet *under 90 s worst case*. A fenced instance's footage is **re-indexed with its epoch**, not deleted.
 
 **Resolved while designing the module:**
 

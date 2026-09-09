@@ -7,29 +7,29 @@ the agent М9's appliance runs.
 
 ```
 kvsvms/
-├── .env.example              L13 — one .env for both processes; config reads settings, never credentials
-├── Makefile                  L13 — setup / stream / serve / test / clip / agent-image
-├── iam-policy.json           L13 — six actions, one stream, scoped by ARN
+├── .env.example              L6 — one .env for both processes; config reads settings, never credentials
+├── Makefile                  L6 — setup / stream / serve / test / clip / agent-image
+├── iam-policy.json           L6 — six actions, one stream, scoped by ARN
 ├── edge/
-│   ├── looper.py             L5 + L8 + L10 — the supervisor; backoff; docker wrapping; stale-container removal
-│   ├── camera_sim.py         L5 — the dummy workload (CHILD=camera_sim runs without GStreamer)
-│   ├── pipeline.py           L10 — the argv as a list; + М9's spool pipeline; + the upload pipeline
+│   ├── looper.py             L2 + L3 + L4 — the supervisor; backoff; docker wrapping; stale-container removal
+│   ├── camera_sim.py         L2 — the dummy workload (CHILD=camera_sim runs without GStreamer)
+│   ├── pipeline.py           L4 — the argv as a list; + М9's spool pipeline; + the upload pipeline
 │   └── upload_segment.py     NEW — the acknowledged uploader М9 Lesson 4 needed (see below)
 ├── server/
-│   ├── app.py                L13 — five routes + /health, then the static mount LAST
-│   ├── config.py             L13
-│   ├── kvs.py                L11 — the caching client factory
-│   ├── fragments.py          L12 — pagination to exhaustion; the merge rule
-│   ├── models.py             L12 — the timestamp boundary
-│   ├── recording.py          L6  — the only code that knows a subprocess exists
-│   └── fixtures.py           L13 — VMS_FIXTURES=1, off by default
+│   ├── app.py                L6 — five routes + /health, then the static mount LAST
+│   ├── config.py             L6
+│   ├── kvs.py                L5 — the caching client factory
+│   ├── fragments.py          L5 — pagination to exhaustion; the merge rule
+│   ├── models.py             L5 — the timestamp boundary
+│   ├── recording.py          L2  — the only code that knows a subprocess exists
+│   └── fixtures.py           L6 — VMS_FIXTURES=1, off by default
 ├── scripts/
-│   ├── create_stream.py      L13 — idempotent provisioning
-│   ├── check_env.py          L13 — a fix, not a traceback
-│   └── make_clip.sh          L9  — the 60-second test clip
-├── web/                      L14–15 — index.html, style.css, app.js
+│   ├── create_stream.py      L6 — idempotent provisioning
+│   ├── check_env.py          L6 — a fix, not a traceback
+│   └── make_clip.sh          L4  — the 60-second test clip
+├── web/                      L7–8 — index.html, style.css, app.js
 ├── docker/
-│   ├── kvssink/Dockerfile    L8 — the SDK build (20–40 minutes, once)
+│   ├── kvssink/Dockerfile    L3 — the SDK build (20–40 minutes, once)
 │   └── vms-agent/Containerfile   NEW — localhost/example/vms-agent:1.0, what М9 runs
 └── tests/                    the lessons' fake-client checks, runnable: python3 tests/run.py
 ```

@@ -24,6 +24,7 @@ from .epoch import Lease, next_epoch
 from .objectstore import ObjectStore
 from .publish import Publisher
 from .rehydrate import RestoreResult, rehydrate
+from .reindex import RealFs as ReindexFs, sweep as reindex_sweep
 from .variables import Variables
 
 from apphost.apphost import MIGRATIONS, AppHost   # М10's nodevms, on sys.path via cluster/__init__.py
@@ -124,6 +125,20 @@ class ClusterAppHost(AppHost):
                     self.fence("a newer epoch was issued" if self.lease.fenced else "lease expired without renewal")
             await asyncio.sleep(interval)
 
+    async def reindex(self, interval: float = 600.0) -> None:
+        """After a restore and periodically: files back into rows — the
+        fenced instance's footage, and a returned server's archive."""
+        fs = ReindexFs()
+        while not self.stopping.is_set():
+            try:
+                rep = await reindex_sweep(self.store, fs, self.settings.archive_dir, self.settings.epoch,
+                                          self.settings.segment_seconds)
+                if rep.reindexed:
+                    log.info("reindex: %d segments, %d from fenced epochs", rep.reindexed, rep.fenced)
+            except Exception:                            # noqa: BLE001
+                log.exception("reindex sweep failed")
+            await asyncio.sleep(interval)
+
     async def heartbeat(self) -> None:
         while not self.stopping.is_set():
             try:
@@ -155,7 +170,8 @@ class ClusterAppHost(AppHost):
                  asyncio.create_task(self.retention(), name="retention"),
                  asyncio.create_task(self.publish(), name="publish"),
                  asyncio.create_task(self.lease_task(), name="lease"),
-                 asyncio.create_task(self.heartbeat(), name="heartbeat")]
+                 asyncio.create_task(self.heartbeat(), name="heartbeat"),
+                 asyncio.create_task(self.reindex(), name="reindex")]
         if serve_console:
             import uvicorn
             from console.app import create_app

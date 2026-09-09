@@ -8,31 +8,31 @@ runs on.
 ```
 edgevms/
   bench/
-    build-disk.sh          L16 — ESP | rootfs0 | rootfs1 | data; debootstrap slot A; copy to B; GRUB by hand
-    boot.sh                L16 — QEMU/OVMF with KVM auto-detect, a monitor socket, port forwards
-    outage.sh              L19 — pull the cable for N seconds; L18 — the pulled plug (power-cut)
+    build-disk.sh          L1 — ESP | rootfs0 | rootfs1 | data; debootstrap slot A; copy to B; GRUB by hand
+    boot.sh                L1 — QEMU/OVMF with KVM auto-detect, a monitor socket, port forwards
+    outage.sh              L4 — pull the cable for N seconds; L3 — the pulled plug (power-cut)
   pki/
-    make-ca.sh             L17 — two-level CA; keyring = the root only; and the attacker's CA
-    verify-chain.sh        L17 — the three proofs with `openssl cms`: accepted, wrong signer, tampered
+    make-ca.sh             L2 — two-level CA; keyring = the root only; and the attacker's CA
+    verify-chain.sh        L2 — the three proofs with `openssl cms`: accepted, wrong signer, tampered
   rauc/
-    system.conf            L17 — compatible, data-directory, bundle-formats=-plain
-    manifest.raucm         L17 — verity, no sha256/size
-    build-bundle.sh        L17/L18 — good, --broken-kernel, --broken-config, --rogue, --wrong-hardware
+    system.conf            L2 — compatible, data-directory, bundle-formats=-plain
+    manifest.raucm         L2 — verity, no sha256/size
+    build-bundle.sh        L2/L3 — good, --broken-kernel, --broken-config, --rogue, --wrong-hardware
   boot/
-    grub.cfg               L18 — ORDER / OK / TRY; one attempt per slot; env on the ESP
-    seed-grubenv.sh        L18 — grub-editenv create + set
+    grub.cfg               L3 — ORDER / OK / TRY; one attempt per slot; env on the ESP
+    seed-grubenv.sh        L3 — grub-editenv create + set
   health/
-    rauc-health-check      L18 — the ladder, with row 3 now REAL: the Node's own signal
-    rauc-mark-good.service L18 — ExecStartPost only on success; the rollback needs no code
+    rauc-health-check      L3 — the ladder, with row 3 now REAL: the Node's own signal
+    rauc-mark-good.service L3 — ExecStartPost only on success; the rollback needs no code
   quadlet/
-    storage.conf           L19 — graphroot on /data, in the image
-    vms-agent.container    L19 — the М8 agent under systemd
-    spool-uploader.container   L19 — the uploader as its own process
-    agent.env.example      L19 — the first temporary secret, named
-    check-quadlet.sh       L19 — generator --dryrun, not systemd-analyze
+    storage.conf           L4 — graphroot on /data, in the image
+    vms-agent.container    L4 — the М8 agent under systemd
+    spool-uploader.container   L4 — the uploader as its own process
+    agent.env.example      L4 — the first temporary secret, named
+    check-quadlet.sh       L4 — generator --dryrun, not systemd-analyze
   spool/
-    spool.py               L19 — Spool, drain, the two signals, and the uploader main loop
-    test_spool.py          L19 — the five tests, plus one for the signals
+    spool.py               L4 — Spool, drain, the two signals, and the uploader main loop
+    test_spool.py          L4 — the five tests, plus one for the signals
 ```
 
 ## The seam this closes

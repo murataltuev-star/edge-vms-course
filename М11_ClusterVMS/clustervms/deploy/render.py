@@ -135,8 +135,8 @@ def main():
     ap.add_argument("--object-store", default="http://127.0.0.1:9000/cluster-restore")
     ap.add_argument("--lease-ttl", type=int, default=30)
     ap.add_argument("--lease-margin", type=int, default=5)
-    ap.add_argument("--lost-after", default="2m")
-    ap.add_argument("--stop-after", default="2m")
+    ap.add_argument("--lost-after", default="45s")     # TTL + margin (М11 Lesson 4)
+    ap.add_argument("--stop-after", default="25s")     # TTL − margin
     ap.add_argument("--policy", action="store_true")
     ap.add_argument("--bootstrap", action="store_true")
     a = ap.parse_args()

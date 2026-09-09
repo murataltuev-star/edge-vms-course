@@ -55,16 +55,16 @@ The `disconnect` block (Nomad ≥ 1.8.0; before that only `max_client_disconnect
 ```hcl
   group "node" {
     disconnect {
-      lost_after           = "2m"               # how long a silent client keeps its allocation
+      lost_after           = "45s"              # TTL + margin: how long a silent client keeps its allocation
       replace              = true               # then place a replacement elsewhere
-      stop_on_client_after = "2m"               # the partitioned client stops the old one itself
+      stop_on_client_after = "25s"              # TTL − margin: the partitioned client stops the old one itself
       reconcile            = "keep_replacement" # when the client returns, the new one wins
     }
 ```
 
 The four `reconcile` strategies — `best_score`, `keep_original`, `keep_replacement`, `longest_running` — decide which instance survives when the partitioned client reconnects and Nomad discovers there are two. `keep_replacement` says the new one; the old one is stopped on reconnect.
 
-Now the exercise that *is* the argument. Set `lost_after` to two minutes and ask: **for a recorder, is two servers recording the same camera for a minute better or worse than neither?**
+Now the exercise that *is* the argument. Set `lost_after` to two minutes for a moment and ask: **for a recorder, is two servers recording the same camera for a minute better or worse than neither?**
 
 - *Neither* means a gap in the archive of exactly `lost_after` plus placement time — a number you can state.
 - *Both* means a minute of duplicate footage on two disks, and the old instance's minute is on a partitioned server whose footage may or may not ever be reachable again.
@@ -101,7 +101,7 @@ python3 reference/fencing_demo.py
    B's 24 segments in epoch-000006 untouched, contents verified
 
 /tmp/archive-w70vlpkb/node-3/
-  epoch-000005/cam-7/    24 files   <- retention deletes this
+  epoch-000005/cam-7/    24 files   <- re-indexed as fenced, then retention
   epoch-000006/cam-7/    24 files   <- the index points here
 
 You cannot stop a zombie from writing. You can only make its writes harmless.
@@ -204,7 +204,23 @@ Read the third and fourth rows together. A holder whose clock runs ten percent s
 
 The pause rows are why `SIGSTOP` is the module's best teaching device: a stopped process's monotonic clock keeps counting, so on `SIGCONT` it already knows its lease is gone and stops before writing a byte. The archive epoch is still there for the case where it does not — the two mechanisms are belt and braces, and the braces are the ones with no failure mode.
 
-Pick the three numbers — TTL, margin, `stop_on_client_after` — write them in the specification, and defend them. Longer TTL means slower failover; shorter means more false failovers on a jittery network. **Recovery time against the width of the two-writer window** is a real product trade, and it is the module's third open question.
+Pick the three numbers — TTL, margin, `stop_on_client_after` — write them in the specification, and defend them. Longer TTL means slower failover; shorter means more false failovers on a jittery network. **Recovery time against the width of the two-writer window** is a real product trade.
+
+### The numbers this course ships, and why
+
+The product has to pick too, and here is the pick with its reasoning, so you can disagree with the reasoning rather than the number:
+
+| | Value | Because |
+|---|---|---|
+| **TTL** | **30 s** | Nomad's own client heartbeat and grace are in the ten-second range; a lease shorter than three heartbeats flaps on a switch reboot, which is exactly the event this lesson is about |
+| **margin** | **5 s** each side | `(30 − 5)/(30 + 5)` = 71 %: a holder's clock may run **29 % slow** before the two-writer window opens — a bound no real clock approaches, at a cost of five seconds of failover |
+| **renewal interval** | (TTL − margin) / 3 ≈ **8 s** | three chances to renew before the local stop; one lost renewal is nothing, two is a warning, three is the design working |
+| **`stop_on_client_after`** | **25 s = TTL − margin** | the partitioned client stops the old instance at the same moment the instance's own lease would have stopped it — Nomad and the lease agree, and the archive epoch stands behind both |
+| **`lost_after`** | **45 s = TTL + margin** | Nomad places the replacement at the same moment the lease arithmetic says a replacement may start. Set it lower and Nomad outruns the lease; higher and you pay recovery time for nothing |
+
+So the two-writer window is **at most 2 × margin = 10 s** for a partition, zero for a pause (the monotonic clock keeps counting through `SIGSTOP`), and every write inside it is fenced by the epoch anyway. Failover is `lost_after` + Nomad's placement + the restore: **about 45 s plus the restore**, which the datasheet rounds to *under 90 seconds worst case* until Step 6 measures it. A ten-second TTL with a two-second margin would fail over in fifteen and tolerate only a 33 % rate error with two-second renewals — faster on paper, and the first jittery network makes it fail over for no reason, which is the outage you cause yourself.
+
+These are the defaults in `deploy/render.py` and the jobspec; the datasheet sentence is *a server failure stops recording for under 90 seconds, and never for a person.*
 
 ## Step 6 — Pull the power
 
@@ -224,7 +240,9 @@ On the bench: `pkill -9 qemu-system-x86_64` for that VM, or `bench/outage.sh pow
 
 **`node_failover_seconds` is the time from step 0 to step 5**, and it is the product's **recovery time objective**. It is meaningless as an average. Report the **worst case**, because the customer's question is *how long could my site be dark*, and the answer to that is not a mean.
 
-Then bring the server back and let the old instance wake up. It reads its Variable, sees an epoch it does not hold, and stops — or, if `reconcile = keep_replacement` reached it first, Nomad stopped it. Either way its post-outage segments are in `epoch-000005`, unindexed, and retention removes them. Count them: that is the second number.
+Then bring the server back and let the old instance wake up. It reads its Variable, sees an epoch it does not hold, and stops — or, if `reconcile = keep_replacement` reached it first, Nomad stopped it. Either way its post-outage segments are in `epoch-000005`, unindexed. Count them: that is the second number.
+
+**And then keep them.** Those segments are real footage of the partition minute — the only footage of it, if the replacement had not yet started. The design decision this course takes is that a fenced instance's output is **re-indexed, not deleted**: the sweep that finds segments under an epoch directory older than the current one inserts them into the index with their epoch, and the console shows them as *recorded by a fenced instance*. Retention then treats them like any other footage. The epoch in the path was what made the zombie harmless; the same epoch is what makes its output identifiable afterwards. `clustervms/cluster/reindex.py` is the sweep; it runs after every restore and whenever the archive directory of a returned server is mounted again.
 
 **`node_epoch_conflicts`** counts how often a stale instance was fenced at the archive — a write attempted with an epoch the index no longer references. On a healthy cluster it is **zero, forever**. That makes it exactly the kind of counter people forget to alarm on, and exactly the one to alarm on: **a metric that is always zero is worth more than one that is always noisy**, because the day it moves, something the design said was impossible has happened.
 
@@ -274,7 +292,7 @@ What does not fail over, planned or not: **the footage.** It stays on the draine
 1. Set `reconcile = "keep_original"` and repeat the power pull. Describe what happens to the replacement when the old server returns, and which epoch the archive ends up in. Decide which strategy a recorder wants and write the sentence for the specification.
 2. Build the epoch issuer against a real Nomad Variable with the task's own token, then have two allocations of the same job race it. Confirm 200 distinct epochs, as the fake did.
 3. Change `lease.py`'s TTL to ten seconds and find the margin at which a 5% slow clock is still safe. Then find the margin at which a 50% slow clock is safe, and say whether that margin is acceptable for failover time.
-4. Take the fenced zombie's orphaned segments from Step 6 — they are real footage of the partition minute — and design an orphan sweep that *re-indexes* them under a "recorded by a fenced instance" flag instead of deleting them. Say who would want that and what it costs.
+4. The fenced zombie's segments are re-indexed with their epoch. Argue the other side: a customer whose footage is evidence may not want two overlapping recordings of one minute from two servers. Design the console rule that shows both without confusing an investigator, and say which one plays by default.
 5. Reproduce the variable-lock failure: two processes, one lock, `kill -STOP` the holder past the TTL, `kill -CONT`. Show that both believe they hold it, and that nothing in the lock's API could have told the archive otherwise.
 
 ## Where this is going

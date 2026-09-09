@@ -66,7 +66,7 @@ Shared storage buys fencing and **loses the automatic recovery it was adopted fo
 | Cost | a SAN or NAS, and a shared failure domain | a replication path and an issuer to build |
 | Fits | a datacentre with an operator | **an appliance** |
 
-The course builds 2b. Keep 2a as the comparison you can explain, not the aspiration you could not afford.
+The course builds 2b, and **the product offers only 2b**. 2a is kept here as the comparison you can explain — a design that looks like the grown-up answer and cannot meet the one requirement an appliance has — not as an option a datacentre customer can buy. One design, one failure story, one datasheet.
 
 ## Step 3 — The directory is each Node's off-box backup
 
