@@ -1,4 +1,4 @@
-"""Lesson 28 — CAS issuer, ACL, and the lease that fences."""
+"""Lesson 4 — CAS issuer, ACL, and the lease that fences."""
 import threading
 from cluster.epoch import Lease, current_epoch, next_epoch
 from cluster.variables import Conflict, FakeVariables, Forbidden

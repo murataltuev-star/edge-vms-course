@@ -1,4 +1,4 @@
-"""Lesson 27 — a Node's state outlives its server: the rehydration sequence,
+"""Lesson 3 — a Node's state outlives its server: the rehydration sequence,
 against fakes, and the RPO measured rather than promised.
 
     Server A dies

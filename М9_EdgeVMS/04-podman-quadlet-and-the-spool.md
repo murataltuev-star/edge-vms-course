@@ -1,4 +1,4 @@
-# Lesson 19 — Podman, Quadlet, the Three-Way Boundary, and the Spool
+# Lesson 4 — Podman, Quadlet, the Three-Way Boundary, and the Spool
 
 **Module:** EdgeVMS — shipping the VMS as an appliance (Module 9)
 **You will build:** the VMS running as containers under systemd on the appliance, surviving reboot and OS updates — and a spool that keeps recording through a ten-minute uplink outage with nothing lost.
@@ -10,7 +10,7 @@ Two things happen here, and the second is the one you will remember.
 
 The first is ordinary: the VMS you built in М8 has to start on boot, restart if it dies, and survive an OS update that replaces the entire root filesystem underneath it. Quadlet — systemd's native way of running containers — does that in about fifteen lines, and getting one of those lines wrong destroys your container storage on the next update.
 
-The second is that this module has been shipping a defect since Lesson 16 and has not mentioned it. **Pull the network cable out of your appliance for ten minutes and go looking for those ten minutes of video.** They are not anywhere. `kvssink` publishes straight to AWS with nothing behind it, so an uplink blink is not a visibility problem — it is data loss.
+The second is that this module has been shipping a defect since Lesson 1 and has not mentioned it. **Pull the network cable out of your appliance for ten minutes and go looking for those ten minutes of video.** They are not anywhere. `kvssink` publishes straight to AWS with nothing behind it, so an uplink blink is not a visibility problem — it is data loss.
 
 Fixing that is the second half of this lesson, and it produces the first artifact in this course that a *later* module upgrades rather than replaces.
 
@@ -18,9 +18,9 @@ Fixing that is the second half of this lesson, and it produces the first artifac
 
 ## Prerequisites
 
-- **Lessons 7–8** — images versus containers, and why credentials are passed by name and never baked in.
-- **Lesson 5** — process supervision, restart-with-backoff, and the difference between a crash and a signal. systemd replaces `looper.py` here; the reasoning is unchanged.
-- **Lessons 16–18** — the bench, the read-only slots, and the data partition.
+- **М8 Lesson 3** — images versus containers, and why credentials are passed by name and never baked in.
+- **М8 Lesson 2** — process supervision, restart-with-backoff, and the difference between a crash and a signal. systemd replaces `looper.py` here; the reasoning is unchanged.
+- **Lessons 1–3** — the bench, the read-only slots, and the data partition.
 - Podman inside the VM: `apt install podman`. Check with `podman --version`.
 
 ## Learning objectives
@@ -35,7 +35,7 @@ Fixing that is the second half of this lesson, and it produces the first artifac
 
 ## Step 1 — The three-way boundary
 
-Lesson 16's thesis was two update planes. Standing on the appliance, there are actually three kinds of thing, and telling them apart is the whole of this step:
+Lesson 1's thesis was two update planes. Standing on the appliance, there are actually three kinds of thing, and telling them apart is the whole of this step:
 
 | | Lives in | Replaced by | If you get it wrong |
 |---|---|---|---|
@@ -77,7 +77,7 @@ podman info --format '{{.Store.GraphRoot}}'
 /data/containers/storage
 ```
 
-That one line is Lesson 16's thesis made concrete, and it is worth the ceremony: **it is the difference between an OS update and a data-loss incident.**
+That one line is Lesson 1's thesis made concrete, and it is worth the ceremony: **it is the difference between an OS update and a data-loss incident.**
 
 ## Step 2 — Quadlet: containers as systemd units
 
@@ -122,7 +122,7 @@ Points worth slowing down for:
 
 **Never run `systemctl enable` on a Quadlet unit.** This one catches everybody. The generated service lives in a generator directory and cannot be enabled the normal way. Instead, the generator *applies* your `[Install]` section itself at generation time, the same way `systemctl enable` would have. So `WantedBy=multi-user.target` in the `.container` file is what makes it start at boot — and `systemctl enable vms-agent.service` will fail and leave you confused about why.
 
-**`[Unit]`, `[Service]` and `[Install]` pass straight through** to the generated unit. That is where `Restart=always` goes — the same supervision policy you hand-wrote in Lesson 5, now declarative.
+**`[Unit]`, `[Service]` and `[Install]` pass straight through** to the generated unit. That is where `Restart=always` goes — the same supervision policy you hand-wrote in М8 Lesson 2, now declarative.
 
 **Both volumes point into `/data`.** The spool and the configuration are data; the container is not allowed to hold either.
 
@@ -143,9 +143,9 @@ The right tool is the generator itself, in dry-run mode:
 
 It prints the service files it would generate, and parse errors where it cannot. Put that command in CI. A Quadlet typo that only surfaces at boot on an appliance is exactly the class of bug this module exists to eliminate.
 
-## Step 4 — Credentials, and the constraint from Lesson 16
+## Step 4 — Credentials, and the constraint from Lesson 1
 
-The VMS needs AWS credentials to talk to KVS. Lesson 16 established that **both slots ship byte-identical**, so nothing device-specific can live in an image — not the AWS keys, not a serial number, not a certificate.
+The VMS needs AWS credentials to talk to KVS. Lesson 1 established that **both slots ship byte-identical**, so nothing device-specific can live in an image — not the AWS keys, not a serial number, not a certificate.
 
 So they are **provisioned at commissioning**, onto the data partition:
 
@@ -160,11 +160,11 @@ EOF
 chmod 600 /data/config/agent.env
 ```
 
-This is Lesson 13's rule — configuration is read, credentials are injected — with a physical partition enforcing it.
+This is М8 Lesson 6's rule — configuration is read, credentials are injected — with a physical partition enforcing it.
 
 It is also **a stand-in, and the course says so where it appears.** A long-lived static AWS key in a plaintext file on a device in a warehouse is not a security design; it is a placeholder with a note attached. Somebody has to type it during commissioning, it never rotates, and extracting it needs physical access and about a minute.
 
-Three modules from now, М12 replaces it: the domain provisions its own object storage (Lesson 37) and the box reaches it by workload identity, so there is no key to store. **Mark it in your own notes as the first of the course's temporary secrets** — М10 adds a database password and an operator account, М12 adds a per-Node credential and a self-signed CA, and **М12 collects all five**: four replaced by giving things identities, and the fifth *promoted* rather than replaced, because the self-signed CA turned out to be the customer's own root.
+Three modules from now, М12 replaces it: the domain provisions its own object storage (М12 Lesson 8) and the box reaches it by workload identity, so there is no key to store. **Mark it in your own notes as the first of the course's temporary secrets** — М10 adds a database password and an operator account, М12 adds a per-Node credential and a self-signed CA, and **М12 collects all five**: four replaced by giving things identities, and the fifth *promoted* rather than replaced, because the self-signed CA turned out to be the customer's own root.
 
 ## Step 5 — The failure this module has been shipping
 
@@ -186,7 +186,7 @@ set_link virtio-net-pci.0 on
 
 Now go looking for those ten minutes of video in KVS. **They do not exist.** `kvssink` had nowhere to put them, the pipeline errored, the supervisor restarted it, and each restart began publishing from *now*. Ten minutes of a customer's premises are simply missing, and nothing in the system logged it as data loss — from the outside it looks like a brief service interruption.
 
-Sit with that for a moment. Every mechanism in Lessons 16–18 was built so a box in a ceiling void could survive being unattended, and the product was quietly losing footage every time a switch rebooted.
+Sit with that for a moment. Every mechanism in Lessons 1–3 was built so a box in a ceiling void could survive being unattended, and the product was quietly losing footage every time a switch rebooted.
 
 **You cannot buffer behind `kvssink`.** It is a sink: data goes in and leaves the process. To survive an outage the pipeline has to write segments to disk and hand them to something else to upload:
 
@@ -261,7 +261,7 @@ You will meet this exact shape twice more. М11 acknowledges a configuration cha
 
 ### Property 2 — A bound, and a policy for reaching it
 
-The spool cannot grow forever; Lesson 16 sized the partition from a stated outage requirement. What happens when it fills is a product decision with two defensible answers:
+The spool cannot grow forever; Lesson 1 sized the partition from a stated outage requirement. What happens when it fills is a product decision with two defensible answers:
 
 - **`drop-oldest`** — keep recording, lose the oldest footage. Right when recent footage matters most, which for security is usually true.
 - **`stop-recording`** — refuse new segments, keep what you have. Right when footage is evidence and a gap is worse than an old recording.
@@ -347,7 +347,7 @@ After reconnection, watch it drain at the rate you configured — not all at onc
 
 **They are all there.** That is the deliverable, and it is the difference between a device and an appliance.
 
-Then answer the question the deliverable actually asks: **how long can this box survive?** Not a guess — measure the growth rate over five minutes, divide the spool bound by it, and state the number. Lesson 16 asked you to size the partition from a requirement; this is where you find out whether you got it right.
+Then answer the question the deliverable actually asks: **how long can this box survive?** Not a guess — measure the growth rate over five minutes, divide the spool bound by it, and state the number. Lesson 1 asked you to size the partition from a requirement; this is where you find out whether you got it right.
 
 ## Step 9 — The two numbers the spool must export
 
@@ -362,11 +362,11 @@ Two, and only two:
 
 The first is the one that matters, and it is worth understanding why it beats the obvious alternative. **Alarm on age, not on count.** Segment count depends on how many cameras a site has and how long a segment is; age is directly the answer to *how much footage is at risk right now*, and it means the same thing at a four-camera shop and a two-hundred-camera warehouse. One threshold works everywhere.
 
-The threshold comes from Lesson 16's arithmetic rather than from taste. If you sized the partition for a 24-hour outage, alarm at something like **6 hours** — early enough that somebody can act while there is still three quarters of the buffer left, late enough that a router reboot does not page anyone at 3am.
+The threshold comes from Lesson 1's arithmetic rather than from taste. If you sized the partition for a 24-hour outage, alarm at something like **6 hours** — early enough that somebody can act while there is still three quarters of the buffer left, late enough that a router reboot does not page anyone at 3am.
 
 Two properties worth noticing now, because М13 generalises both:
 
-- **This is a product signal, not a process one.** Nothing here reports CPU or memory. `spool_oldest_seconds` says *how much of the customer's footage is currently at risk*, which is the alarm-on-the-product rule from Lesson 18 in its second instance
+- **This is a product signal, not a process one.** Nothing here reports CPU or memory. `spool_oldest_seconds` says *how much of the customer's footage is currently at risk*, which is the alarm-on-the-product rule from Lesson 3 in its second instance
 - **It has to be readable when the uplink is down**, which is precisely when it is interesting — so it is exported locally and scraped from wherever the box can be reached, never pushed to a centre that by definition is unreachable at that moment. М13 turns that into a scrape topology
 
 **Do not build a metrics endpoint yet.** Write the two numbers where the health check can read them; М13 gives them a proper exporter. Deciding *what to measure* is this lesson's job, and it is the half that is actually hard.
@@ -409,7 +409,7 @@ Same segments, three meanings. It is the first thing in this course that a later
 
 ## Exercises
 
-1. Measure your spool's real growth rate with one simulated camera, then compute how long your Lesson 16 partition size actually survives. Compare it with the requirement you wrote down then. If they disagree, which one changes?
+1. Measure your spool's real growth rate with one simulated camera, then compute how long your Lesson 1 partition size actually survives. Compare it with the requirement you wrote down then. If they disagree, which one changes?
 2. Implement both bound policies behind a config flag, then write the two sentences a product manager would put in a datasheet for each. They should read like different products, because they are.
 3. Break the uploader so it acknowledges *before* the far side confirms, then run an outage. Show the resulting data loss and explain exactly which line caused it.
 4. Take your `spool_oldest_seconds` threshold from Step 9 and simulate the outage that trips it. Then ask whether you would have wanted to be woken — and adjust the number rather than the story.

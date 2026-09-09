@@ -37,7 +37,7 @@ class AppHost:
         self.reconciler = Reconciler(self.desired, self._actuate,
                                      max_backoff=settings.max_backoff,
                                      stall_failures=settings.stall_failures)
-        self.recording_allowed = True          # Lesson 23: the disk-full policy may clear this
+        self.recording_allowed = True          # Lesson 4: the disk-full policy may clear this
         self.pending_index: list[tuple] = []   # segment rows, written by report()
         self.wake = asyncio.Event()
         self.stopping = asyncio.Event()

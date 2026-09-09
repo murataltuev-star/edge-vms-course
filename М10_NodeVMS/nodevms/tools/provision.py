@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Commissioning, by hand — the temporary secrets Lesson 20 counts.
+"""Commissioning, by hand — the temporary secrets Lesson 1 counts.
 
     python3 -m tools.provision key                      # generate the column key (once)
     python3 -m tools.provision operator admin           # prompts for a password
@@ -34,7 +34,7 @@ async def cmd_key(s: Settings, a) -> None:
     os.makedirs(os.path.dirname(s.column_key_file), exist_ok=True)
     ColumnKey.generate(s.column_key_file)
     print(f"column key written to {s.column_key_file} (mode 0600). "
-          "This key is on the data partition and travels with every backup: named as a debt in Lesson 20.")
+          "This key is on the data partition and travels with every backup: named as a debt in Lesson 1.")
 
 
 async def cmd_migrate(s: Settings, a) -> None:
@@ -52,7 +52,7 @@ async def cmd_operator(s: Settings, a) -> None:
     try:
         oid = await st.create_operator(a.username, hash_password(pw))
         print(f"operator {a.username} id={oid}. One account, all capabilities, no policy — "
-              "the course's fourth temporary secret (Lesson 24).")
+              "the course's fourth temporary secret (Lesson 5).")
     finally:
         await st.close()
 

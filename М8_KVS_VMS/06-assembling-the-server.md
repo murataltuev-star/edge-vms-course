@@ -1,6 +1,6 @@
-# Lesson 13 — Assembling the Server
+# Lesson 6 — Assembling the Server
 
-**Module:** The Frontend & Assembly (Module 7)
+**Module:** KVS-VMS — a cloud VMS on Kinesis Video Streams (Module 8)
 **You will build:** the real project's directory layout, its `.env` configuration, its IAM policy, its two bootstrapping scripts, and — the point of the lesson — one `server/app.py` that serves all five endpoints and the `web/` folder from a single Uvicorn process.
 **Time:** ~75–90 minutes.
 
@@ -12,8 +12,8 @@ That's a real skill, not bookkeeping. Assembly is where you discover that two mo
 
 ## Prerequisites
 
-- Lessons 5, 6 (`looper.py`, `recording.py`), 10 (`pipeline.py`), 11 (`kvs.py`), 12 (`models.py`, both AWS routes). You'll be moving code you already wrote, not writing much new logic.
-- An AWS account and credentials that work (`whoami.py` from Lesson 11 passes).
+- Lesson 2 (`looper.py`, `recording.py`), 10 (`pipeline.py`), 11 (`kvs.py`), 12 (`models.py`, both AWS routes). You'll be moving code you already wrote, not writing much new logic.
+- An AWS account and credentials that work (`whoami.py` from Lesson 5 passes).
 - Python ≥ 3.11.
 
 ## Learning objectives
@@ -35,21 +35,21 @@ kvs-vms-mvp/
 ├── .env.example              # placeholders, committed
 ├── Makefile
 ├── edge/
-│   ├── looper.py             # Lessons 5 + 8
-│   ├── pipeline.py           # Lesson 10
+│   ├── looper.py             # Lesson 2 + 8
+│   ├── pipeline.py           # Lesson 4
 │   └── requirements.txt      # boto3
 ├── server/
 │   ├── app.py                # this lesson
 │   ├── config.py             # this lesson
-│   ├── kvs.py                # Lesson 11
-│   ├── models.py             # Lesson 12
-│   ├── recording.py          # Lesson 6
+│   ├── kvs.py                # Lesson 5
+│   ├── models.py             # Lesson 5
+│   ├── recording.py          # Lesson 2
 │   └── requirements.txt      # fastapi, uvicorn, boto3, pydantic, python-dotenv
 ├── web/
-│   ├── index.html            # Lessons 14–15
+│   ├── index.html            # Lessons 7 and 8
 │   ├── app.js
 │   └── style.css
-├── docker/kvssink/Dockerfile # Lesson 8
+├── docker/kvssink/Dockerfile # Lesson 3
 ├── media/                    # clip.mp4 (gitignored)
 └── scripts/
     ├── create_stream.py      # this lesson
@@ -58,7 +58,7 @@ kvs-vms-mvp/
 
 **Two `requirements.txt` files, deliberately.** `edge/` and `server/` are conceptually different machines — the edge agent belongs near the camera, the server belongs near the browser. Today they run on your laptop; the split is what keeps that an accident of development rather than an assumption baked into the code. The edge side needs `boto3` only for provisioning, and never needs FastAPI at all.
 
-Create the tree and move your existing files into it now. Everything from Lessons 5–12 goes in unchanged except for import paths.
+Create the tree and move your existing files into it now. Everything from Lessons 2–5 goes in unchanged except for import paths.
 
 ## Step 2 — One `.env`, loaded once
 
@@ -94,7 +94,7 @@ TIMELINE_WINDOW_MINUTES = int(os.getenv("TIMELINE_WINDOW_MINUTES", "60"))
 PLAYBACK_CHUNK_SECONDS = int(os.getenv("PLAYBACK_CHUNK_SECONDS", "300"))
 ```
 
-Note what `config.py` does *not* do: it never reads a credential. `AWS_ACCESS_KEY_ID` and friends sit in `.env` purely so `load_dotenv()` puts them in the environment, where **boto3 finds them by itself** — resolution step 2 from Lesson 11. Your code never touches them, never passes them to a client, and therefore can never accidentally log or serialize them. That's acceptance criterion #9 ("no AWS credential appears in any network response or in page source") satisfied structurally rather than by remembering to be careful.
+Note what `config.py` does *not* do: it never reads a credential. `AWS_ACCESS_KEY_ID` and friends sit in `.env` purely so `load_dotenv()` puts them in the environment, where **boto3 finds them by itself** — resolution step 2 from Lesson 5. Your code never touches them, never passes them to a client, and therefore can never accidentally log or serialize them. That's acceptance criterion #9 ("no AWS credential appears in any network response or in page source") satisfied structurally rather than by remembering to be careful.
 
 Two values here are duplicated into JavaScript, because there is no config endpoint and adding one would mean a whole route to serve two integers:
 
@@ -142,16 +142,16 @@ Every action maps to something you've already built, which is the useful way to 
 |---|---|---|
 | `DescribeStream` | `create_stream.py` (does it exist?) | Step 4 |
 | `CreateStream` | `create_stream.py` (make it) | Step 4 |
-| `GetDataEndpoint` | `kvs.py`'s `archived_client()` | Lesson 11 |
-| `PutMedia` | `kvssink`, publishing frames | Lesson 10 |
-| `ListFragments` | `GET /api/fragments` | Lesson 12 |
-| `GetHLSStreamingSessionURL` | `GET /api/hls` | Lesson 12 |
+| `GetDataEndpoint` | `kvs.py`'s `archived_client()` | Lesson 5 |
+| `PutMedia` | `kvssink`, publishing frames | Lesson 4 |
+| `ListFragments` | `GET /api/fragments` | Lesson 5 |
+| `GetHLSStreamingSessionURL` | `GET /api/hls` | Lesson 5 |
 
 The `Resource` line scopes all of it to one stream by name. A policy that reads `"Resource": "*"` would work too — and would also let these credentials delete every other stream in the account. Scope it.
 
 ## Step 4 — `create_stream.py`, and what "idempotent" actually costs
 
-Lesson 4 introduced idempotency for an HTTP endpoint: calling `start` twice must not spawn two agents. The same property matters here for a completely different reason — this script runs from `make setup`, which people run repeatedly, often without remembering whether they ran it before.
+Lesson 1 introduced idempotency for an HTTP endpoint: calling `start` twice must not spawn two agents. The same property matters here for a completely different reason — this script runs from `make setup`, which people run repeatedly, often without remembering whether they ran it before.
 
 ```python
 # scripts/create_stream.py
@@ -187,9 +187,9 @@ if __name__ == "__main__":
     sys.exit(0)
 ```
 
-The load-bearing line is the `raise` inside the `except`. `ResourceNotFoundException` means "absent, go create it." **Every other** error code — `AccessDeniedException` above all — means something else entirely, and swallowing it would turn a permissions problem into a confusing `CreateStream` failure one line later. This is Lesson 11's "branch on the code, never on the exception type alone" rule doing real work.
+The load-bearing line is the `raise` inside the `except`. `ResourceNotFoundException` means "absent, go create it." **Every other** error code — `AccessDeniedException` above all — means something else entirely, and swallowing it would turn a permissions problem into a confusing `CreateStream` failure one line later. This is Lesson 5's "branch on the code, never on the exception type alone" rule doing real work.
 
-Prove the idempotency rather than assuming it, using the same fake-client technique as Lessons 11 and 12:
+Prove the idempotency rather than assuming it, using the same fake-client technique as Lesson 5:
 
 ```python
 class FakeClientError(Exception):
@@ -297,7 +297,7 @@ def check_clip():
             capture_output=True, text=True).stdout.strip()
         return ok(f"{CLIP_PATH} is {out}") if out == "h264" else fail(
             f"{CLIP_PATH} is {out or 'unreadable'}, not h264",
-            "re-encode with the ffmpeg command from Lesson 9")
+            "re-encode with the ffmpeg command from Lesson 4")
     if DOCKER_IMAGE:
         rc = subprocess.run(
             ["docker", "run", "--rm", "-v", f"{os.path.abspath(CLIP_PATH)}:/clip.mp4:ro",
@@ -306,7 +306,7 @@ def check_clip():
             capture_output=True).returncode
         return ok("clip demuxes as H.264 (verified in container)") if rc == 0 else fail(
             "clip could not be demuxed as H.264 in the container",
-            "re-encode with the ffmpeg command from Lesson 9")
+            "re-encode with the ffmpeg command from Lesson 4")
     return ok(f"{CLIP_PATH} exists (not verified — no ffprobe, no docker image)")
 
 if __name__ == "__main__":
@@ -314,7 +314,7 @@ if __name__ == "__main__":
     sys.exit(0 if all(results) else 1)
 ```
 
-`check_clip`'s fallback is worth pausing on. With no `ffprobe` but a Docker image available, it validates the clip by demuxing it *with the same four elements the real pipeline uses* — `filesrc ! qtdemux ! h264parse ! fakesink`, exactly Lesson 9's Step 5 with `fakesink` in place of `filesink`. If those elements can parse it, it is H.264-in-MP4 by construction, because that's precisely the question the real pipeline will ask of it thirty seconds later. Requiring a full local media toolchain purely to validate one file, when the container already contains everything needed, is a bad trade.
+`check_clip`'s fallback is worth pausing on. With no `ffprobe` but a Docker image available, it validates the clip by demuxing it *with the same four elements the real pipeline uses* — `filesrc ! qtdemux ! h264parse ! fakesink`, exactly Lesson 4's Step 5 with `fakesink` in place of `filesink`. If those elements can parse it, it is H.264-in-MP4 by construction, because that's precisely the question the real pipeline will ask of it thirty seconds later. Requiring a full local media toolchain purely to validate one file, when the container already contains everything needed, is a bad trade.
 
 ## Step 6 — `app.py`: everything in one process
 
@@ -325,17 +325,17 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from botocore.exceptions import ClientError
 
-from server import recording                        # Lesson 6
+from server import recording                        # Lesson 2
 from server.config import STREAM_NAME, PLAYBACK_CHUNK_SECONDS
-from server.kvs import archived_client               # Lesson 11
-from server.models import (                          # Lesson 12
+from server.kvs import archived_client               # Lesson 5
+from server.models import (                          # Lesson 5
     FragmentsResponse, HLSResponse, RecordingState, Run, Window,
     from_epoch, to_epoch,
 )
 
 app = FastAPI(title="Cloud VMS")
 
-# ---- archive (Lesson 12) --------------------------------------------------
+# ---- archive (Lesson 5) --------------------------------------------------
 
 @app.get("/api/fragments", response_model=FragmentsResponse)
 def get_fragments(start: float, end: float):
@@ -375,7 +375,7 @@ def get_hls(start: float, end: float):
         raise
     return HLSResponse(url=resp["HLSStreamingSessionURL"])
 
-# ---- recording control (Lesson 6, now aimed at the real pipeline) ----------
+# ---- recording control (Lesson 2, now aimed at the real pipeline) ----------
 
 @app.get("/api/recording", response_model=RecordingState)
 def recording_status():
@@ -411,19 +411,19 @@ Three assembly details that only exist because the pieces are now together:
 
 **`Cache-Control: no-cache`.** With no build step there are no content-hashed filenames, so browsers apply *heuristic* caching to `app.js` and `style.css` — meaning they invent an expiry from the last-modified date and then serve a stale copy after you edit the file. `no-cache` doesn't mean "don't cache"; it means "revalidate before using," so the browser still gets a cheap `304 Not Modified` when nothing changed. Without this, "my edit didn't take effect" costs somebody twenty minutes at least once per project.
 
-**`recording.start()` now spawns the real pipeline.** Lesson 6 pointed `recording.py` at `camera_sim.py`. Change that one constant to launch `edge/looper.py`, which since Lesson 10 supervises the real GStreamer pipeline:
+**`recording.start()` now spawns the real pipeline.** Lesson 2 pointed `recording.py` at `camera_sim.py`. Change that one constant to launch `edge/looper.py`, which since Lesson 4 supervises the real GStreamer pipeline:
 
 ```python
-# server/recording.py — the only line that changes from Lesson 6
+# server/recording.py — the only line that changes from Lesson 2
 CHILD_SCRIPT = "looper.py"          # was "camera_sim.py"
 CHILD_ARGV = [sys.executable, "edge/looper.py"]
 ```
 
-Everything else in that module — `_reap_if_dead`, the positional `ps` matching, `NotManaged`, the `SIGTERM`→15s→`SIGKILL` escalation — stays exactly as you wrote and tested it in Lesson 6. It supervises a different child now; it does not care which.
+Everything else in that module — `_reap_if_dead`, the positional `ps` matching, `NotManaged`, the `SIGTERM`→15s→`SIGKILL` escalation — stays exactly as you wrote and tested it in Lesson 2. It supervises a different child now; it does not care which.
 
 ## Step 7 — Development fixtures, so the next two lessons have something to draw
 
-There's a scheduling problem in this project that has nothing to do with code: **the timeline needs footage, and footage needs `kvssink`** — the compiled component Lesson 10 deliberately made an optional capstone. Building the frontend against an archive that is legitimately empty means building it blind.
+There's a scheduling problem in this project that has nothing to do with code: **the timeline needs footage, and footage needs `kvssink`** — the compiled component Lesson 4 deliberately made an optional capstone. Building the frontend against an archive that is legitimately empty means building it blind.
 
 This course has answered that shape of problem the same way five times now: `camera_sim.py` stood in for the pipeline, `videotestsrc` stood in for a camera, `filesink` stood in for `kvssink`, fake boto3 clients stood in for AWS. So do the same thing once more, at the last layer that still needs it:
 
@@ -490,7 +490,7 @@ curl -s -o /dev/null -w "index: %{http_code}\n" http://127.0.0.1:8000/
 # 2. Static files revalidate rather than caching heuristically
 curl -sI http://127.0.0.1:8000/app.js | grep -i cache-control
 
-# 3. Recording status — real process state, from Lesson 6
+# 3. Recording status — real process state, from Lesson 2
 curl -s http://127.0.0.1:8000/api/recording; echo
 
 # 4. Fragments for the last hour (empty runs is a correct answer)
@@ -514,8 +514,8 @@ What each result tells you:
 | 2 | `cache-control: no-cache` | Missing header — your `NoCacheStatic` subclass isn't being used. |
 | 3 | `{"running": false, "managed": false, "pid": null}` | A 404 here is the mount-order bug from Step 6: static swallowed the API routes. |
 | 4 | `{"runs": [...], "window": {...}}`, HTTP 200 | A 500 usually means credentials or region; check `check_env.py` again. An empty `runs` list with 200 is **correct** if nothing has published yet. |
-| 5 | `400` naming the 300-second limit | A 500 means the bounds check ran after the AWS call instead of before (Lesson 12, Step 5). |
-| 6 | `running` flips true, then false | `start` returning a second pid means idempotency broke in the move; re-read Lesson 6. |
+| 5 | `400` naming the 300-second limit | A 500 means the bounds check ran after the AWS call instead of before (Lesson 5, Step 10). |
+| 6 | `running` flips true, then false | `start` returning a second pid means idempotency broke in the move; re-read Lesson 2. |
 
 Run all six and read all six before moving on. Every one of them is a real assertion about a system that is now genuinely running, and finding a mount-order bug here costs a minute — finding it while also debugging new JavaScript costs an afternoon.
 
@@ -530,7 +530,7 @@ Run all six and read all six before moving on. Every one of them is a real asser
 | `KeyError: 'AWS_REGION'` at import | `.env` missing or `load_dotenv()` not called before `config.py` reads the environment. |
 | Edited `app.js` has no effect in the browser | The `Cache-Control` header isn't being sent — check with `curl -sI`, then hard-reload once to clear what's already cached. |
 | `create_stream.py` prints "already exists" for a stream you deleted | Deletion is not instant; wait and re-run. If it persists, you're pointed at a different region than the console tab you deleted it in. |
-| `check_env.py` fails on credentials but `whoami.py` from Lesson 11 works | `check_env.py` runs through `.venv` and reads `.env`; your shell may have different credentials exported. That divergence is exactly what the check exists to catch. |
+| `check_env.py` fails on credentials but `whoami.py` from Lesson 5 works | `check_env.py` runs through `.venv` and reads `.env`; your shell may have different credentials exported. That divergence is exactly what the check exists to catch. |
 | Uvicorn reloads constantly | `--reload` is watching `media/` or `edge.log`; keep generated files out of watched directories (or drop `--reload`). |
 
 ## Recap
@@ -541,7 +541,7 @@ Run all six and read all six before moving on. Every one of them is a real asser
 - An idempotent provisioning script treats **only** `ResourceNotFoundException` as "absent" and lets every other error code through — verified here with exactly one `CreateStream` across two runs.
 - A preflight check's job is to print a remediation line, not a stack trace; `check_clip`'s Docker fallback validates the clip with the same GStreamer elements the real pipeline uses.
 - In `app.py`, API routes must be declared before `app.mount("/", ...)`, and static files need `Cache-Control: no-cache` because there is no build step to hash filenames.
-- `recording.py` changes by one constant to supervise the real pipeline; everything else about it is unchanged from Lesson 6.
+- `recording.py` changes by one constant to supervise the real pipeline; everything else about it is unchanged from Lesson 2.
 - Fixtures are a labeled, off-by-default development aid — the same "stand-in first" pattern this course has used at every previous layer.
 
 ## Exercises
@@ -554,4 +554,4 @@ Run all six and read all six before moving on. Every one of them is a real asser
 
 ## Where this is going
 
-The server is assembled and every endpoint answers. Lesson 14 builds the page that actually consumes it — the timeline, which the spec calls the signature element of the whole interface, and the one place worth spending real design effort.
+The server is assembled and every endpoint answers. Lesson 7 builds the page that actually consumes it — the timeline, which the spec calls the signature element of the whole interface, and the one place worth spending real design effort.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A camera you can unplug and stall without hardware (Lesson 23).
+"""A camera you can unplug and stall without hardware (Lesson 4).
 
     python3 tools/fake_camera.py --port 8554 --count 50
         serves rtsp://127.0.0.1:8554/cam0 .. cam49 (H.264 test pattern)

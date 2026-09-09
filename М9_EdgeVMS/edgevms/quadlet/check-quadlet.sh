@@ -1,5 +1,5 @@
 #!/bin/sh
-# Lesson 19, Step 3 — check Quadlet files without deploying them.
+# Lesson 4, Step 3 — check Quadlet files without deploying them.
 # `systemd-analyze verify` cannot: it does not know [Container] and ignores
 # the file. The generator's dry-run is the tool, and it belongs in CI.
 #   quadlet/check-quadlet.sh            # checks the files in this directory

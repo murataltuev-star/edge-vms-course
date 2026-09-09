@@ -1,4 +1,4 @@
-"""Lesson 12, Step 5 — validation order: bounds first, AWS never reached."""
+"""Lesson 5, Step 10 — validation order: bounds first, AWS never reached."""
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

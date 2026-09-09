@@ -1,4 +1,4 @@
-# Lesson 18 — Rollback That Actually Works
+# Lesson 3 — Rollback That Actually Works
 
 **Module:** EdgeVMS — shipping the VMS as an appliance (Module 9)
 **You will build:** boot-attempt logic in GRUB, a health check that decides whether an update is kept, and a written record of three deliberately induced failures and the recoveries that followed.
@@ -6,7 +6,7 @@
 
 ## Why this lesson exists
 
-Lesson 17 ended with a signed system installed in the inactive slot and activated for the next boot. Reboot and you are running it.
+Lesson 2 ended with a signed system installed in the inactive slot and activated for the next boot. Reboot and you are running it.
 
 Now suppose it does not work.
 
@@ -14,13 +14,13 @@ Most people's mental model of rollback is "if it fails, boot the old one" — wh
 
 This lesson is about making the appliance answer both questions by itself, and then proving it does by breaking it on purpose three times.
 
-> **What you can verify without hardware.** All of it, on the Lesson 16 bench. The GRUB scripting and `grub-editenv` work identically in QEMU and on metal. What a VM cannot show you is a genuine hardware-dependent failure — a driver that works on the bench and not on the real board — and Exercise 5 is about what that means for your test strategy.
+> **What you can verify without hardware.** All of it, on the Lesson 1 bench. The GRUB scripting and `grub-editenv` work identically in QEMU and on metal. What a VM cannot show you is a genuine hardware-dependent failure — a driver that works on the bench and not on the real board — and Exercise 5 is about what that means for your test strategy.
 
 ## Prerequisites
 
-- **Lesson 17** — a working `rauc install`, your CA, and a bundle you can rebuild.
-- **Lesson 16** — the two-slot bench and `/etc/slot-id`.
-- **Lesson 5** — process supervision, exit codes, and the difference between a crash and a clean shutdown. The health check in Step 3 is that same reasoning, one level up.
+- **Lesson 2** — a working `rauc install`, your CA, and a bundle you can rebuild.
+- **Lesson 1** — the two-slot bench and `/etc/slot-id`.
+- **М8 Lesson 2** — process supervision, exit codes, and the difference between a crash and a clean shutdown. The health check in Step 3 is that same reasoning, one level up.
 
 ## Learning objectives
 
@@ -64,7 +64,7 @@ The reference `grub.cfg` RAUC ships allows exactly **one attempt per slot**, bec
 
 ## Step 2 — Put that logic in GRUB
 
-Boot **slot A** and replace the `grub.cfg` from Lesson 16. This is the version with actual logic in it:
+Boot **slot A** and replace the `grub.cfg` from Lesson 1. This is the version with actual logic in it:
 
 ```bash
 mount -o remount,rw /boot/efi 2>/dev/null || mount /dev/vda1 /boot/efi
@@ -205,7 +205,7 @@ fi
 
 # 3. Footage is actually arriving. On the bench this is a stand-in
 #    for "a segment appeared in the spool in the last N seconds";
-#    Lesson 19 replaces it with the real thing.
+#    Lesson 4 replaces it with the real thing.
 if ! find /data/spool -name '*.mp4' -newermt '-120 seconds' 2>/dev/null | grep -q .; then
     echo "health: no segment written in the last 120s" >&2
     exit 1
@@ -216,7 +216,7 @@ EOF
 chmod +x /usr/local/bin/rauc-health-check
 ```
 
-Note the third check is marked as a stand-in **in the code**, not just in your head. That is the same discipline as `camera_sim.py` back in Lesson 5, and Lesson 19 is where it gets replaced — partially. The real replacement arrives with М10: the Node exports `nodevms_camera_silent_seconds_max` on its own `/metrics`, and [`edgevms/health/rauc-health-check`](./edgevms/health/rauc-health-check) reads it locally when a Node is present, falling back to this stand-in when one is not. Two details in that version are worth stealing now: the window is `2 × segment length + 60`, because a healthy recorder is silent for a whole segment between closes and a 120-second window would roll back every good update; and a box with **no cameras configured** passes the footage test *and says so*, which is a product decision stated rather than an accident hidden.
+Note the third check is marked as a stand-in **in the code**, not just in your head. That is the same discipline as `camera_sim.py` back in М8 Lesson 2, and Lesson 4 is where it gets replaced — partially. The real replacement arrives with М10: the Node exports `nodevms_camera_silent_seconds_max` on its own `/metrics`, and [`edgevms/health/rauc-health-check`](./edgevms/health/rauc-health-check) reads it locally when a Node is present, falling back to this stand-in when one is not. Two details in that version are worth stealing now: the window is `2 × segment length + 60`, because a healthy recorder is silent for a whole segment between closes and a 120-second window would roll back every good update; and a box with **no cameras configured** passes the footage test *and says so*, which is a product decision stated rather than an accident hidden.
 
 Wire it to run on boot, and to mark the slot good only if it passes:
 
@@ -332,7 +332,7 @@ rauc status                            # rootfs.1 is inconsistent; rootfs.0 boot
 
 Slot B holds a partially written image and is worthless. **It does not matter.** Nobody was booting it, `B_OK` was never set, and slot A was never modified. Reinstall the bundle and it overwrites the mess.
 
-Compare that against `apt upgrade` interrupted at the same moment, from Lesson 16 Step 1. Same power cut, same instant. One outcome is a box that boots normally and needs the update retried; the other is a van.
+Compare that against `apt upgrade` interrupted at the same moment, from Lesson 1 Step 1. Same power cut, same instant. One outcome is a box that boots normally and needs the update retried; the other is a van.
 
 ---
 
@@ -355,7 +355,7 @@ Compare that against `apt upgrade` interrupted at the same moment, from Lesson 1
 - The grubenv must live outside the redundant partitions, or an update destroys the record of what to boot.
 - A health check that stops at "no failed units" would have kept the Step 5 update. For a VMS, the check has to reach **is footage actually being written** — and the cost of that ambition is a longer commit window and a real risk of rolling back over transient faults.
 - A signature proves who made an update. It never proves the update works.
-- Power loss mid-install costs you a reinstall, not a site visit. That is the entire argument of Lesson 16, now demonstrated rather than asserted.
+- Power loss mid-install costs you a reinstall, not a site visit. That is the entire argument of Lesson 1, now demonstrated rather than asserted.
 
 ## Exercises
 
@@ -369,4 +369,4 @@ Compare that against `apt upgrade` interrupted at the same moment, from Lesson 1
 
 The OS plane is now complete: atomic, verified, and self-recovering. What is running *on* it is still hand-started processes.
 
-Lesson 19 brings up the VMS itself under Podman and Quadlet, and draws the boundary that makes both planes work together — OS, application, and the data that must outlive them both. It is also where you meet the failure this module has quietly been carrying since Lesson 16: pull the network cable, and find out what happened to the footage.
+Lesson 4 brings up the VMS itself under Podman and Quadlet, and draws the boundary that makes both planes work together — OS, application, and the data that must outlive them both. It is also where you meet the failure this module has quietly been carrying since Lesson 1: pull the network cable, and find out what happened to the footage.

@@ -12,4 +12,4 @@
 | `server.hcl`, `client.hcl` | 25 | three servers, ACLs on, `data_dir` on `/data`, the Podman plugin, `meta.vlans` |
 | `node-3-policy.hcl` | 26 | one writer per key: Node 3 may write `nodes/node-3*` and read `nodes/*` — bind with `nomad acl policy apply -job node-3` |
 
-The `.py` files ran; their output is what the lessons print. The `.hcl` files are written to the Nomad documentation for ≥ 1.8.0 and were not validated against a running agent here — `nomad job validate` on the Lesson 25 cluster is the first thing to do with them.
+The `.py` files ran; their output is what the lessons print. The `.hcl` files are written to the Nomad documentation for ≥ 1.8.0 and were not validated against a running agent here — `nomad job validate` on the Lesson 1 cluster is the first thing to do with them.

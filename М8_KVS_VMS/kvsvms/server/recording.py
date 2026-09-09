@@ -1,11 +1,11 @@
-# server/recording.py — Lesson 6, aimed at the real pipeline since Lesson 13.
+# server/recording.py — Lesson 2, aimed at the real pipeline since Lesson 6.
 # The ONLY code that knows a subprocess exists. If this module starts growing
 # a job queue or persisting anything, the design has gone wrong.
 import os
 import subprocess
 import sys
 
-CHILD_SCRIPT = "looper.py"                              # was "camera_sim.py" until Lesson 13
+CHILD_SCRIPT = "looper.py"                              # was "camera_sim.py" until Lesson 6
 CHILD_ARGV = [sys.executable, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                            "edge", "looper.py")]
 STOP_TIMEOUT = 15.0
@@ -37,7 +37,7 @@ def _scan_ps(ps_output: str, own_pid: int | None) -> int | None:
         pid_str, args = parts
         tokens = args.split()
         # Position, not presence — and the token BEFORE the script must be a
-        # Python interpreter. Lesson 6's version checked tokens[1] alone, which
+        # Python interpreter. Lesson 2's version checked tokens[1] alone, which
         # still matches `vim looper.py`: two tokens, script second. Requiring
         # python* first is what actually rules out editors and pagers.
         if len(tokens) < 2 or os.path.basename(tokens[1]) != CHILD_SCRIPT \
@@ -73,10 +73,10 @@ def start():
     global _current_proc
     current = status()
     if current["running"]:
-        return current                              # idempotent — Lesson 4's rule, for real
+        return current                              # idempotent — Lesson 1's rule, for real
     _current_proc = subprocess.Popen(
         CHILD_ARGV,
-        start_new_session=True,                     # Lesson 6, Step 5: a Ctrl+C on the server
+        start_new_session=True,                     # Lesson 2, Step 13: a Ctrl+C on the server
     )                                               # must not reach the recording
     return status()
 

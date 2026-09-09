@@ -2,7 +2,7 @@
 """Run the millisecond suite without pytest (the appliance image has none):
     python3 tests/run.py
 Discovers test_* functions in tests/test_*.py, runs coroutines with
-asyncio.run, prints one line per test like Lesson 21 does."""
+asyncio.run, prints one line per test like М10 Lesson 2 does."""
 from __future__ import annotations
 
 import asyncio

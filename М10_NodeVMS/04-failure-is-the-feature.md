@@ -1,4 +1,4 @@
-# Lesson 23 — Failure Is the Feature
+# Lesson 4 — Failure Is the Feature
 
 **Module:** NodeVMS — one Node learns what it should be (Module 10)
 **You will build:** a test suite that kills, fills, stalls and unplugs — and a Node that converges after each.
@@ -12,14 +12,14 @@ None of that is true for more than a few days at a time, and on an appliance nob
 
 There is a fifth thing here that looks like a detail and is the seed of М11's hardest problem: on restart, never resume the previous segment.
 
-> **What you can verify without hardware.** The disk-full behaviour and the retention arithmetic run against real Postgres — every number below is measured output from **PostgreSQL 16.13**. The backoff and restart tests run against the fake actuator from Lesson 21. The stall test needs GStreamer and a camera you can unplug, real or simulated.
+> **What you can verify without hardware.** The disk-full behaviour and the retention arithmetic run against real Postgres — every number below is measured output from **PostgreSQL 16.13**. The backoff and restart tests run against the fake actuator from Lesson 2. The stall test needs GStreamer and a camera you can unplug, real or simulated.
 
 ## Prerequisites
 
-- **Lesson 22** — the real actuator, the `watchdog` element, and `splitmuxsink`.
-- **Lesson 21** — backoff with jitter, and the state vocabulary.
-- **Lesson 20** — partitioning, and the `DELETE`-frees-nothing demonstration. This lesson collects on it.
-- **М9 Lesson 19** — the spool's bound policy. Step 3 is the same question with a different answer.
+- **Lesson 3** — the real actuator, the `watchdog` element, and `splitmuxsink`.
+- **Lesson 2** — backoff with jitter, and the state vocabulary.
+- **Lesson 1** — partitioning, and the `DELETE`-frees-nothing demonstration. This lesson collects on it.
+- **М9 Lesson 4** — the spool's bound policy. Step 3 is the same question with a different answer.
 
 ## Learning objectives
 
@@ -37,7 +37,7 @@ The most common failure and the least interesting one — until two hundred of t
 
 A camera is unplugged, or rebooting, or on a switch that just lost power. `rtspsrc` fails to connect and the pipeline never reaches PLAYING. The state machine goes `STARTING → FAILED`, backoff applies, and it retries.
 
-The single-camera behaviour is already correct from Lesson 21 and needs no new code. What this lesson adds is the test that proves the *fleet* behaviour:
+The single-camera behaviour is already correct from Lesson 2 and needs no new code. What this lesson adds is the test that proves the *fleet* behaviour:
 
 ```python
 def test_switch_reboot_does_not_stampede():
@@ -62,7 +62,7 @@ Backoff protects one camera. **Jitter protects the network** — and the network
 
 ## Step 2 — Stalled stream, socket still open
 
-The nasty one, from Lesson 22 Step 4: the camera stops sending video and the TCP connection stays up. Nothing errors, the pipeline is PLAYING, and the archive develops a hole with no complaint anywhere.
+The nasty one, from Lesson 3 Step 4: the camera stops sending video and the TCP connection stays up. Nothing errors, the pipeline is PLAYING, and the archive develops a hole with no complaint anywhere.
 
 `watchdog timeout=8000` handles it, and the test is about **blast radius** rather than detection:
 
@@ -88,7 +88,7 @@ The interesting one, because retention has to run **at the moment there is no ro
 
 ### Why the naive loop fails exactly when needed
 
-Lesson 20 measured this. Deleting a month of index rows:
+Lesson 1 measured this. Deleting a month of index rows:
 
 ```
 DELETE 276768
@@ -145,7 +145,7 @@ Here it is **the archive**, and the answer changes: retention decides, and the r
 | **Degrade retention** | Shorten the window, oldest first, and record on | Recent footage matters most — usually true for security |
 | **Degrade by camera priority** | Sacrifice the car park before the safe room | The customer has actually ranked their cameras |
 
-Pick one, put it in the specification, and **make the Node say which it did** — as an event, in the table from Lesson 20, because a silent drop is indistinguishable from a bug. This is the first thing in the course that a Node needs to tell somebody about and has nowhere to send; М11 gives it one.
+Pick one, put it in the specification, and **make the Node say which it did** — as an event, in the table from Lesson 1, because a silent drop is indistinguishable from a bug. This is the first thing in the course that a Node needs to tell somebody about and has nowhere to send; М11 gives it one.
 
 ```python
 def test_disk_full_degrades_by_policy_and_says_so():
@@ -162,7 +162,7 @@ def test_disk_full_degrades_by_policy_and_says_so():
 systemctl kill --signal=SIGKILL apphost
 ```
 
-No cleanup, no handlers, no chance to write anything. systemd restarts it, and the requirement is Lesson 21's rule made physical: **it must rebuild its picture from Postgres plus observation, remembering nothing.**
+No cleanup, no handlers, no chance to write anything. systemd restarts it, and the requirement is Lesson 2's rule made physical: **it must rebuild its picture from Postgres plus observation, remembering nothing.**
 
 ```python
 def test_kill_mid_change_converges():
@@ -174,7 +174,7 @@ def test_kill_mid_change_converges():
 
 What is lost is exactly one thing: **the open segment on each running camera.** `splitmuxsink` writes a segment and closes it; a segment closed before the kill is complete on disk and indexed. The one in progress is truncated, and depending on the muxer may be unplayable.
 
-That bounds the loss at *segment length*, which is why Lesson 22 called `max-size-time` a product decision rather than a tuning knob:
+That bounds the loss at *segment length*, which is why Lesson 3 called `max-size-time` a product decision rather than a tuning knob:
 
 ```
 10-minute segments  →  up to 10 minutes lost per camera on a hard kill
@@ -197,7 +197,7 @@ So the restarted instance opens a *new* segment. The truncated one stays as it i
 
 **On one Node this is a convention.** Nothing enforces it; nothing needs to, because there is only one AppHost and systemd starts one at a time.
 
-In М11 there are two instances of the same Node during a failover — the new one on a healthy server, and the old one on a server everybody believes is dead and which is actually just slow. Both believe they own camera 7. A convention is worthless against that, and the mechanism that replaces it is a **fencing token**: the `epoch` you put in the path in Lesson 22, issued by a single authority, checked *at the archive* so the stale writer's files land where nobody reads them.
+In М11 there are two instances of the same Node during a failover — the new one on a healthy server, and the old one on a server everybody believes is dead and which is actually just slow. Both believe they own camera 7. A convention is worthless against that, and the mechanism that replaces it is a **fencing token**: the `epoch` you put in the path in Lesson 3, issued by a single authority, checked *at the archive* so the stale writer's files land where nobody reads them.
 
 You cannot stop a zombie from writing. You can only make its writes harmless — and that idea starts here, as a one-line rule on a box with no zombies yet.
 
@@ -205,7 +205,7 @@ You cannot stop a zombie from writing. You can only make its writes harmless —
 
 ```
 tests/
-  test_converge.py     Lesson 21's seven — still passing, unchanged
+  test_converge.py     Lesson 2's seven — still passing, unchanged
   test_offline.py      one camera; then 200, asserting retry spread
   test_stall.py        watchdog fires; the other 49 keep writing segments
   test_diskfull.py     retention under pressure, policy honoured, event logged
@@ -214,7 +214,7 @@ tests/
 
 Two properties make this suite worth having rather than a box-ticking exercise.
 
-**It runs on every commit.** The Lesson 21 tests need no database, no GStreamer and no network, so they run in milliseconds. The rest need a Postgres container and a simulated camera — still no appliance.
+**It runs on every commit.** The Lesson 2 tests need no database, no GStreamer and no network, so they run in milliseconds. The rest need a Postgres container and a simulated camera — still no appliance.
 
 **Every test asserts convergence, not absence of error.** The question is never "did it throw?" It is: *after this failure, does the Node end up doing what the database says it should?* That is the only definition of correct this module has, and it is the one that transfers unchanged to М11, where the failure is a whole server rather than a camera.
 
@@ -256,4 +256,4 @@ Two properties make this suite worth having rather than a box-ticking exercise.
 
 The Node now converges, and keeps converging through the four failures that actually happen. Nobody can see any of it — the only interface is `psql`.
 
-**Lesson 24 builds the console**, with a login against Lesson 20's `operators` table, and a status vocabulary that keeps *positions* apart from *reasons*. It also closes the module by asking the uncomfortable question: now that the design is proven, which parts of it should not stay in Python — and the answer is more interesting than "the slow parts", because the reconcile loop you wrote by hand turns out to be the part that survives.
+**Lesson 5 builds the console**, with a login against Lesson 1's `operators` table, and a status vocabulary that keeps *positions* apart from *reasons*. It also closes the module by asking the uncomfortable question: now that the design is proven, which parts of it should not stay in Python — and the answer is more interesting than "the slow parts", because the reconcile loop you wrote by hand turns out to be the part that survives.

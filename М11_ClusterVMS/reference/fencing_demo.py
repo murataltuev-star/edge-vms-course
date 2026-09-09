@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lesson 28, Step 3 — the zombie writer, with real processes and no cameras.
+"""Lesson 4, Step 3 — the zombie writer, with real processes and no cameras.
 
     python3 fencing_demo.py [archive_dir]
     python3 fencing_demo.py --no-fencing     # the same run with one shared path: watch B's files change

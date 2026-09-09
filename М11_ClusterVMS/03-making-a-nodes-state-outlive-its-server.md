@@ -1,4 +1,4 @@
-# Lesson 27 — Making a Node's State Outlive Its Server
+# Lesson 3 — Making a Node's State Outlive Its Server
 
 **Module:** ClusterVMS — a Node that outlives the server recording on it (Module 11)
 **You will build:** the restore — a Node that arrives on a new server and rebuilds itself from a Variable and an object store — and a measured recovery point objective.
@@ -6,18 +6,18 @@
 
 ## Why this lesson exists
 
-Lesson 26 ended with a Node that knows it is Node 3 and has no cameras. This is the lesson most courses skip, because "it pulls its configuration back" sounds like a detail. It hides every interesting decision in the module: what has to travel, where it comes from, what order the writes go in so that a pointer never points at nothing, and — the part with a number attached — what the operator was told about an edit that did not survive.
+Lesson 2 ended with a Node that knows it is Node 3 and has no cameras. This is the lesson most courses skip, because "it pulls its configuration back" sounds like a detail. It hides every interesting decision in the module: what has to travel, where it comes from, what order the writes go in so that a pointer never points at nothing, and — the part with a number attached — what the operator was told about an edit that did not survive.
 
 There is also a trap in it that looks like the grown-up answer. Shared storage would make all of this go away: put the Node's disk on a SAN, and when the Node moves, its disk is already there. It is what a datacentre would do. It is the wrong answer for an appliance, for a reason worth reading in the bug tracker rather than taking on trust.
 
-> **What you can verify without hardware.** The rehydration sequence, the publication order and the RPO measurement all run against fakes in [`reference/rehydrate.py`](reference/rehydrate.py), and every number printed below came out of it. The failover itself, and the CSI comparison, need the Lesson 25 cluster.
+> **What you can verify without hardware.** The rehydration sequence, the publication order and the RPO measurement all run against fakes in [`reference/rehydrate.py`](reference/rehydrate.py), and every number printed below came out of it. The failover itself, and the CSI comparison, need the Lesson 1 cluster.
 
 ## Prerequisites
 
-- **Lesson 26** — the Node as a job, its Variable, and the three-stores rule.
-- **М10 Lesson 20** — what is in the database, and which of it is configuration. This lesson is about exactly that column split, one level up.
-- **М10 Lesson 23** — the archive index is rebuildable from segments; events are observations.
-- **М9 Lesson 19** — *delete on acknowledgement, never on send.* The same shape returns here as *acknowledge on local commit, show durability.*
+- **Lesson 2** — the Node as a job, its Variable, and the three-stores rule.
+- **М10 Lesson 1** — what is in the database, and which of it is configuration. This lesson is about exactly that column split, one level up.
+- **М10 Lesson 4** — the archive index is rebuildable from segments; events are observations.
+- **М9 Lesson 4** — *delete on acknowledgement, never on send.* The same shape returns here as *acknowledge on local commit, show durability.*
 - An S3-compatible object store reachable from every client — MinIO on the three servers is enough for the bench.
 
 ## Learning objectives
@@ -33,13 +33,13 @@ There is also a trap in it that looks like the grown-up answer. Shared storage w
 
 ## Step 1 — What must travel, and what must not
 
-Node 3's data sits on Server A's disk. Nomad moves Node 3 to Server B. Go through the four things in its Postgres from М10 Lesson 20 and ask of each: *does the new instance need this to do its job?*
+Node 3's data sits on Server A's disk. Nomad moves Node 3 to Server B. Go through the four things in its Postgres from М10 Lesson 1 and ask of each: *does the new instance need this to do its job?*
 
 | | On the dead server | Comes with the Node? |
 |---|---|---|
 | **Footage** | stays | **No — and it does not need to.** The past stays where it was written; a replacement records the future. Moving terabytes to move a process would be the tail wagging the dog |
-| **Archive index** | stays | **Rebuilt.** М10 Lesson 23 made it derivable from the segments on disk; when Server A returns, its index comes back with it |
-| **Events** | stays | Expendable. They are observations, and М10 Lesson 20 said so |
+| **Archive index** | stays | **Rebuilt.** М10 Lesson 4 made it derivable from the segments on disk; when Server A returns, its index comes back with it |
+| **Events** | stays | Expendable. They are observations, and М10 Lesson 1 said so |
 | **Configuration** | stays | **Must come. It is the source of truth, and losing it loses the Node** |
 
 So exactly one thing has to travel, and it is the smallest of the four: a few hundred rows of what the operator asked for. Everything else is either derivable or belongs where it is.
@@ -52,7 +52,7 @@ The obvious way to make configuration "come with" the Node is to make its disk c
 
 Read [Nomad issue #12118](https://github.com/hashicorp/nomad/issues/12118) before designing around it. Still open. The report: when a client holding a CSI volume dies, **the volume stays attached to the dead node**. The rescheduled allocation fails to place with *"volume is already published on another node"*; Nomad's volume watcher cannot force a detach it cannot confirm; and the documented workaround is a human detaching the volume at the storage provider's console.
 
-Put that against the requirement from Lesson 25:
+Put that against the requirement from Lesson 1:
 
 > *A single server failure must not stop recording for longer than __ minutes, **and must not require a person**.*
 
@@ -61,7 +61,7 @@ Shared storage buys fencing and **loses the automatic recovery it was adopted fo
 | | **2a — shared storage** | **2b — local disk, configuration replicated** |
 |---|---|---|
 | Mechanism | the Node's database on a CSI volume | local disk; configuration published one way, pulled back on start |
-| Fencing | the storage does it | needs a token issuer — Lesson 28 |
+| Fencing | the storage does it | needs a token issuer — Lesson 4 |
 | **Automatic failover** | **No** (#12118) | **Yes** |
 | Cost | a SAN or NAS, and a shared failure domain | a replication path and an issuer to build |
 | Fits | a datacentre with an operator | **an appliance** |
@@ -88,12 +88,12 @@ Four things follow, and each one is a property people usually have to fight for:
 Walk it explicitly. Server A dies; Nomad places Node 3 on Server B:
 
 ```
-1. empty Postgres; migrations run                       (М10 Lesson 20's runner, unattended)
+1. empty Postgres; migrations run                       (М10 Lesson 1's runner, unattended)
 2. read its own Nomad Variable — "I am Node 3; my configuration
-   is object node-3/rev-812, and these are my camera ids"   (Lesson 26)
+   is object node-3/rev-812, and these are my camera ids"   (Lesson 2)
 3. fetch that object from the CLUSTER's object store
 4. restore it; check the revision against the Variable
-5. request a new epoch                                   (Lesson 28)
+5. request a new epoch                                   (Lesson 4)
 6. begin recording into epoch-N+1
 ```
 
@@ -102,7 +102,7 @@ Each step depends on something specific, and naming the dependency is what makes
 - **Step 2 is why identity cannot live on disk.** The disk is on Server A.
 - **Step 3 is why something off-box must be reachable to fail over** — the object store — even though nothing off-box is needed to *run*. It lives in this cluster, on these servers.
 - **Step 4 is where the RPO becomes visible.** The revision that comes back may be behind the one the operator last saw.
-- **Step 5 is why the old instance's writes are harmless** even if Server A was only paused. Lesson 28.
+- **Step 5 is why the old instance's writes are harmless** even if Server A was only paused. Lesson 4.
 
 Against the fakes, from `rehydrate.py` — real output:
 
@@ -146,7 +146,7 @@ Three consequences to build in:
   {"state": "unconfigured"}
   ```
 
-- **The archive index does not come back.** It is large and constantly written, so it is never published; only the configuration is. After a failover the Node knows *camera 7 has footage on Server A's storage* and nothing finer until Server A returns. Rebuild by scanning segments when it does — М10 Lesson 23's orphan sweep, run forwards — and know how long that takes at your scale: a million segments is minutes of `stat()`, not seconds.
+- **The archive index does not come back.** It is large and constantly written, so it is never published; only the configuration is. After a failover the Node knows *camera 7 has footage on Server A's storage* and nothing finer until Server A returns. Rebuild by scanning segments when it does — М10 Lesson 4's orphan sweep, run forwards — and know how long that takes at your scale: a million segments is minutes of `stat()`, not seconds.
 
 ## Step 6 — The acknowledgement problem
 
@@ -158,9 +158,9 @@ Here is the gap the backup framing exposes. **What is the operator told when the
 | Acknowledge on local commit, say nothing | Silent data loss on failover. The operator was told *saved*; the change is gone |
 | **Acknowledge on local commit, and show durability** | The operator sees *saved · not yet replicated* until it lands |
 
-The third needs no new machinery. М10 already has `observed_revision >= revision` for the AppHost applying a change; the console shows the same shape for the directory receiving it. A camera row carries `revision`; the Node's Variable carries `revision` as last published; the difference is *how many edits are not yet safe*, and a Node that has been unable to publish for N minutes raises a condition — `replicated`, false, since 14:02 — on М10 Lesson 24's conditions axis.
+The third needs no new machinery. М10 already has `observed_revision >= revision` for the AppHost applying a change; the console shows the same shape for the directory receiving it. A camera row carries `revision`; the Node's Variable carries `revision` as last published; the difference is *how many edits are not yet safe*, and a Node that has been unable to publish for N minutes raises a condition — `replicated`, false, since 14:02 — on М10 Lesson 5's conditions axis.
 
-This is М9 Lesson 19's rule in its second instance. There it was *delete on acknowledgement, never on send*. Here it is:
+This is М9 Lesson 4's rule in its second instance. There it was *delete on acknowledgement, never on send*. Here it is:
 
 > **Never acknowledge a write whose durability you cannot vouch for — and never block the write on it either. Show the difference.**
 
@@ -190,7 +190,7 @@ Then do it on the bench, where the number is real: edit a camera, `nomad node dr
 |---|---|
 | The restored Node has cameras but the wrong retention on one | That is the RPO, working as designed and visible. Check whether the console said *not yet replicated* for that edit. |
 | Step 3 fails: `NoSuchKey` for the object the Variable names | The publish order is reversed, or a hand-written Variable. Object first, Variable second, always. |
-| Every reschedule comes up `unconfigured` | The Variable's `config` field is empty — the Node never published, usually because its token cannot write its own Variable. Lesson 26, Step 5. |
+| Every reschedule comes up `unconfigured` | The Variable's `config` field is empty — the Node never published, usually because its token cannot write its own Variable. Lesson 2, Step 5. |
 | The Node restores and then its old footage is invisible | Correct: the index did not travel. It says *footage on Server A, unavailable*. It comes back when Server A does. |
 | Rebuilding the index takes an hour | A million `stat()` calls on a cold disk. Rebuild in the background, newest first, and serve the console from the partial index as it fills. |
 | The CSI experiment leaves the volume attached to the dead client | Issue #12118. You have reproduced the reason this lesson builds 2b. Detach it in the storage console and write down how long that took. |
@@ -219,4 +219,4 @@ Then do it on the bench, where the number is real: edit a camera, `nomad node dr
 
 A Node moves and comes back whole. Everything in this lesson assumed Server A was dead.
 
-**Lesson 28 assumes it was not** — only partitioned, or paused, or slow — and there are now two instances of Node 3, both restored, both writing camera 7. Nothing can tell dead from partitioned from paused, and the design has to be correct without resolving it. The tool is a fencing token, and the first candidate students reach for is the one Kleppmann's argument is about.
+**Lesson 4 assumes it was not** — only partitioned, or paused, or slow — and there are now two instances of Node 3, both restored, both writing camera 7. Nothing can tell dead from partitioned from paused, and the design has to be correct without resolving it. The tool is a fencing token, and the first candidate students reach for is the one Kleppmann's argument is about.

@@ -33,7 +33,7 @@ The original question assumed it was, and two drafts of this record agreed. The 
 
 Putting Postgres on every Node and synchronising *bidirectionally* would still be wrong, and the reasons are worth keeping because they are what constrains the design:
 
-- **Multi-master** — for a desired-state store, conflicting writes are precisely what must not happen. "Camera 7 belongs to Node A" and "camera 7 belongs to Node B", merged, is the split-brain Lesson 29 exists to prevent
+- **Multi-master** — for a desired-state store, conflicting writes are precisely what must not happen. "Camera 7 belongs to Node A" and "camera 7 belongs to Node B", merged, is the split-brain М11 Lesson 5 exists to prevent
 - **A consensus system** — which is what you would end up building, and Postgres is not one
 
 What makes the design work is that **neither is needed, because every row has exactly one writer by construction.** A Node writes its own configuration and nothing else writes it. The synchronisation is one-way and therefore not synchronisation at all — it is publication.
@@ -109,7 +109,7 @@ Still Postgres, and still one. An earlier draft said SQLite was plenty; that was
 **Why Postgres locally rather than SQLite**, once index and events are in the picture:
 
 - **Concurrency.** SQLite permits one writer at a time; WAL lets readers run alongside a writer but does not change that. Twenty media workers writing index rows, an event stream, and the AppHost reading is real contention
-- **Partitioning is the decisive feature.** Index and events are both rolling time windows. `DROP PARTITION` against `DELETE FROM` on a table taking a hundred rows a second is not a close comparison, and it makes М10 Lesson 23's retention loop instant instead of a vacuum problem
+- **Partitioning is the decisive feature.** Index and events are both rolling time windows. `DROP PARTITION` against `DELETE FROM` on a table taking a hundred rows a second is not a close comparison, and it makes М10 Lesson 4's retention loop instant instead of a vacuum problem
 - **Types that match the work.** `tstzrange` with a GiST index answers *what footage covers this window* directly — which is М8's timeline query — and JSONB carries event payloads that differ per detector
 - **One engine, one skillset.** The same `psql`, `pg_dump`, monitoring and client library. Students learn one thing; whoever operates the appliance operates one thing
 
@@ -249,7 +249,7 @@ So split it by who wrote it:
 - **The domain holds a rollup only** — *"Node 3 has camera 7"*, in that Node's Variable beside its camera ids. Coarse enough to stay inside a key-value entry, which is the test for whether something belongs at the domain at all
 - **Playback asks the domain *where*, then the Node *what***
 
-Which extends the rule М11 Lesson 26 already teaches — *do not put video bulk on replicated storage; replicate metadata and let footage be local* — one level up: **replicate the summary, not the index.**
+Which extends the rule М11 Lesson 2 already teaches — *do not put video bulk on replicated storage; replicate metadata and let footage be local* — one level up: **replicate the summary, not the index.**
 
 ### The same shape, three times
 
@@ -288,7 +288,7 @@ Most events are never read. A filtered subset — alarms an operator must acknow
 | Where does the domain end? | At the first network you would not bet recording on |
 | HA? | **Not a question the design asks any more.** Nomad's raft is replicated for scheduling; object storage durability is its product. Nothing was made highly available *for this* |
 
-**Course changes.** М10 Lesson 20 builds **one** database, owned by the Node, and what М10 builds *is a Node* — so М11 adds Nodes rather than restructuring anything. М11 Part A now carries what makes failover real: what must outlive a server, shared storage versus one-way replication, and fencing. Part B shrinks to the three things a Node cannot know about itself.
+**Course changes.** М10 Lesson 1 builds **one** database, owned by the Node, and what М10 builds *is a Node* — so М11 adds Nodes rather than restructuring anything. М11 Part A now carries what makes failover real: what must outlive a server, shared storage versus one-way replication, and fencing. Part B shrinks to the three things a Node cannot know about itself.
 
 **Product recommendation: the Node is the authority for its own configuration and owns the only database; the domain is a Variable, an object, and a certificate authority.** Nothing in that list has to be available for the product to *record*; the directory has to be available for the product to *recover*. Five revisions of this record moved in one direction throughout — **every one of them took state out of a database** — and the last one removed the database.
 
@@ -298,8 +298,8 @@ Most events are never read. A filtered subset — alarms an operator must acknow
 
 - [PostgreSQL HA: repmgr vs Patroni vs pg_auto_failover](https://tomasz-gintowt.medium.com/postgresql-high-availability-repmgr-vs-patroni-vs-pg-auto-failover-a16fd0bfbc1e) — external dependencies of each, witness versus monitor versus DCS, and the closing argument that a system the team understands beats a more advanced one it does not
 - [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) — camera lifecycle must survive a control-plane outage, which is the rule this record generalises
-- М11 Lesson 26 — replicate metadata, let footage be local
-- [`module-design.md`](module-design.md) — the epoch issuer, the fencing argument it comes from, and М12 Lesson 33's mTLS on the Node↔directory streams
+- М11 Lesson 2 — replicate metadata, let footage be local
+- [`module-design.md`](module-design.md) — the epoch issuer, the fencing argument it comes from, and М12 Lesson 4's mTLS on the Node↔directory streams
 - [Nomad Variables](https://developer.hashicorp.com/nomad/api-docs/variables) — check-and-set against `ModifyIndex`, which is what makes the epoch monotonic without a second database
 
 *Written 5 September 2026.*

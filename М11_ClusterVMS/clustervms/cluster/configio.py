@@ -1,10 +1,10 @@
 """What travels: the Node's configuration, as one opaque blob.
 
-Lesson 27's table: footage stays, the index is rebuilt, events are
+Lesson 3's table: footage stays, the index is rebuilt, events are
 expendable, configuration MUST come. A dump is sites + cameras (operator
 columns, the encrypted credential, the revision) + operators + grants.
 Nothing controller-owned travels: the new instance re-derives phase and
-observed_revision by observation, which is М10 Lesson 21's rule.
+observed_revision by observation, which is М10 Lesson 2's rule.
 """
 from __future__ import annotations
 

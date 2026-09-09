@@ -1,4 +1,4 @@
-"""Lesson 6, Step 3 — detect a process by POSITION, not presence."""
+"""Lesson 2, Step 11 — detect a process by POSITION, not presence."""
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from server import recording

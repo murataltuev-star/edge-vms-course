@@ -1,4 +1,4 @@
-"""Lesson 28, Step 3 — the lease state machine, on a MONOTONIC clock.
+"""Lesson 4, Step 3 — the lease state machine, on a MONOTONIC clock.
 
   holder:       may write while  now - last_renewal < TTL - margin   (stops early)
   replacement:  may start when   now - last_heartbeat >= TTL + margin (starts late)

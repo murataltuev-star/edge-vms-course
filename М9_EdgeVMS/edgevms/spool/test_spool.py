@@ -1,4 +1,4 @@
-"""Lesson 19, Step 7 — the spool is ordinary code; test it like ordinary code."""
+"""Lesson 4, Step 7 — the spool is ordinary code; test it like ordinary code."""
 import os, shutil, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import spool as S

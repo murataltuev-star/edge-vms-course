@@ -1,4 +1,4 @@
-"""Lesson 29 — property tests. No cluster, no cameras, milliseconds."""
+"""Lesson 5 — property tests. No cluster, no cameras, milliseconds."""
 import random
 from placement import Camera, Node, Placer, check_invariants
 

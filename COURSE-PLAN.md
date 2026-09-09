@@ -72,17 +72,17 @@ Each BUSL release converts to **MPL 2.0 four years after it is published** — 1
 
 **So the version decision is an engineering decision, not a licensing one:** ship a supported release, and treat BUSL as settled by the competitive test above.
 
-**Both are out, and the comparison record between them was retired** once neither survived. The reasoning worth keeping: Consul and a vault overlapped on exactly one thing — mTLS between services — and the product runs a PKI regardless, because no service mesh issues an identity to a device that has never been on the network. Once the domain became its own CA (М12 Lesson 36), a second certificate hierarchy bought nothing. **The accepted cost is health-check-filtered service discovery**, which Nomad's native discovery does not provide and a handful of services per cluster does not need.
+**Both are out, and the comparison record between them was retired** once neither survived. The reasoning worth keeping: Consul and a vault overlapped on exactly one thing — mTLS between services — and the product runs a PKI regardless, because no service mesh issues an identity to a device that has never been on the network. Once the domain became its own CA (М12 Lesson 7), a second certificate hierarchy bought nothing. **The accepted cost is health-check-filtered service discovery**, which Nomad's native discovery does not provide and a handful of services per cluster does not need.
 
 #### A vault is not what removes most of these secrets
 
-Worth recording because it inverts the layer table above. Auditing the course's five stand-in secrets against what actually resolves each one: object-store access becomes **workload identity**; the local database password becomes **certificate auth**; the operator account is an **IdP** question; the per-Node credential and the self-signed CA are already replaced by **mTLS and a delegated intermediate** in М12 Lesson 36.
+Worth recording because it inverts the layer table above. Auditing the course's five stand-in secrets against what actually resolves each one: object-store access becomes **workload identity**; the local database password becomes **certificate auth**; the operator account is an **IdP** question; the per-Node credential and the self-signed CA are already replaced by **mTLS and a delegated intermediate** in М12 Lesson 7.
 
 > **Most secrets exist because something was not given an identity.** Give the machine an identity and the secret it stood in for disappears.
 
-That leaves a genuinely narrow scope for OpenBao — **dynamic credentials, and the secrets a multi-tenant operator holds for many customers** — and makes layer 5 a smaller layer than the table implies. What a vault does that Postgres cannot is *issue and revoke*: the encryption key must not sit beside the data, and a stored `valid_until` cannot revoke anything by itself. If the orchestration layer stays single-tenant, the honest answer may be that the product does not need one, and М14 Lesson 45 is written to reach that conclusion rather than avoid it.
+That leaves a genuinely narrow scope for OpenBao — **dynamic credentials, and the secrets a multi-tenant operator holds for many customers** — and makes layer 5 a smaller layer than the table implies. What a vault does that Postgres cannot is *issue and revoke*: the encryption key must not sit beside the data, and a stored `valid_until` cannot revoke anything by itself. If the orchestration layer stays single-tenant, the honest answer may be that the product does not need one, and М14 Lesson 4 is written to reach that conclusion rather than avoid it.
 
-**The exception, and it is the course's only real secrets problem:** camera credentials. An RTSP URL carries `user:pass@` inline, so М10's `rtsp_url` column silently held every customer's camera password in plaintext until Lesson 20 was corrected. Those must work with everything above the Node unreachable, so a central vault is the wrong answer by construction — they stay at the site under a key the database backup does not contain.
+**The exception, and it is the course's only real secrets problem:** camera credentials. An RTSP URL carries `user:pass@` inline, so М10's `rtsp_url` column silently held every customer's camera password in plaintext until М10 Lesson 1 was corrected. Those must work with everything above the Node unreachable, so a central vault is the wrong answer by construction — they stay at the site under a key the database backup does not contain.
 
 ### 2. Secrets arrive three modules before the module that resolves them
 
@@ -94,7 +94,7 @@ This is deliberate and follows the course's existing discipline — `camera_sim.
 
 ## The modules
 
-### М10 — NodeVMS: Postgres and the AppHost · 5 lessons (20–24) · [written](./М10_NodeVMS/README.md)
+### М10 — NodeVMS: Postgres and the AppHost · 5 lessons · [written](./М10_NodeVMS/README.md)
 
 The cloud VMS spec forbade a database outright. The appliance needs one, and understanding *why the answer flipped* is half the module: in the cloud, KVS held the configuration; on-prem, the box holds it. The other half is that a row saying a camera should be recording is a wish until something makes it true.
 
@@ -104,7 +104,7 @@ The cloud VMS spec forbade a database outright. The appliance needs one, and und
 - The reconcile loop, built against a fake actuator first: desired persisted, actual derived, `observed_revision >= revision` as the only test of applied
 - Fifty GStreamer pipelines in one Python process — the GIL boundary demonstrated, `watchdog` for stall detection, and where Python stops being the right answer
 
-### М11 — ClusterVMS: a Node that outlives its server · 5 lessons (25–29) · [written](./М11_ClusterVMS/README.md)
+### М11 — ClusterVMS: a Node that outlives its server · 5 lessons · [written](./М11_ClusterVMS/README.md)
 
 The only module where getting it wrong corrupts customer data rather than merely stopping a service. М10's loop works on one box; this is one cluster — servers on one network you would bet recording on — and a Node that survives any of them dying.
 
@@ -113,7 +113,7 @@ The only module where getting it wrong corrupts customer data rather than merely
 - **The restore point is the cluster's**, in its own object store — a backup, not a directory. Both of failover's dependencies live on the servers it fails over between, so a cluster is a complete product on its own
 - **The cluster directory, which was already built.** Each Node's Variable holds its camera ids; scanning them answers *where is camera 7*, in one raft, strongly consistent. Placement onto Nodes by measured capacity, the stability rule, and why consistent hashing is the reflexive wrong answer
 
-### М12 — DomainVMS: several clusters, and the top of the product · 8 lessons (30–37) · [designed](./М12_DomainVMS/module-design.md)
+### М12 — DomainVMS: several clusters, and the top of the product · 8 lessons · [designed](./М12_DomainVMS/module-design.md)
 
 What is left once a cluster works alone: **everything that stops being knowable with more than one cluster** — and, since nothing above the domain belongs to the product, everything a domain must do for itself.
 
@@ -126,30 +126,30 @@ What is left once a cluster works alone: **everything that stops being knowable 
 - **A cluster the domain rents for itself**, from the customer's cloud account — and proof the Node cannot tell where it runs. The bandwidth arithmetic (fifty cameras at 4 Mbps is 200 Mbps up) makes *mixed* the default shape, and closes the arc with М8's rented cloud
 - **Its own update server and entitlement cache**, which is what lets it run with the vendor gone
 
-### М13 — Observability: Prometheus and logs · 4 lessons (38–41) · [designed](./М13_Observability/module-design.md)
+### М13 — Observability: Prometheus and logs · 4 lessons · [designed](./М13_Observability/module-design.md)
 
 **This module does not introduce observability — it collects it.** Every module below already emits signals, defined where the failure that needs them was introduced, because a metric chosen at the moment you watch something break has a reason, and one chosen in an observability chapter has only a name:
 
 | Emitted in | Signal | The point |
 |---|---|---|
-| М9 L18 | the health check's four-row ladder | it decides **rollback**, on the box, offline |
-| М9 L19 | `spool_oldest_seconds`, `spool_bytes_used` | alarm on age, not count — one threshold works at any camera count |
-| М10 L24 | `camera_lag` (a distribution), `camera_silent_seconds` | the second: the only one describing the product |
-| М11 L28 | `node_failover_seconds` (RTO, worst case), `node_epoch_conflicts` | a counter that should be zero forever |
-| М12 L30 | `node_replica_lag_seconds` | the worst Node, never the mean |
+| М9 L3 | the health check's four-row ladder | it decides **rollback**, on the box, offline |
+| М9 L4 | `spool_oldest_seconds`, `spool_bytes_used` | alarm on age, not count — one threshold works at any camera count |
+| М10 L5 | `camera_lag` (a distribution), `camera_silent_seconds` | the second: the only one describing the product |
+| М11 L4 | `node_failover_seconds` (RTO, worst case), `node_epoch_conflicts` | a counter that should be zero forever |
+| М12 L1 | `node_replica_lag_seconds` | the worst Node, never the mean |
 
 What is left for this module is what is genuinely *cross-cutting*:
 
 - **Scrape topology, bounded by the domain.** Prometheus pulls, and you cannot pull across the link you stopped trusting — so the scrape boundary **is** the domain boundary, for exactly the reason certificate issuance is
-- **The placement rule, which is the module's spine:** *monitoring must not share a failure domain with the thing monitored.* A Prometheus running as a Nomad job inside the domain it watches dies with that domain and cannot tell you it died. And its mirror image from М9 L18: **a health check must not depend on monitoring**, or an unreachable metrics server rolls back a good update across the fleet at once
+- **The placement rule, which is the module's spine:** *monitoring must not share a failure domain with the thing monitored.* A Prometheus running as a Nomad job inside the domain it watches dies with that domain and cannot tell you it died. And its mirror image from М9 L3: **a health check must not depend on monitoring**, or an unreachable metrics server rolls back a good update across the fleet at once
 - **Metrics are the fourth data type**, and [`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md) predicted it — *"the fourth one will arrive eventually."* Detail is local, summary is domain: full resolution at the site with pull-on-demand, alarms and aggregates to the centre. The same rule as footage, index and events
 - **Cardinality, which is how monitoring becomes more expensive than the product it watches.** Per-camera series at a thousand cameras is a thousand time series per metric. Export distributions; leave the per-object number in the database the console already queries. **A metric is not a database**
-- **Alarm on the product, not the process** — М9 L18's rule, stated once for everything above it. Fragment write rate and camera-offline, not CPU graphs
+- **Alarm on the product, not the process** — М9 L3's rule, stated once for everything above it. Fragment write rate and camera-offline, not CPU graphs
 - **The thin uplink:** remote-write with downsampling, or local retention with pull-on-demand — and what an operator is shown for a site whose uplink is down, which is *not* "healthy"
-- **Logs:** journald, retention, and never letting a secret reach them — sharpened by М10 L20's finding that an RTSP URL carries the password inline, so the leak is a **log-formatting** bug rather than a storage one
+- **Logs:** journald, retention, and never letting a secret reach them — sharpened by М10 L1's finding that an RTSP URL carries the password inline, so the leak is a **log-formatting** bug rather than a storage one
 - **A second licensing finding, sharper than the Nomad one.** Grafana, Loki, Tempo and **Mimir** are all **AGPLv3**; Prometheus, VictoriaMetrics, Thanos, Cortex, the OTel Collector and Grafana Alloy are Apache 2.0. BUSL *permitted* this product; AGPL §6 triggers on **conveying at all**, modified or not, and Grafana's free Enterprise binary is explicitly not redistributable. The course's position: teach Prometheus and **ship no dashboard** — the customer installs Grafana and points it at an Apache-2.0 endpoint. Full reasoning in [`М13_Observability/module-design.md`](./М13_Observability/module-design.md)
 
-### М14 — VendorVMS: the far side of the boundary · 5 lessons (42–46) · [designed](./М14_VendorVMS/module-design.md)
+### М14 — VendorVMS: the far side of the boundary · 5 lessons · [designed](./М14_VendorVMS/module-design.md)
 
 **Not a scope of the product.** Formerly FederatedVMS, then OrchestratedVMS — a layer above domains holding a root CA, an identity provider, a vault, a fleet inventory and rented capacity. Item by item, each turned out to be something the domain does for itself or something the vendor does across customers. What remained is the vendor, and the thesis is the property enterprise buyers ask for by name: **the product must work with the vendor unreachable, or gone.**
 
@@ -175,26 +175,26 @@ The order is dependency-driven, not layer-numbered:
 
 ## Scale
 
-| Module | Lessons | Cumulative |
+| Module | Lessons | Numbered |
 |---|---|---|
-| М8 — Cloud VMS | 15 | 15 |
-| М9 — EdgeVMS | 4 | 19 |
-| М10 — NodeVMS | 5 | 24 |
-| М11 — ClusterVMS | 5 | 29 |
-| М12 — DomainVMS | 8 | 37 |
-| М13 — Observability | 4 | 41 |
-| М14 — VendorVMS | 5 | 46 |
+| М8 — Cloud VMS | 8 | 1–8 |
+| М9 — EdgeVMS | 4 | 1–4 |
+| М10 — NodeVMS | 5 | 1–5 |
+| М11 — ClusterVMS | 5 | 1–5 |
+| М12 — DomainVMS | 8 | 1–8 |
+| М13 — Observability | 4 | 1–4 |
+| М14 — VendorVMS | 5 | 1–5 |
 
-**46 lessons**, or a full semester — down from 49, because collapsing the layer above the domain removed four lessons of redundancy, and then up one when the licence system, which had been a bullet, turned out to be a lesson. М10–М14 are each a genuine module rather than an appendix.
+**39 lessons**, or a full semester. The count moved three times: down from 49 when collapsing the layer above the domain removed four lessons of redundancy; up one when the licence system, which had been a bullet, turned out to be a lesson; and down by seven when М8's fifteen short lessons were merged into eight — its first twelve became five multi-part lessons, one per original sub-module, and its last three stayed as they were. **Each module numbers its lessons from 1**; a reference into another module always carries the module: *М10 Lesson 2*, never a bare number. М10–М14 are each a genuine module rather than an appendix.
 
-**М12 is now the largest at eight lessons**, with a visible seam between the domain's *structure* (30–34) and the domain *looking after itself* (35–37). If it needs splitting, that is where.
+**М12 is now the largest at eight lessons**, with a visible seam between the domain's *structure* (1–5) and the domain *looking after itself* (6–8). If it needs splitting, that is where.
 
 ---
 
 ## Deliberately out of scope
 
 - **Analytics and inference at depth.** М11 attaches detectors; it does not teach computer vision
-- **High availability of a single-box site.** One box, replaced not clustered — a second server is sold for capacity or for failover, never bolted on to make one box redundant. Failover *between* servers in a cluster is very much in scope: М11 Lesson 26 reschedules a Node off a dead server, its cameras go with it because ownership never changed, and the module says plainly what does not fail over — the footage already on that server's disks
+- **High availability of a single-box site.** One box, replaced not clustered — a second server is sold for capacity or for failover, never bolted on to make one box redundant. Failover *between* servers in a cluster is very much in scope: М11 Lesson 2 reschedules a Node off a dead server, its cameras go with it because ownership never changed, and the module says plainly what does not fail over — the footage already on that server's disks
 - **Multi-tenancy.** One operator organisation per deployment
 - **The cloud side.** М8 covers KVS; nothing here builds a SaaS control plane
 
@@ -210,8 +210,8 @@ The order is dependency-driven, not layer-numbered:
 **Resolved since the first version of this plan:**
 
 - ~~Where inference runs~~ — a deployment question, not a schema one. Opaque worker config means the controller is unchanged whether inference runs on the appliance, at the camera or in the cloud (М11)
-- ~~Where the write API belongs~~ — built on every Node in М12 Lesson 32, unauthenticated and marked as such; authentication arrives one lesson later from the domain signer, and enrollment replaces the hand-provisioned credential in Lesson 35
-- ~~Lesson numbering~~ — **superseded three times by restructuring.** Current: М9 is 16–19, М10 is 20–24, М11 is 25–29, М12 is 30–37, М13 Observability is 38–41, М14 VendorVMS is 42–46. **46 in total.** The М11/М12 split moved no lesson numbers at all — Part A and Part B were already contiguous
+- ~~Where the write API belongs~~ — built on every Node in М12 Lesson 3, unauthenticated and marked as such; authentication arrives one lesson later from the domain signer, and enrollment replaces the hand-provisioned credential in М12 Lesson 6
+- ~~Lesson numbering~~ — **superseded four times by restructuring, and settled.** Each module numbers from 1: М8 is 1–8 (its first twelve original lessons merged into five multi-part ones), М9 1–4, М10 1–5, М11 1–5, М12 1–8, М13 1–4, М14 1–5. **39 in total.** Cross-module references carry the module name; a bare *Lesson N* always means this module's
 - ~~Consul in or out~~ — out, and for a better reason than licensing alone: the product runs a PKI regardless, so a mesh CA is a second hierarchy that buys nothing. The comparison record was retired when OpenBao left the product too
 - ~~Identity split across М12 and М14~~ — they were one layer; merged into М12
 - ~~Where the domain database lives, and whether hosts replicate it~~ — **there is no domain database.** Each **Node** owns its configuration in its own Postgres and publishes one way upward; the domain's directory is a Nomad Variable per Node plus an object per Node; a **cluster** is the largest set of servers on a reliable network and a **domain** is the clusters under one directory ([`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md))

@@ -1,4 +1,4 @@
-# server/kvs.py — Lesson 11, Step 5: the caching client factory.
+# server/kvs.py — Lesson 5, Step 5: the caching client factory.
 # Control plane (kinesisvideo) hands out a data-plane endpoint per
 # (stream, API); the data-plane client is built once per API name and reused.
 # No credential source is named anywhere: boto3 resolves it from wherever

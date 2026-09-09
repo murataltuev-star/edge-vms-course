@@ -1,6 +1,6 @@
 """The Node's database, through asyncpg. Every SQL statement the AppHost and
 the console run lives here, so the operator/controller column split
-(Lesson 20, Step 3) is enforced in exactly one file:
+(Lesson 1, Step 3) is enforced in exactly one file:
 
   * `report()` and `set_condition()` write controller-owned columns and
     nothing else.
@@ -53,7 +53,7 @@ class PgStore:
     async def close(self) -> None:
         await self.pool.close()
 
-    # -- migrations (Lesson 20, Step 8) -----------------------------------
+    # -- migrations (Lesson 1, Step 8) -----------------------------------
     async def migrate(self, migrations_dir: str) -> bool:
         """Idempotent, one transaction per file, never leaves the box
         unbootable: a failing migration is logged and the AppHost carries on
@@ -133,7 +133,7 @@ class PgStore:
             "INSERT INTO events (camera_id, kind, payload) VALUES ($1, $2, $3::jsonb)",
             camera_id, kind, json.dumps(payload or {}))
 
-    # -- retention (Lesson 23, Step 3) ------------------------------------
+    # -- retention (Lesson 4, Step 3) ------------------------------------
     async def partitions(self, parent: str) -> list[tuple[str, date, date]]:
         """(name, lower, upper) for every month partition of `parent`."""
         rows = await self.pool.fetch("""
@@ -162,7 +162,7 @@ class PgStore:
 
     async def expire_rows(self, camera_id: int, older_than: datetime) -> list[str]:
         """Per-camera retention inside a live partition. Rows first, files
-        after (Lesson 23: a crash then leaves orphans, not lies)."""
+        after (Lesson 4: a crash then leaves orphans, not lies)."""
         rows = await self.pool.fetch(
             "DELETE FROM segments WHERE camera_id=$1 AND lower(span) < $2 RETURNING path",
             camera_id, older_than)
@@ -187,7 +187,7 @@ class PgStore:
         return {r["path"] for r in
                 await self.pool.fetch("SELECT path FROM segments WHERE path LIKE $1", prefix + "%")}
 
-    # -- console reads (Lesson 24) ----------------------------------------
+    # -- console reads (Lesson 5) ----------------------------------------
     async def status(self) -> list[dict]:
         rows = await self.pool.fetch("SELECT * FROM camera_status ORDER BY id")
         return [dict(r) for r in rows]

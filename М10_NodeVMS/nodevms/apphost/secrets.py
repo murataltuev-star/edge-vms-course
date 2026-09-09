@@ -1,10 +1,10 @@
-"""Lesson 20 — the credential hiding in rtsp_url.
+"""Lesson 1 — the credential hiding in rtsp_url.
 
 The column is encrypted with a key on the data partition. This module ships
 the weaker version and says so: the key travels with the database in every
 backup, so it is the same factor in a different file. The improvement — a
 TPM-sealed key, or a key delivered at runtime by whatever starts the Node —
-is named as a debt in Lesson 20 and paid in М11/М12.
+is named as a debt in Lesson 1 and paid in М11/М12.
 
 What this module MUST do is keep the credential out of every URL string
 that reaches a log, a pipeline description or an error message.

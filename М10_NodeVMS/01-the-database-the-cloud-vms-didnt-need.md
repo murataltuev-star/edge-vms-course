@@ -1,4 +1,4 @@
-# Lesson 20 — The Database the Cloud VMS Didn't Need
+# Lesson 1 — The Database the Cloud VMS Didn't Need
 
 **Module:** NodeVMS — one Node learns what it should be (Module 10)
 **You will build:** the Node's schema — configuration, archive index and events — with time partitioning, a GiST-indexed timeline query, and migrations that run unattended at boot on a box nobody visits.
@@ -16,8 +16,8 @@ This lesson is where the box starts owning its own truth. It is mostly schema, a
 
 ## Prerequisites
 
-- **Lesson 19** — Quadlet, and the three-way boundary that decides where `PGDATA` goes. This lesson depends on that answer being right.
-- **Lesson 13** — configuration is read from the environment; credentials never live in the image.
+- **М9 Lesson 4** — Quadlet, and the three-way boundary that decides where `PGDATA` goes. This lesson depends on that answer being right.
+- **М8 Lesson 6** — configuration is read from the environment; credentials never live in the image.
 - SQL at the level of `CREATE TABLE`, `JOIN` and `INSERT`. No prior Postgres administration is assumed.
 - Postgres 14 or later. On the bench: `podman run -d --name pg -e POSTGRES_PASSWORD=... -v /data/pg:/var/lib/postgresql/data postgres:16`.
 
@@ -44,7 +44,7 @@ So: **there is no second database here, and none arrives later.** Worth saying p
 
 ## Step 2 — Three kinds of data, one engine
 
-The Node holds three things. They share an engine and almost nothing else, and Lesson 23 depends on you having noticed the difference:
+The Node holds three things. They share an engine and almost nothing else, and Lesson 4 depends on you having noticed the difference:
 
 | | **Configuration** | **Archive index** | **Events** |
 |---|---|---|---|
@@ -120,7 +120,7 @@ CREATE TABLE cameras (
 );
 ```
 
-**The hard part is not the encryption, it is where the key lives**, and Lesson 19's boundary already tells you what is wrong with the easy answer. A key in `/data/config/agent.env` travels with the database in every backup a support engineer takes, so it is not a second factor — it is the same factor in a different file.
+**The hard part is not the encryption, it is where the key lives**, and М9 Lesson 4's boundary already tells you what is wrong with the easy answer. A key in `/data/config/agent.env` travels with the database in every backup a support engineer takes, so it is not a second factor — it is the same factor in a different file.
 
 Two answers that actually work on an appliance:
 
@@ -129,7 +129,7 @@ Two answers that actually work on an appliance:
 
 **This module ships the first, weaker version and says so**: the column is encrypted, the key is on the data partition, and the improvement is named as a debt. What it must not do is leave the credential in a URL string, because that version cannot be improved later without touching every row and every log that has already been written.
 
-> **The rule worth carrying: a secret in a URL is a secret in every log line, every error message and every stack trace that URL ever appears in.** Lesson 22 formats this string into a GStreamer pipeline description; Lesson 23 prints pipeline errors. Both would have leaked it.
+> **The rule worth carrying: a secret in a URL is a secret in every log line, every error message and every stack trace that URL ever appears in.** Lesson 3 formats this string into a GStreamer pipeline description; Lesson 4 prints pipeline errors. Both would have leaked it.
 
 ### The line through the middle of that table
 
@@ -309,7 +309,7 @@ Five milliseconds total, and the 38 MB is gone immediately — the file is unlin
 
 The `DETACH` step is not ceremony. It removes the partition from the parent first, so a query running concurrently sees a table with one fewer partition rather than a table whose partition vanished underneath it. `DETACH CONCURRENTLY` exists if you cannot take the brief lock.
 
-**Retention therefore means creating partitions ahead of time and dropping old ones** — a scheduled job, not a delete loop. Lesson 23 makes it degrade under a full disk.
+**Retention therefore means creating partitions ahead of time and dropping old ones** — a scheduled job, not a delete loop. Lesson 4 makes it degrade under a full disk.
 
 One footnote worth knowing: `pg_total_relation_size('segments')` on the parent reports **0 bytes**. The parent holds no data. Size a partitioned table by summing its partitions, or your monitoring will cheerfully report an empty archive.
 
@@ -348,7 +348,7 @@ Three constraints follow, and the third is the one people miss:
 
 **Never able to leave the box unbootable.** A migration that fails must leave the previous schema working and the box recording, because a migration failure that stops the VMS turns a schema bug into a site visit. Run migrations in a transaction where you can, and have the AppHost start read-only rather than not start, if it must.
 
-**Forward-compatible with the running application, because of A/B.** This is the one the appliance shape forces on you. Lesson 18's rollback means the *old* application may run again after the *new* schema is applied. So migrations must be **expand-only within a release**: add columns and tables, never drop or rename them in the same release that starts using them. Dropping happens a release later, once the rollback target no longer exists.
+**Forward-compatible with the running application, because of A/B.** This is the one the appliance shape forces on you. М9 Lesson 3's rollback means the *old* application may run again after the *new* schema is applied. So migrations must be **expand-only within a release**: add columns and tables, never drop or rename them in the same release that starts using them. Dropping happens a release later, once the rollback target no longer exists.
 
 ```
 Release N:    add column, write both, read old
@@ -356,7 +356,7 @@ Release N+1:  read new
 Release N+2:  stop writing old, drop column
 ```
 
-Three releases to rename a column. That is what shipping to hardware you cannot visit costs, and М14 Lesson 44 generalises it to a fleet of customers on mixed versions.
+Three releases to rename a column. That is what shipping to hardware you cannot visit costs, and М14 Lesson 3 generalises it to a fleet of customers on mixed versions.
 
 ## Step 9 — `PGDATA` on the data partition
 
@@ -380,7 +380,7 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
-`/data/pg`, not anywhere in a rootfs slot. Get this wrong and the first OS update destroys every camera the operator configured — and because the new slot boots perfectly, **nothing rolls back**. Lesson 18's health check would catch it only if it reaches all the way to *is footage being written*, which is precisely why that lesson pushed it that far.
+`/data/pg`, not anywhere in a rootfs slot. Get this wrong and the first OS update destroys every camera the operator configured — and because the new slot boots perfectly, **nothing rolls back**. М9 Lesson 3's health check would catch it only if it reaches all the way to *is footage being written*, which is precisely why that lesson pushed it that far.
 
 `PublishPort` binds to loopback only. Nothing outside the box talks to this database in this module, and in М11 nothing outside the Node does either.
 
@@ -417,12 +417,12 @@ WantedBy=multi-user.target
 1. Build the partition-creation job. Decide how far ahead it runs and what happens if it fails — then work out how long the Node keeps recording before the first `no partition found` error. That number is an alert threshold.
 2. Write the query the console needs — *is camera 7 recording right now, and how far behind is it?* — as a single statement. Then explain why `revision - observed_revision` is more useful on a dashboard than a boolean.
 3. Add a `CHECK` constraint that makes an empty or backwards `span` impossible to insert. Then argue whether that belongs in the database or the application, and be specific about who else writes to this table.
-4. Attempt a rename the naive way — `ALTER TABLE cameras RENAME COLUMN rtsp_url TO source_url` — then work out precisely what happens if Lesson 18's rollback fires afterwards. Write the three-release plan that avoids it.
+4. Attempt a rename the naive way — `ALTER TABLE cameras RENAME COLUMN rtsp_url TO source_url` — then work out precisely what happens if М9 Lesson 3's rollback fires afterwards. Write the three-release plan that avoids it.
 5. Grep your own М8 code for places an RTSP URL reaches a log, an exception message or an HTTP response. Count them. That number is how many places the credential leaked before this lesson.
-6. Measure it yourself: insert a million segment rows, `DELETE` half, and record the time *and* the disk. Then do it with partitions. Bring both numbers to Lesson 23, where the disk is already full.
+6. Measure it yourself: insert a million segment rows, `DELETE` half, and record the time *and* the disk. Then do it with partitions. Bring both numbers to Lesson 4, where the disk is already full.
 
 ## Where this is going
 
 You have a database that knows what the box should be doing, and absolutely nothing that acts on it. `INSERT INTO cameras` currently causes precisely as much recording as it did before: none.
 
-**Lesson 21 writes the loop that closes the gap** — and writes it with nothing on the other end, so the control logic is visible before GStreamer arrives to obscure it. It also has you make both classic mistakes on purpose, because the one that persists actual state produces a system that reports pipelines that do not exist.
+**Lesson 2 writes the loop that closes the gap** — and writes it with nothing on the other end, so the control logic is visible before GStreamer arrives to obscure it. It also has you make both classic mistakes on purpose, because the one that persists actual state produces a system that reports pipelines that do not exist.

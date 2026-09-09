@@ -1,4 +1,4 @@
-# Lesson 28 — Failover, and the Two Instances of One Node
+# Lesson 4 — Failover, and the Two Instances of One Node
 
 **Module:** ClusterVMS — a Node that outlives the server recording on it (Module 11)
 **You will build:** a failover you can pull the power on, a fencing token that keeps two instances of one Node from corrupting an archive, and the two numbers this module exports.
@@ -6,7 +6,7 @@
 
 ## Why this lesson exists
 
-Lesson 27's restore assumed Server A was dead. Here is the problem: **nothing can tell dead from partitioned from paused.** A server whose network cable was cut is still reaching its cameras and its disks and still writing camera 7's archive. A server under memory pressure can be stopped for thirty seconds and then continue as if nothing happened. Nomad sees a client that stopped heartbeating, waits, and starts a replacement. Now there are two instances of Node 3, both restored from the same object, both certain they own camera 7.
+Lesson 3's restore assumed Server A was dead. Here is the problem: **nothing can tell dead from partitioned from paused.** A server whose network cable was cut is still reaching its cameras and its disks and still writing camera 7's archive. A server under memory pressure can be stopped for thirty seconds and then continue as if nothing happened. Nomad sees a client that stopped heartbeating, waits, and starts a replacement. Now there are two instances of Node 3, both restored from the same object, both certain they own camera 7.
 
 That is not a gap to close with a better heartbeat. It is the fundamental limitation of a distributed system, and the design has to be correct *without* resolving it. The tool is a fencing token, the place it is checked is the archive, and the first thing students reach for is a lock that reintroduces the problem while appearing to solve it.
 
@@ -16,9 +16,9 @@ This is also where the module's two numbers come from: how long a site can be da
 
 ## Prerequisites
 
-- **Lesson 27** — the restore; step 5 of the sequence is this lesson.
-- **М10 Lesson 23, Step 5** — *on restart, never resume the previous segment.* This lesson is the reason.
-- **М8 Lessons 5–6** — `SIGSTOP`/`SIGCONT`, and what a process cannot know about itself.
+- **Lesson 3** — the restore; step 5 of the sequence is this lesson.
+- **М10 Lesson 4, Step 5** — *on restart, never resume the previous segment.* This lesson is the reason.
+- **М8 Lesson 2** — `SIGSTOP`/`SIGCONT`, and what a process cannot know about itself.
 - [Kleppmann, *How to do distributed locking*](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html) — read it before Step 4. Twenty minutes, and the module's central argument is in it.
 
 ## Learning objectives
@@ -39,7 +39,7 @@ Two words Nomad keeps apart, and so should you:
 
 | | Where | Governed by | Fixes |
 |---|---|---|---|
-| **Restart** | the same server | `restart { }` | a crashed process — М10 Lesson 22's segfault taking the shard |
+| **Restart** | the same server | `restart { }` | a crashed process — М10 Lesson 3's segfault taking the shard |
 | **Reschedule** | a different server | `reschedule { }` | a dead server, a full disk, a constraint no longer met |
 
 Service jobs default to unlimited reschedule attempts with exponential delay, which is right for a recorder: a Node that cannot be placed should keep trying, because the alternative is a Node that gave up while the operator was asleep. The jobspec in `reference/node.nomad.hcl` sets a 15-second initial delay, doubling to two minutes.
@@ -84,7 +84,7 @@ archive/node-3/epoch-000005/cam-7/seg-00042.mkv   <- the old instance
 archive/node-3/epoch-000006/cam-7/seg-00000.mkv   <- the live one
 ```
 
-The old instance cannot corrupt the new one's segments because **it cannot name them.** It writes valid files into a directory the index no longer references, and retention deletes them. М10 Lesson 22 put `e1` into the path and said it did nothing yet. This is what it was for.
+The old instance cannot corrupt the new one's segments because **it cannot name them.** It writes valid files into a directory the index no longer references, and retention deletes them. М10 Lesson 3 put `e1` into the path and said it did nothing yet. This is what it was for.
 
 Run it, with two real processes:
 
@@ -172,7 +172,7 @@ def next_epoch(vars_, node, retries=10):
     raise RuntimeError("could not issue an epoch")
 ```
 
-Step 5 of Lesson 27's sequence is a call to this, with the Node's own workload identity token, against its own Variable path — which the ACL from Lesson 26 says only Node 3 can write.
+Step 5 of Lesson 3's sequence is a call to this, with the Node's own workload identity token, against its own Variable path — which the ACL from Lesson 2 says only Node 3 can write.
 
 ## Step 5 — Clocks, and what the margins buy
 
@@ -218,7 +218,7 @@ On the bench: `pkill -9 qemu-system-x86_64` for that VM, or `bench/outage.sh pow
 
 1. Nomad's heartbeat window expires → the client is *disconnected*.
 2. `lost_after` elapses → the allocation is *lost* → Nomad places Node 3 elsewhere.
-3. The restore (Lesson 27): migrations, Variable, object, revision check.
+3. The restore (Lesson 3): migrations, Variable, object, revision check.
 4. A new epoch by CAS.
 5. Recording resumes into `epoch-000006`.
 
@@ -234,11 +234,11 @@ The same mechanism, with a human choosing the moment. М9 replaces a server's OS
 
 ```bash
 nomad node drain -enable -deadline 5m <node id>     # Nodes move off, gracefully
-rauc install update-2026.10-1.raucb && reboot         # М9 Lesson 17
+rauc install update-2026.10-1.raucb && reboot         # М9 Lesson 2
 nomad node drain -disable <node id>                   # the server takes work again
 ```
 
-Drain is `disconnect` without the uncertainty: Nomad knows the server is leaving, stops the allocation cleanly (the open segment finalizes — М10's `SIGTERM` path), and places it elsewhere before the reboot. This is where М9's two update planes meet the scheduler: the OS plane updates a server, the scheduler keeps the Nodes running somewhere else while it does, and the health check from М9 Lesson 18 decides whether the server rejoins.
+Drain is `disconnect` without the uncertainty: Nomad knows the server is leaving, stops the allocation cleanly (the open segment finalizes — М10's `SIGTERM` path), and places it elsewhere before the reboot. This is where М9's two update planes meet the scheduler: the OS plane updates a server, the scheduler keeps the Nodes running somewhere else while it does, and the health check from М9 Lesson 3 decides whether the server rejoins.
 
 What does not fail over, planned or not: **the footage.** It stays on the drained server's disks and comes back with them.
 
@@ -281,4 +281,4 @@ What does not fail over, planned or not: **the footage.** It stays on the draine
 
 A Node fails over, and two instances of it cannot hurt each other. Every Node in the cluster has a Variable saying which cameras it holds.
 
-**Lesson 29 notices that those Variables are a directory** — *where is camera 7* answered in one scan, strongly consistent because it is one raft — and builds the other half: placing a new camera onto a Node by measured capacity, with the stability rule and the property test that catches the tidy-looking rebalance everybody adds first.
+**Lesson 5 notices that those Variables are a directory** — *where is camera 7* answered in one scan, strongly consistent because it is one raft — and builds the other half: placing a new camera onto a Node by measured capacity, with the stability rule and the property test that catches the tidy-looking rebalance everybody adds first.

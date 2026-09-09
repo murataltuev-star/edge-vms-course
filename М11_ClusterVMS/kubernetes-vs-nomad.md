@@ -107,7 +107,7 @@ Podman with Quadlet beats both there, and Part A says so. Three pieces of eviden
 - **HashiCorp's production requirements** suggest 4–8+ cores, 16–32 GB+ memory and 40–80 GB of fast disk for servers, and **say nothing at all about single-node deployments or co-locating a server and a client.** The agent is much lighter than those numbers; the point is that no appliance-shaped configuration is documented
 - **Agent restarts have known failure modes with the Podman driver** — HashiCorp publishes a support article on orphaned Podman containers after a Nomad agent restart. An appliance reboots unattended; inheriting that in exchange for no scheduling benefit is a bad trade
 
-The product question this raises — ship one stack everywhere, or two — is genuinely open and is put to students in Lesson 25 rather than answered for them.
+The product question this raises — ship one stack everywhere, or two — is genuinely open and is put to students in Lesson 1 rather than answered for them.
 
 ---
 

@@ -1,4 +1,4 @@
-"""Lesson 21's seven — still passing, unchanged (Lesson 23, Step 6)."""
+"""Lesson 2's seven — still passing, unchanged (Lesson 4, Step 6)."""
 from __future__ import annotations
 
 from apphost.pipeline import FakeActuator

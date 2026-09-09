@@ -1,4 +1,4 @@
-"""Lesson 29 — the cluster directory you already built.
+"""Lesson 5 — the cluster directory you already built.
 
 Every Node's Variable lists its camera ids. Scan `nodes/` and you have
 answered "where is camera 7" — tens of entries, one raft, strongly

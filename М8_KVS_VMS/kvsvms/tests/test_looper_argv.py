@@ -1,4 +1,4 @@
-"""Lessons 8 and 10 — argv as a list; credentials by name only; docker wrapping."""
+"""Lessons 3 and 4 — argv as a list; credentials by name only; docker wrapping."""
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from edge.pipeline import build_pipeline_argv, build_spool_pipeline_argv

@@ -167,7 +167,7 @@ The same software, three placements, and the difference is a number:
 | **Cloud** | on a cluster the domain rented from the customer's cloud account | **every camera's full bitrate**, continuously — and there is no spool, so the camera's own SD card is the buffer | a shop with six cameras and nobody to install hardware |
 | **Mixed** | at the site, with the domain services in the cloud | the same kilobytes | **the default shape** |
 
-A rented cluster is a cluster. A Node cannot tell where it is running, and М12 Lesson 37 proves it by diffing the artifacts.
+A rented cluster is a cluster. A Node cannot tell where it is running, and М12 Lesson 8 proves it by diffing the artifacts.
 
 ---
 
@@ -211,7 +211,7 @@ And the rule that made Python viable for the course: **Python touches control, n
 
 Three rules were set here that everything above inherits:
 
-- **Desired state is persisted; actual state is derived.** Persist the second and you have built a cache that lies — a green console over a box recording nothing, and the student builds that bug on purpose in Lesson 21.
+- **Desired state is persisted; actual state is derived.** Persist the second and you have built a cache that lies — a green console over a box recording nothing, and the student builds that bug on purpose in М10 Lesson 2.
 - **`observed_revision >= revision` is the only definition of applied**, at every layer. An integer, because ordering expresses *distance*; a hash expresses only difference and a timestamp needs clocks to agree.
 - **Operator-owned versus controller-owned columns is a security boundary.** `phase` and `observed_revision` are never settable by a client. And the `cameras` table has no Node column a client may write, because **which Node owns a camera is decided for the operator, never by them.**
 

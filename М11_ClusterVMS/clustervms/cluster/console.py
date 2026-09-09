@@ -1,4 +1,4 @@
-"""Lesson 29 — the cluster's questions, on the same console as М10's.
+"""Lesson 5 — the cluster's questions, on the same console as М10's.
 
     GET /cluster/node               who am I, which epoch, lease, replicated, failover
     GET /cluster/directory          every Node's holdings, one scan

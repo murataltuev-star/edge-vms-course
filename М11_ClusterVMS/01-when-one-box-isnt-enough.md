@@ -1,4 +1,4 @@
-# Lesson 25 — When One Box Isn't Enough
+# Lesson 1 — When One Box Isn't Enough
 
 **Module:** ClusterVMS — a Node that outlives the server recording on it (Module 11)
 **You will build:** a three-server Nomad cluster on the bench, a measured shard size, and a written argument for why *this* deployment needed a cluster and a single appliance never does.
@@ -17,7 +17,7 @@ The lesson has one argument to win before it builds anything: **on a single appl
 ## Prerequisites
 
 - **М10 entire** — the Node: its Postgres, its AppHost, its cameras. This module runs several of them.
-- **М9 Lesson 19** — Quadlet. Lesson 26 translates those units; this lesson explains why you keep them on one box.
+- **М9 Lesson 4** — Quadlet. Lesson 2 translates those units; this lesson explains why you keep them on one box.
 - [**`apphost-and-process-model.md`**](../М9_EdgeVMS/apphost-and-process-model.md) — the process model at a thousand cameras, and why the orchestrator must not own camera lifecycle.
 - Three bench VMs with Podman, each with a data partition; `nomad` **≥ 1.8.0** (target 1.10.x LTS — see the module design's version floor and [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md) for the licence).
 
@@ -37,7 +37,7 @@ Four things, and it is worth being precise because people reach for a cluster fo
 
 | Pressure | What runs out | Cluster or bigger box? |
 |---|---|---|
-| **Camera count** | CPU and memory for pipelines — М10 Lesson 22's `B + n × I` | A bigger box, for a long time. Fifty pipelines in one process is cheap; a server does several such shards |
+| **Camera count** | CPU and memory for pipelines — М10 Lesson 3's `B + n × I` | A bigger box, for a long time. Fifty pipelines in one process is cheap; a server does several such shards |
 | **Storage throughput** | disk write bandwidth, then disk *capacity* | More disks first. Two hundred cameras at 4 Mbit/s is 100 MB/s — one good disk — but 2 TB/day, which is where capacity beats bandwidth |
 | **Retention** | disk capacity, linearly with days | More disks, or a second box when the chassis is full of them |
 | **Availability** | **a server that must not be a single point of failure** | **This one.** No bigger box fixes it |
@@ -48,17 +48,17 @@ So write the requirement down before touching a scheduler, because the scheduler
 
 > *A single server failure must not stop recording for longer than __ minutes, and must not require a person.*
 
-The blank is the product's **recovery time objective**, and Lesson 28 measures it.
+The blank is the product's **recovery time objective**, and Lesson 4 measures it.
 
 ## Step 2 — Why not on one box
 
 The instinct after a few years near Kubernetes is that a scheduler is simply how you run things now. On an appliance it is worth resisting, and here is the case in three parts.
 
-**There is nothing to schedule.** A scheduler's job is to decide *which server* runs a piece of work. With one server there is one answer. "Run N shards" on one box is a systemd template unit — `apphost@1.service`, `apphost@2.service` — which М9 Lesson 19 already gave you, with restart policy, ordering and the data-partition boundary. The scheduler would add a second supervision layer over the same processes and a second notion of "running".
+**There is nothing to schedule.** A scheduler's job is to decide *which server* runs a piece of work. With one server there is one answer. "Run N shards" on one box is a systemd template unit — `apphost@1.service`, `apphost@2.service` — which М9 Lesson 4 already gave you, with restart policy, ordering and the data-partition boundary. The scheduler would add a second supervision layer over the same processes and a second notion of "running".
 
 **It has a cost the appliance cannot spare.** Nomad's production guidance sizes *servers* at 4–8+ cores and 16–32 GB+ of memory, and says nothing about single-node deployments at all — the shape is simply not one the tool is designed for. On an appliance, memory spent on a raft server is memory that was page cache for video.
 
-**It has its own failure modes.** HashiCorp publishes a support note on **orphaned Podman containers after a Nomad agent restart** — the same shape of bug М8 Lesson 8 met with the Docker client, one layer up. On a box with a scheduler, an agent upgrade can leave a container running that nothing supervises. Under Quadlet that class of bug does not exist, because systemd *is* the supervisor and does not restart out from under itself.
+**It has its own failure modes.** HashiCorp publishes a support note on **orphaned Podman containers after a Nomad agent restart** — the same shape of bug М8 Lesson 3 met with the Docker client, one layer up. On a box with a scheduler, an agent upgrade can leave a container running that nothing supervises. Under Quadlet that class of bug does not exist, because systemd *is* the supervisor and does not restart out from under itself.
 
 Put the three together and the trade is: one more distributed system to operate, one more thing the OS image must carry, one more way to orphan a process — in exchange for a decision with one possible answer.
 
@@ -75,7 +75,7 @@ Two roles, and the names matter because *client* does not mean what it means els
 | **Server** | accepts jobs, holds cluster state in **raft**, decides placement | **three or five** per region |
 | **Client** | registers its resources, runs the work it is given, reports back | every server that runs Nodes |
 
-A **region** is one raft — one replicated log, one leader, one notion of what is true. Everything this module relies on for correctness (Lesson 26's Node identity, Lesson 28's epoch, Lesson 29's directory) lives in that raft, which is why this module's cluster and a Nomad region are the same thing.
+A **region** is one raft — one replicated log, one leader, one notion of what is true. Everything this module relies on for correctness (Lesson 2's Node identity, Lesson 4's epoch, Lesson 5's directory) lives in that raft, which is why this module's cluster and a Nomad region are the same thing.
 
 **Three or five, never two or four.** Raft needs a majority to make progress. Three servers tolerate one failure; five tolerate two; two tolerate none — a two-server cluster is strictly worse than one server, because either one dying stops the other. Four tolerates one, like three, at greater cost. For a server room, three.
 
@@ -143,9 +143,9 @@ plugin "nomad-driver-podman" {
 
 Three things in there are load-bearing for later lessons:
 
-- **`data_dir` on `/data`.** Raft lives here. On an А/B appliance (М9) the rootfs slot is replaced by an update; the cluster's memory of every epoch ever issued must not be. This is Lesson 19's boundary, applied to the scheduler.
-- **`meta { vlans = ... }`.** What this server's network interfaces can reach. Lesson 26 turns it into a placement constraint, because cameras are not uniformly reachable from every server.
-- **`acl { enabled = true }`.** Variables are ACL'd, and Lesson 26 depends on one Node being unable to write another Node's Variable. Enabling ACLs later, on a running cluster, is a migration; enable them on day one.
+- **`data_dir` on `/data`.** Raft lives here. On an А/B appliance (М9) the rootfs slot is replaced by an update; the cluster's memory of every epoch ever issued must not be. This is М9 Lesson 4's boundary, applied to the scheduler.
+- **`meta { vlans = ... }`.** What this server's network interfaces can reach. Lesson 2 turns it into a placement constraint, because cameras are not uniformly reachable from every server.
+- **`acl { enabled = true }`.** Variables are ACL'd, and Lesson 2 depends on one Node being unable to write another Node's Variable. Enabling ACLs later, on a running cluster, is a migration; enable them on day one.
 
 Start the agents (`nomad agent -config /etc/nomad.d`, or a unit that does), and read the cluster:
 
@@ -185,7 +185,7 @@ python3 ../М10_NodeVMS/reference/shard-memory-probe.py --pipelines 1
 python3 ../М10_NodeVMS/reference/shard-memory-probe.py --pipelines 50
 ```
 
-It reports two numbers, and they are the ones Lesson 29 sizes placement with:
+It reports two numbers, and they are the ones Lesson 5 sizes placement with:
 
 - **`B`, the per-process baseline** — interpreter, PyGObject, GStreamer, before any camera exists.
 - **`I`, the per-pipeline increment** — what each additional camera adds.
@@ -209,7 +209,7 @@ So the unit Nomad places is a **Node**: one process, one shard of cameras, one d
 cameras per shard  =  (memory budget − B) / I
 ```
 
-with the budget chosen so that a whole server's shards leave room for page cache — video is a streaming write workload and starving the cache shows up as dropped segments before it shows up as an alarm. The honest cost of the shard, stated in М10 Lesson 22 and repeated here because it now decides a placement policy: **one segfault takes the whole shard.** Fifty cameras, not one. Bounded by shard size, by the scheduler restarting it in seconds, and by `splitmuxsink` losing only the open segment.
+with the budget chosen so that a whole server's shards leave room for page cache — video is a streaming write workload and starving the cache shows up as dropped segments before it shows up as an alarm. The honest cost of the shard, stated in М10 Lesson 3 and repeated here because it now decides a placement policy: **one segfault takes the whole shard.** Fifty cameras, not one. Bounded by shard size, by the scheduler restarting it in seconds, and by `splitmuxsink` losing only the open segment.
 
 **Deliverable:** a three-server cluster with `nomad server members` showing a leader; `B` and `I` from *your* hardware and the shard size they imply; and one page arguing why this deployment needed a cluster and why the eight-camera shop from М9 must never get one.
 
@@ -247,4 +247,4 @@ with the budget chosen so that a whole server's shards leave room for page cache
 
 You have a cluster and a unit of placement. Nothing is placed yet.
 
-**Lesson 26 makes М10's Node a Nomad job** — a translation from Quadlet, not a rewrite — and then meets the first hard question: when Nomad moves that job to a different server, *which Node is it?* The answer is not the allocation index, and getting it wrong corrupts an archive.
+**Lesson 2 makes М10's Node a Nomad job** — a translation from Quadlet, not a rewrite — and then meets the first hard question: when Nomad moves that job to a different server, *which Node is it?* The answer is not the allocation index, and getting it wrong corrupts an archive.

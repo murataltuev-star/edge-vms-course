@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Lesson 17, Step 2 — a two-level CA on your own machine. Keys never exist
+# Lesson 2, Step 2 — a two-level CA on your own machine. Keys never exist
 # on a device. The keyring that ships is the ROOT and nothing else: trust
 # anchors only; the signing certificate travels inside the bundle.
 #
 # -nodes leaves keys unencrypted: fine for a lesson, wrong for production.
-# A real root lives offline (М12 Lesson 36 has the ceremony).
+# A real root lives offline (М12 Lesson 7 has the ceremony).
 set -euo pipefail
 OUT="${OUT:-$(cd "$(dirname "$0")" && pwd)/out}"
 ORG="${ORG:-Example VMS}"
@@ -28,7 +28,7 @@ openssl verify -CAfile ca.cert.pem dev.cert.pem
 cp ca.cert.pem keyring.pem                      # the keyring is just the root
 chmod 600 ./*.key.pem
 
-# the attacker, for Step 3 and Lesson 18: a perfectly good CA the device has never heard of
+# the attacker, for Step 3 and Lesson 3: a perfectly good CA the device has never heard of
 openssl req -x509 -newkey rsa:3072 -keyout rogue.ca.key.pem -out rogue.ca.cert.pem \
   -nodes -days 3650 -subj "/O=Attacker/CN=Attacker CA" \
   -addext "basicConstraints=critical,CA:TRUE"
@@ -40,4 +40,4 @@ openssl x509 -req -in rogue.csr.pem -CA rogue.ca.cert.pem -CAkey rogue.ca.key.pe
 echo
 echo "keyring (ships in the image):  $OUT/keyring.pem"
 echo "signer  (stays in CI):         $OUT/dev.cert.pem + dev.key.pem"
-echo "attacker (Step 3, Lesson 18):  $OUT/rogue.cert.pem + rogue.key.pem"
+echo "attacker (Step 3, Lesson 3):  $OUT/rogue.cert.pem + rogue.key.pem"

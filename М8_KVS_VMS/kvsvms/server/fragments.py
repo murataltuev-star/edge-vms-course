@@ -1,4 +1,4 @@
-# server/fragments.py — Lesson 12, Steps 2–3: pagination to exhaustion, and
+# server/fragments.py — Lesson 5, Steps 2–3: pagination to exhaustion, and
 # the merging rule. Pure functions over an injected client, so both are
 # verified with fakes (tests/test_fragments.py) rather than a live stream.
 GAP_SECONDS = 1.0

@@ -1,6 +1,6 @@
 # EdgeVMS — the М9 artifacts, whole
 
-Lessons 16–19 assembled: the bench, the PKI, the RAUC configuration and
+Lessons 1–4 assembled: the bench, the PKI, the RAUC configuration and
 bundle builder, the GRUB state machine, the health check, the Quadlet units,
 and the spool. None of this is code the Node runs; it is the box the Node
 runs on.
@@ -37,8 +37,8 @@ edgevms/
 
 ## The seam this closes
 
-Lesson 18's health check has to reach *is footage actually being written*,
-and Lesson 18 was written before the Node existed, so its third row was a
+Lesson 3's health check has to reach *is footage actually being written*,
+and Lesson 3 was written before the Node existed, so its third row was a
 stand-in: "a segment appeared in the spool in the last N seconds". That
 check is weak on purpose (a fast uploader empties the spool) and the lesson
 marks it.
@@ -51,13 +51,13 @@ uplink down, and decides:
 | Node says | Verdict |
 |---|---|
 | AppHost not reporting | fail — the console is up and nobody is home |
-| cameras configured, none has ever written a segment | fail — boots perfectly, records nothing (Lesson 18, failure two) |
+| cameras configured, none has ever written a segment | fail — boots perfectly, records nothing (Lesson 3, failure two) |
 | newest segment older than `2 × SEGMENT_SECONDS + 60` | fail |
 | no cameras configured | pass, and says so — a stated product decision, not a hidden one |
 | otherwise | pass |
 
 Without a Node (an М9-only bench) it falls back to the agent's `/health`
-plus the spool stand-in, exactly as Lesson 18 wrote it. It touches nothing
+plus the spool stand-in, exactly as Lesson 3 wrote it. It touches nothing
 outside the box either way.
 
 The window is `2 × SEGMENT_SECONDS + 60` because a healthy Node is silent
@@ -70,23 +70,23 @@ ten-minute segments would roll back every good update. `rauc-mark-good.service`'
 Host: Linux with `qemu-system-x86 qemu-utils ovmf parted e2fsprogs dosfstools debootstrap socat rauc openssl`.
 
 ```bash
-pki/make-ca.sh && pki/verify-chain.sh          # Step 3 of Lesson 17, two minutes, no VM
+pki/make-ca.sh && pki/verify-chain.sh          # Step 3 of Lesson 2, two minutes, no VM
 bench/build-disk.sh                             # builds ~/edge-bench/appliance.qcow2 (asks for a root password)
 bench/boot.sh                                   # Ctrl-a x quits. ssh -p 2222 root@127.0.0.1 works.
 
-# Lesson 17
+# Lesson 2
 rauc/build-bundle.sh 2026.09-1
 scp -P 2222 ~/edge-bundle/update-2026.09-1.raucb root@127.0.0.1:/data/
 #   in the VM:   rauc install /data/update-2026.09-1.raucb && rauc status && grub-editenv /boot/efi/grubenv list
 rauc/build-bundle.sh 2026.09-1-rogue --rogue     # refused before writing anything
 rauc/build-bundle.sh 2026.09-1-armhf --wrong-hardware
 
-# Lesson 18: three failures
+# Lesson 3: three failures
 rauc/build-bundle.sh 2026.09-2-broken --broken-kernel     # GRUB tries B, kernel dies, next boot is A
 rauc/build-bundle.sh 2026.09-3-broken --broken-config     # boots perfectly, records nothing, health check fails, next boot is A
 bench/outage.sh power-cut                                 # mid rauc install: A untouched, B worthless, reinstall
 
-# Lesson 19
+# Lesson 4
 bench/outage.sh 600                                       # ten minutes without an uplink; then find the footage
 python3 spool/test_spool.py
 ```
@@ -94,17 +94,17 @@ python3 spool/test_spool.py
 The bench image includes `rauc`, `podman`, `grub-common`, `curl` and
 `python3` (build-disk.sh's `--include`), and installs `system.conf`,
 `storage.conf`, the Quadlet units, the health check and `spool.py` into
-slot A **before** it is copied to B — Lesson 19's rule that the moment you
+slot A **before** it is copied to B — Lesson 4's rule that the moment you
 type it by hand on a running box is the moment it is missing from the other
 slot.
 
 ## What was verified where
 
-- **Run, output real:** `pki/make-ca.sh` and `pki/verify-chain.sh` against OpenSSL 3.0.13 (the three refusals come out exactly as Lesson 17 prints them; note `openssl cms -verify` exits 4 on a refusal, which is why the script judges by message). `spool/test_spool.py`, six tests. `health/rauc-health-check` against a fake Node serving seven `/metrics` scenarios — healthy, silent 45 min, never recorded, AppHost not reporting, no cameras, no Node and no agent, agent-plus-spool — each giving the verdict in the table above.
-- **Written to the documentation, not executed here:** `bench/build-disk.sh` (needs KVM/nbd/debootstrap and root), `rauc/build-bundle.sh` (needs `rauc`), `boot/grub.cfg` (RAUC's reference logic, copied from Lesson 18), the Quadlet units (need Podman's generator — `quadlet/check-quadlet.sh` is the check). They pass `bash -n`; the first run belongs on your bench.
+- **Run, output real:** `pki/make-ca.sh` and `pki/verify-chain.sh` against OpenSSL 3.0.13 (the three refusals come out exactly as Lesson 2 prints them; note `openssl cms -verify` exits 4 on a refusal, which is why the script judges by message). `spool/test_spool.py`, six tests. `health/rauc-health-check` against a fake Node serving seven `/metrics` scenarios — healthy, silent 45 min, never recorded, AppHost not reporting, no cameras, no Node and no agent, agent-plus-spool — each giving the verdict in the table above.
+- **Written to the documentation, not executed here:** `bench/build-disk.sh` (needs KVM/nbd/debootstrap and root), `rauc/build-bundle.sh` (needs `rauc`), `boot/grub.cfg` (RAUC's reference logic, copied from Lesson 3), the Quadlet units (need Podman's generator — `quadlet/check-quadlet.sh` is the check). They pass `bash -n`; the first run belongs on your bench.
 
 ## Known gaps, named
 
-- `--broken-config` breaks the Quadlet `Image=` inside the image, not `agent.env` as Lesson 18 describes, because `agent.env` lives on `/data` and is not in any bundle. Same failure — boots perfectly, records nothing — reached the only way a bundle can reach it.
+- `--broken-config` breaks the Quadlet `Image=` inside the image, not `agent.env` as Lesson 3 describes, because `agent.env` lives on `/data` and is not in any bundle. Same failure — boots perfectly, records nothing — reached the only way a bundle can reach it.
 - `vms-agent.container` and `spool-uploader.container` run `localhost/example/vms-agent:1.0`, built by `make agent-image` in [`М8_KVS_VMS/kvsvms/`](../../М8_KVS_VMS/kvsvms/README.md) from the course root. That image carries `/health`, this directory's `spool.py` at `/app/spool.py`, and `vms-upload-segment` — the acknowledged uploader (`kvsvms/edge/upload_segment.py`): a `kvssink` re-publish in offline mode with the segment's original start time, followed by `ListFragments` over the segment's span. Exit 0 only when the archive has it.
 - `outage.sh` needs `socat` for the monitor socket; `Ctrl-a c` and `set_link nic0 off` by hand is the fallback.

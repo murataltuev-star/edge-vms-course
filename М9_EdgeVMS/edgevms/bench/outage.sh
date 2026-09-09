@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Lesson 19, Steps 5 and 8 — pull the cable, wait, put it back.
+# Lesson 4, Steps 5 and 8 — pull the cable, wait, put it back.
 #   bench/outage.sh 600        # ten minutes
 #   bench/outage.sh off | on   # by hand
-# Also the "pulled plug" of Lesson 18, Step 6:  bench/outage.sh power-cut
+# Also the "pulled plug" of Lesson 3, Step 6:  bench/outage.sh power-cut
 set -euo pipefail
 BENCH="${BENCH:-$HOME/edge-bench}"
 SOCK="$BENCH/monitor.sock"

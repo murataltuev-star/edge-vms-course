@@ -1,4 +1,4 @@
-"""Lesson 12 — pagination to exhaustion, the merge rule, the timestamp boundary."""
+"""Lesson 5 — pagination to exhaustion, the merge rule, the timestamp boundary."""
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from server.fragments import list_all_fragments, merge_fragments_into_runs

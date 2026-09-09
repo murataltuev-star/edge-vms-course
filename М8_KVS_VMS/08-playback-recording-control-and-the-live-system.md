@@ -1,12 +1,12 @@
-# Lesson 15 — Playback, Recording Control, and the Live System
+# Lesson 8 — Playback, Recording Control, and the Live System
 
-**Module:** The Frontend & Assembly (Module 7)
+**Module:** KVS-VMS — a cloud VMS on Kinesis Video Streams (Module 8)
 **You will build:** the rest of `web/app.js` — click-to-seek, hls.js playback, the moving playhead, and the Start/Stop control — and then run the entire system end to end against the spec's own acceptance criteria.
 **Time:** ~90–110 minutes.
 
 ## Why this lesson exists
 
-Lesson 14 built a timeline that shows you what exists. This one makes it a tool: click a moment and watch it. That turns out to be four small problems, each of which has a wrong answer that looks right —
+Lesson 7 built a timeline that shows you what exists. This one makes it a tool: click a moment and watch it. That turns out to be four small problems, each of which has a wrong answer that looks right —
 
 - converting a click into a *time range* the backend will accept (not just a timestamp),
 - handing that range's URL to a video element that can't play HLS natively in most browsers,
@@ -17,9 +17,9 @@ And then the part no individual lesson has done yet: running all of it at once a
 
 ## Prerequisites
 
-- Lesson 14 — the timeline renders and slides.
-- Lesson 13 — the assembled server, with `/api/hls` and the three `/api/recording` routes answering.
-- To see real footage play, you need footage: either the `kvssink` capstone from Lesson 10, or a stream you've published to some other way. Everything up to Step 6 can be built and verified against fixtures; Step 7 onwards needs the real thing.
+- Lesson 7 — the timeline renders and slides.
+- Lesson 6 — the assembled server, with `/api/hls` and the three `/api/recording` routes answering.
+- To see real footage play, you need footage: either the `kvssink` capstone from Lesson 4, or a stream you've published to some other way. Everything up to Step 6 can be built and verified against fixtures; Step 7 onwards needs the real thing.
 
 ## Learning objectives
 
@@ -35,7 +35,7 @@ And then the part no individual lesson has done yet: running all of it at once a
 
 ## Step 1 — From a click to a chunk
 
-A click gives you an x-coordinate. The backend wants a `start` and an `end`, and Lesson 12 taught it to reject anything outside `0 < duration <= PLAYBACK_CHUNK_SECONDS`. Getting from one to the other is three steps: position → timestamp → chunk.
+A click gives you an x-coordinate. The backend wants a `start` and an `end`, and Lesson 5 taught it to reject anything outside `0 < duration <= PLAYBACK_CHUNK_SECONDS`. Getting from one to the other is three steps: position → timestamp → chunk.
 
 ```js
 export function chunkFor(ts, run, chunkSeconds = PLAYBACK_CHUNK_SECONDS) {
@@ -49,9 +49,9 @@ export function chunkFor(ts, run, chunkSeconds = PLAYBACK_CHUNK_SECONDS) {
 
 Two clamps, and both exist because of a specific real click:
 
-**`Math.min(ts + chunkSeconds, run.end)`** — a click 30 seconds before a run ends should play 30 seconds, not request five minutes that mostly fall inside the following gap. Lesson 12 told you what happens to a range containing no fragments: `ResourceNotFoundException` → a 404. Asking for footage you can see isn't there is a request you should never send.
+**`Math.min(ts + chunkSeconds, run.end)`** — a click 30 seconds before a run ends should play 30 seconds, not request five minutes that mostly fall inside the following gap. Lesson 5 told you what happens to a range containing no fragments: `ResourceNotFoundException` → a 404. Asking for footage you can see isn't there is a request you should never send.
 
-**The `< 1` nudge** — a click on the last pixel of a bar produces `ts === run.end`, so `end - start === 0`, and Lesson 12's validator rejects that with a 400. That's a routine click landing on a legitimate target, so it must not depend on the backend's error path. Pulling `start` back by a second (never past `run.start`) turns it into a normal request.
+**The `< 1` nudge** — a click on the last pixel of a bar produces `ts === run.end`, so `end - start === 0`, and Lesson 5's validator rejects that with a 400. That's a routine click landing on a legitimate target, so it must not depend on the backend's error path. Pulling `start` back by a second (never past `run.start`) turns it into a normal request.
 
 This is worth stating as a principle, because it generalizes past this project: **the backend's validation is a boundary, not a UI design**. `/api/hls` returning 400 for a zero-length range is correct and must stay; a UI that routinely triggers it for ordinary clicks is not.
 
@@ -82,11 +82,11 @@ function init() {
 }
 ```
 
-Acceptance criterion #5 says *"clicking a gap does nothing and issues no request."* Look at how much code implements it: one early `return`, and only because the listener is on the track rather than on each bar. Because Lesson 14 decided gaps aren't elements, a click on a gap has nothing to hit — `e.target` is the track itself, the guard returns, and no request is made. A design where gaps *were* elements would need this same guard plus a decision about what a gap's own click handler should do.
+Acceptance criterion #5 says *"clicking a gap does nothing and issues no request."* Look at how much code implements it: one early `return`, and only because the listener is on the track rather than on each bar. Because Lesson 7 decided gaps aren't elements, a click on a gap has nothing to hit — `e.target` is the track itself, the guard returns, and no request is made. A design where gaps *were* elements would need this same guard plus a decision about what a gap's own click handler should do.
 
 The single listener on the track (rather than one per bar) is called event delegation, and it matters here for a specific reason: `renderTimeline` destroys and rebuilds every bar on every 10-second poll. Per-bar listeners would need re-attaching each time, and any bar you were interacting with would silently lose its handler mid-poll.
 
-Note `timestampAt` uses `getBoundingClientRect()` — the track's *actual rendered* width, whatever the window size. That's the payoff of Lesson 14's decision to position everything in percentages: the click math needs no knowledge of layout at all.
+Note `timestampAt` uses `getBoundingClientRect()` — the track's *actual rendered* width, whatever the window size. That's the payoff of Lesson 7's decision to position everything in percentages: the click math needs no knowledge of layout at all.
 
 Keyboard activation plays from the run's **start**, not from a click position — there isn't one. That's the right default anyway: someone tabbing to a run wants to watch it, and the whole run is what they selected.
 
@@ -129,7 +129,7 @@ async function playFrom(ts, run) {
 
 **The timeline stays interactive while loading.** The overlay covers the player, not the page (spec 6.3), so a slow chunk never blocks picking a different one.
 
-**Mint fresh, never reuse.** Every seek calls `/api/hls` again. These URLs carry an expiring session token (`Expires=300`, Lesson 12), so caching one buys a stale URL and a bug that only appears after five minutes of use. One request per seek is both simpler and correct.
+**Mint fresh, never reuse.** Every seek calls `/api/hls` again. These URLs carry an expiring session token (`Expires=300`, Lesson 5), so caching one buys a stale URL and a bug that only appears after five minutes of use. One request per seek is both simpler and correct.
 
 ## Step 4 — hls.js, and why the `<video>` tag isn't enough
 
@@ -242,7 +242,7 @@ async function toggleRecording() {
 }
 ```
 
-`buttonStateFor` is a pure function — server state in, display decisions out — for the same reason Lesson 14's geometry was: it's the part with actual logic in it, so it's the part worth testing without a browser.
+`buttonStateFor` is a pure function — server state in, display decisions out — for the same reason Lesson 7's geometry was: it's the part with actual logic in it, so it's the part worth testing without a browser.
 
 Four rules it encodes:
 
@@ -250,9 +250,9 @@ Four rules it encodes:
 
 **Optimism is not allowed.** After a POST, the display comes from the POST's own response body. Between POSTs, it comes from the same 10-second poll that refreshes the timeline. So an agent that crashes on its own, or that you stop in another terminal, corrects itself within one cycle rather than showing a state that stopped being true.
 
-**In-flight is a visible state.** Disable the button and change the label to `Starting…`/`Stopping…`. A `stop` that escalates through `SIGTERM` → 15 seconds → `SIGKILL` (Lesson 6) can genuinely take fifteen seconds, and a button that looks idle for fifteen seconds gets pressed again.
+**In-flight is a visible state.** Disable the button and change the label to `Starting…`/`Stopping…`. A `stop` that escalates through `SIGTERM` → 15 seconds → `SIGKILL` (Lesson 2) can genuinely take fifteen seconds, and a button that looks idle for fifteen seconds gets pressed again.
 
-**The 409 is a message, not a status code.** Lesson 6's `NotManaged` becomes Lesson 13's `HTTPException(409, …)`, and lands here as `body.detail` — displayed as a sentence. The viewer never sees "409"; they see why the button didn't work.
+**The 409 is a message, not a status code.** Lesson 2's `NotManaged` becomes Lesson 6's `HTTPException(409, …)`, and lands here as `body.detail` — displayed as a sentence. The viewer never sees "409"; they see why the button didn't work.
 
 ```js
 async function pollRecording() {
@@ -269,7 +269,7 @@ Call `pollRecording()` at the end of `poll()` so both halves of the interface re
 
 ## Step 7 — Test the interaction logic
 
-As in Lesson 14, the browser-free parts get tested without a browser. Copy `app.js` to `app.mjs` and:
+As in Lesson 7, the browser-free parts get tested without a browser. Copy `app.js` to `app.mjs` and:
 
 ```js
 // interaction_test.mjs
@@ -312,7 +312,7 @@ ok(short !== null && short.end - short.start > 0,
 ok(chunkFor(1000, { start: 1000, end: 1000 }, 300) === null,
    "a zero-length run is the only case that yields no chunk at all");
 
-// every chunk this UI can produce must satisfy the backend's own rule from Lesson 12
+// every chunk this UI can produce must satisfy the backend's own rule from Lesson 5
 for (const t of [0, 1, 299, 600, 1199, 1200]) {
   const c = chunkFor(runs[1].start + t, runs[1], 300);
   if (c === null) continue;
@@ -345,14 +345,14 @@ node interaction_test.mjs
 25 interaction assertions passed
 ```
 
-The loop in the middle is the one to notice. It asserts that **every chunk this UI can produce satisfies the backend's own validation rule** — the contract between Lesson 12 and Lesson 15, checked mechanically instead of by reading both files and hoping. That's the kind of assertion that keeps working after someone changes `PLAYBACK_CHUNK_SECONDS` in six months.
+The loop in the middle is the one to notice. It asserts that **every chunk this UI can produce satisfies the backend's own validation rule** — the contract between Lesson 5 and Lesson 8, checked mechanically instead of by reading both files and hoping. That's the kind of assertion that keeps working after someone changes `PLAYBACK_CHUNK_SECONDS` in six months.
 
 ## Step 8 — Run the whole thing
 
 Everything is built. Now run it as a system:
 
 ```bash
-make setup      # preflight + stream provisioning (Lesson 13)
+make setup      # preflight + stream provisioning (Lesson 6)
 make serve      # leave running
 # open http://localhost:8000
 ```
@@ -373,17 +373,17 @@ The spec wrote thirteen of these before any code existed. Work through them hone
 
 | # | Criterion | How to check |
 |---|---|---|
-| 1 | 10 minutes of running produces ~10 minutes of footage, not 10 seconds | **Check this first.** `make stream` for 10 min, then read the coverage line in the meta row. If it says seconds, `identity sync=true` is missing or misplaced (Lesson 10). |
-| 2 | `/api/fragments` returns multiple runs with sub-second gaps at loop boundaries | `curl` it after two loop cycles; the gaps come from process-restart looping (Lesson 10). |
+| 1 | 10 minutes of running produces ~10 minutes of footage, not 10 seconds | **Check this first.** `make stream` for 10 min, then read the coverage line in the meta row. If it says seconds, `identity sync=true` is missing or misplaced (Lesson 4). |
+| 2 | `/api/fragments` returns multiple runs with sub-second gaps at loop boundaries | `curl` it after two loop cycles; the gaps come from process-restart looping (Lesson 4). |
 | 3 | Timeline renders those runs with gaps at correct positions | Compare bar positions against the JSON timestamps and the clock labels. |
-| 4 | Clicking a bar plays from that moment ±2s | Click a labeled quarter-hour tick's bar; check the chunk badge. Off by 2–5s consistently means a `ServerTimestamp`/`ProducerTimestamp` mix (Lesson 11). |
+| 4 | Clicking a bar plays from that moment ±2s | Click a labeled quarter-hour tick's bar; check the chunk badge. Off by 2–5s consistently means a `ServerTimestamp`/`ProducerTimestamp` mix (Lesson 5). |
 | 5 | Clicking a gap does nothing, issues no request | Click a gap with the Network tab open. Zero requests. |
 | 6 | Killing the agent 60s and restarting shows a 60s gap within one poll | Kill it, wait, restart, wait 10s. |
 | 7 | `/api/hls` with a 3600s range returns 400 naming the limit | `curl` directly — the UI can't produce this, by Step 1's clamping. |
 | 8 | `/api/hls` inside a known gap returns 404 with a readable message | Read a gap's timestamps off `/api/fragments`, then `curl` a range inside it. |
-| 9 | No AWS credential in any response or in page source | View source; search the Network tab. Structurally guaranteed by Lesson 13's config split, but verify. |
+| 9 | No AWS credential in any response or in page source | View source; search the Network tab. Structurally guaranteed by Lesson 6's config split, but verify. |
 | 10 | Under ~600 lines excluding HTML/CSS | `wc -l`. See the note below. |
-| 11 | Stop leaves **zero** containers and no further fragment writes | `docker ps` **and** the fragment count — not the UI. A UI reading "stopped" is exactly what an orphaned container hides behind (Lesson 8). |
+| 11 | Stop leaves **zero** containers and no further fragment writes | `docker ps` **and** the fragment count — not the UI. A UI reading "stopped" is exactly what an orphaned container hides behind (Lesson 3). |
 | 12 | Start → Stop → Start three times, no `name already in use`, no accumulated containers | Do it three times; `docker ps -a` after. |
 | 13 | Stop on an externally-started agent returns 409 and leaves it running | `make stream` in another terminal, then press Stop. |
 
@@ -404,17 +404,17 @@ Criteria #11 and #13 are the two most worth doing carefully, because both are ca
 | Video element stays black, no error | Playback started but the chunk has no keyframe near its start. Click slightly earlier in the same run. |
 | Playback stalls at the end of every chunk | Expected in this MVP — chunks are discrete with no rollover. Documented in the spec's known failure modes. |
 | Playhead is in the wrong place but playback is right | `movePlayhead` using wall-clock time instead of `chunk.start + video.currentTime`. |
-| Playhead drifts a few seconds from the bar it's playing | `ServerTimestamp` used in one endpoint and `ProducerTimestamp` in the other (Lesson 11's warning). |
+| Playhead drifts a few seconds from the bar it's playing | `ServerTimestamp` used in one endpoint and `ProducerTimestamp` in the other (Lesson 5's warning). |
 | Memory climbs the more you seek | `state.hls.destroy()` not called before creating a new instance. |
 | Button flickers between Start and Stop | Both the POST response and a poll are applying state out of order — make sure `toggleRecording` awaits its own response before the next poll can overwrite it. |
-| Stop reports success but `docker ps` shows a container | The orphaned-container failure (Lesson 8) — the supervisor must `docker rm -f` by name on shutdown. |
-| Everything works, then all requests 404 after an edit | `app.mount("/", ...)` moved above the API routes (Lesson 13). |
+| Stop reports success but `docker ps` shows a container | The orphaned-container failure (Lesson 3) — the supervisor must `docker rm -f` by name on shutdown. |
+| Everything works, then all requests 404 after an edit | `app.mount("/", ...)` moved above the API routes (Lesson 6). |
 
 ## Recap
 
 - A click becomes a chunk via two clamps: never past the run's end, and never shorter than a second — so the UI never routinely triggers the backend's own 400.
 - The backend's validation is a boundary, not a substitute for a UI that sends sensible requests.
-- Clicking a gap is ignored by one `return`, because Lesson 14 decided gaps aren't elements.
+- Clicking a gap is ignored by one `return`, because Lesson 7 decided gaps aren't elements.
 - Event delegation on the track survives the 10-second re-render that destroys every bar.
 - hls.js plays HLS where browsers can't; `destroy()` before each new instance, ignore non-fatal errors, and let the browser fetch segments straight from AWS rather than proxying video through your server.
 - The playhead follows `video.currentTime`, not a timer, and hides itself when its moment slides out of the window.

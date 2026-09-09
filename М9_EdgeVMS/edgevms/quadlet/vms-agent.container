@@ -1,4 +1,4 @@
-# /etc/containers/systemd/vms-agent.container — Lesson 19, Step 2.
+# /etc/containers/systemd/vms-agent.container — Lesson 4, Step 2.
 # The М8 agent under systemd: `.container` in, `vms-agent.service` out.
 # Never `systemctl enable` this — the generator applies [Install] itself.
 # Both volumes point into /data: the spool and the configuration are data,

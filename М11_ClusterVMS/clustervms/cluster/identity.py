@@ -1,4 +1,4 @@
-"""Lesson 26 — who am I? Never the allocation index. The scheduler delivers
+"""Lesson 2 — who am I? Never the allocation index. The scheduler delivers
 the Node's own Variable through its template as environment; this reads it,
 and can also read the Variable directly for the values a template did not
 carry (the column key, the heartbeat).

@@ -1,4 +1,4 @@
-"""Lesson 28 — the epoch by check-and-set, and the lease that fences.
+"""Lesson 4 — the epoch by check-and-set, and the lease that fences.
 
 The epoch is a fencing token: it must come from ONE issuer and it must
 INCREASE. A Nomad Variable with cas is both. A variable lock is neither

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lesson 5 — dummy workload standing in for the real GStreamer pipeline.
+"""Lesson 2 — dummy workload standing in for the real GStreamer pipeline.
 Ticks once a second forever, and exits(1) after CRASH_AFTER seconds if that
 env var is set, so the supervisor's crash-and-backoff path can be rehearsed
 on demand instead of waiting for a real failure.

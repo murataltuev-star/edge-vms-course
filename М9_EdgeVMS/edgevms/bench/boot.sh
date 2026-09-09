@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lesson 16, Step 6 — boot the bench. Ctrl-a x quits; Ctrl-a c is the monitor.
+# Lesson 1, Step 6 — boot the bench. Ctrl-a x quits; Ctrl-a c is the monitor.
 # The monitor is also on a socket so bench/outage.sh can pull the cable.
 set -euo pipefail
 BENCH="${BENCH:-$HOME/edge-bench}"

@@ -6,7 +6,7 @@
 
 The organising decision, taken up front because everything depends on it: **a Node owns its own configuration.** Nomad moves the Node; the cameras go with it; nothing rewrites who owns what. That is what makes failover teachable *here* rather than deferred to a coordinating layer: there is no ownership to reassign, so a dead server is a relocation rather than a decision.
 
-> **Scope note.** These five lessons and [М12](../М12_DomainVMS/module-design.md)'s eight were one module until this split, and the merge that created it had a good reason: *a cluster and the layer above it are one arc, and splitting them meant teaching the two-level idea twice.* That reason still holds, and the split answers it rather than ignoring it — **the two-level idea is introduced here and collected in М12**, which is the same setup-and-collection the course already runs across module boundaries, from М9's AWS credentials to М12's signer. Lesson 26 says out loud that Nomad places *Nodes* and something above will place *cameras*; М12 Lesson 30 is where the third level arrives and the student is asked to name the difference. Taught inside one module, the two levels blur, because both are "scheduling".
+> **Scope note.** These five lessons and [М12](../М12_DomainVMS/module-design.md)'s eight were one module until this split, and the merge that created it had a good reason: *a cluster and the layer above it are one arc, and splitting them meant teaching the two-level idea twice.* That reason still holds, and the split answers it rather than ignoring it — **the two-level idea is introduced here and collected in М12**, which is the same setup-and-collection the course already runs across module boundaries, from М9's AWS credentials to М12's signer. Lesson 2 says out loud that Nomad places *Nodes* and something above will place *cameras*; М12 Lesson 1 is where the third level arrives and the student is asked to name the difference. Taught inside one module, the two levels blur, because both are "scheduling".
 
 > **Cluster is not domain, and they are different *sizes*.** A **cluster** is servers close enough to share a network you would bet recording on — one LAN, usually one server room. That boundary is set by **physics**. A **domain** is the clusters under one directory, one CA and one set of operators, and that boundary is set by **administration**. A campus is one domain with three clusters; a cloud deployment is one domain with one. This is the fifth pair of words the course keeps apart, after Node/Server/Site, the two orchestrations and the two federations.
 >
@@ -51,8 +51,8 @@ Node 3 reappears on another server with its configuration intact and resumes its
 | Orchestrator | **Nomad** | Non-container workloads, Podman kept as the runtime, far smaller operational surface. See [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md). |
 | Failover scope | **Within a cluster. A Node never crosses one** | Two independent reasons, and either alone would decide it: footage lives on the cluster's disks, and **the epoch comes from Nomad's raft, which is per-cluster** — regions share no state, so there is no domain-wide issuer and no need for one. |
 | The restore point | **Cluster-scoped object storage — a backup, not a directory** | Failover needs somewhere off-box to restore configuration from. That is not the same thing as knowing *which Node has camera 7*, which is М12's and does not exist yet here. |
-| **Minimum version** | **Nomad ≥ 1.8.0. Target 1.10.x LTS or 2.0.x** | The `disconnect` block Lesson 28 is built on arrived in **1.8.0**; before that there is only `max_client_disconnect`/`stop_after_client_disconnect` and **no `reconcile` strategies at all**. Those predecessors were then *removed* in 1.10.0, so writing against 1.7.x teaches syntax that no longer exists. 1.7.x is also EOL with an allocation-directory-escape CVE fixed only in Enterprise. |
-| Single-server deployments | **No orchestrator at all** | М9's Quadlet stack is better on one box, and Lesson 25 makes students argue that rather than assert it. |
+| **Minimum version** | **Nomad ≥ 1.8.0. Target 1.10.x LTS or 2.0.x** | The `disconnect` block Lesson 4 is built on arrived in **1.8.0**; before that there is only `max_client_disconnect`/`stop_after_client_disconnect` and **no `reconcile` strategies at all**. Those predecessors were then *removed* in 1.10.0, so writing against 1.7.x teaches syntax that no longer exists. 1.7.x is also EOL with an allocation-directory-escape CVE fixed only in Enterprise. |
+| Single-server deployments | **No orchestrator at all** | М9's Quadlet stack is better on one box, and Lesson 1 makes students argue that rather than assert it. |
 
 The decisions about the layer *above* these Nodes — what a directory holds, how it is stored, and who may call it — are [М12's](../М12_DomainVMS/module-design.md).
 
@@ -61,8 +61,8 @@ The decisions about the layer *above* these Nodes — what a directory holds, ho
 ## Prerequisites
 
 - **М10 entire.** What it built on one box is a Node. This module runs several and moves them between servers.
-- **Lesson 19** — Quadlet. Lesson 26 maps those units onto a scheduler, which is a translation rather than a rewrite.
-- **Lessons 5–6** — signals. `kill -STOP` is the module's most important teaching device.
+- **М9 Lesson 4** — Quadlet. Lesson 2 maps those units onto a scheduler, which is a translation rather than a rewrite.
+- **М8 Lesson 2** — signals. `kill -STOP` is the module's most important teaching device.
 - **М9's process-model record** — capacity, shard sizing, and why the orchestrator must not own camera lifecycle.
 
 ---
@@ -202,7 +202,7 @@ Which generalises into the rule the whole module stores things by — **three st
 
 *Five lessons. Several Nodes, scheduled — and the hard part is the data, not the scheduling.*
 
-### Lesson 25 — When one box isn't enough
+### Lesson 1 — When one box isn't enough
 
 - What actually forces a second server: camera count, storage throughput, retention, availability
 - **Why an orchestrator is the wrong answer for a single appliance.** Students should leave able to argue this, not assert it. On one box the scheduler has nothing to schedule — "place N workers" is a systemd template unit. Nomad's production guidance suggests 4–8+ cores and 16–32 GB+ for *servers* and says nothing about single-node deployments. And HashiCorp publishes a support note on orphaned Podman containers after an agent restart, which is a poor trade for no scheduling benefit
@@ -214,16 +214,16 @@ Which generalises into the rule the whole module stores things by — **three st
 
 ---
 
-### Lesson 26 — The Node as an allocation
+### Lesson 2 — The Node as an allocation
 
 - Jobspec structure: `job` → `group` → `task`, written in HCL
-- **The Podman task driver** — the same images and runtime as Lesson 19. Translating a Quadlet unit into a Nomad task is a mapping, not a rewrite
+- **The Podman task driver** — the same images and runtime as М9 Lesson 4. Translating a Quadlet unit into a Nomad task is a mapping, not a rewrite
 - The other drivers and why a VMS cares: **`exec2`** for a native process needing device access, `virt` for a VM. Kubernetes cannot do this at all
 - **`exec2` is not built into Nomad**, which is easy to get wrong: it is a separate official plugin downloaded onto each client host into the configured plugin directory, and it requires Linux with **Landlock LSM and cgroups v2**. Beta in 1.8.0, GA in 1.9.0. On an appliance that is one more thing the image must carry and the OS must support — a real constraint on М9's base distribution, not a footnote
 - **Node identity: where it comes from, and where it must not.** The Node must be the same Node after it moves. Nomad's *allocation index* looks like the answer and has had documented uniqueness bugs — two simultaneously-running allocations sharing an index, accepted and later fixed. Fine for a metrics label; **never for something archive correctness depends on**
 - **Nomad Variables are the right mechanism** — an encrypted, namespaced, ACL'd key-value store the scheduler delivers to a task. A Node reads *which Node am I, where is the directory, what is my epoch* from there. It is exactly what Variables are for, and it is why identity survives rescheduling without living on any disk
 - **And why configuration does *not* go there.** Variables cap at **64 KiB per entry** — originally 16 KiB, raised since, and capped at all because, in HashiCorp's own words, the limit exists *"to reduce the potential performance impact of Variables on our raft store."* That is the maintainers stating this module's own reason: the raft store is memory-resident and replicated to every server, so it is the wrong place for anything that grows. A thousand cameras of settings do not fit, and a key-value store cannot answer *which cameras have retention over 30 days* anyway
-- **What does fit is the pointer.** A Node's Variable holds its identity, its camera ids, and *where its configuration object is and at which revision* — hundreds of bytes, not megabytes. Lesson 29 points out that this **already is** the cluster's directory
+- **What does fit is the pointer.** A Node's Variable holds its identity, its camera ids, and *where its configuration object is and at which revision* — hundreds of bytes, not megabytes. Lesson 5 points out that this **already is** the cluster's directory
 - Storage reality: recordings stay local. **Do not put video bulk on replicated storage**
 - Placement constraints: cameras are not uniformly reachable from every server
 
@@ -231,7 +231,7 @@ Which generalises into the rule the whole module stores things by — **three st
 
 ---
 
-### Lesson 27 — Making a Node's state outlive its server
+### Lesson 3 — Making a Node's state outlive its server
 
 The lesson the failover demo depends on, and the one most courses skip.
 
@@ -261,7 +261,7 @@ Server A dies
 
 #### The mechanism, and what not to build
 
-**Not Postgres logical replication.** There is nothing at the domain to replicate *into*. A Node writes its configuration to the object store itself and then updates its own Variable to name the new revision — in that order, so a Variable never points at an object that is not there. The report channel from Lesson 29 carries status, not bulk.
+**Not Postgres logical replication.** There is nothing at the domain to replicate *into*. A Node writes its configuration to the object store itself and then updates its own Variable to name the new revision — in that order, so a Variable never points at an object that is not there. The report channel from Lesson 5 carries status, not bulk.
 
 - **The acknowledgement rule**, from the section above: acknowledge on local commit, and show *saved · not yet replicated* until the directory confirms. Never acknowledge a write whose durability you cannot vouch for, and never block the write on it either
 - **A Node the directory has never seen** comes up *unconfigured*, and does not invent anything
@@ -272,7 +272,7 @@ Server A dies
 
 ---
 
-### Lesson 28 — Failover, and the two instances of one Node
+### Lesson 4 — Failover, and the two instances of one Node
 
 > **The two numbers this lesson has to export.** `node_failover_seconds` — power pulled to recording resumed — is the product's **RTO**, and it is meaningless as an average: report the worst case, because the customer's question is *how long could my site be dark*. And `node_epoch_conflicts` counts how often a stale instance was fenced at the archive; on a healthy system it is zero forever, which makes it exactly the kind of counter people forget to alarm on. **A metric that is always zero is worth more than one that is always noisy** — the day it moves, something the design said was impossible has happened.
 
@@ -286,9 +286,9 @@ Server A dies
 **Deliverable:** pull the power on a server; report how long until recording resumed and how many seconds were lost. Then restore it, let the old instance wake up, and prove the archive is intact and its output orphaned.
 
 ---
-### Lesson 29 — The cluster directory, and where a camera goes
+### Lesson 5 — The cluster directory, and where a camera goes
 
-The lesson that costs almost nothing to build, because **you already built it in Lesson 26 and called it something else.**
+The lesson that costs almost nothing to build, because **you already built it in Lesson 2 and called it something else.**
 
 - **Scanning your Nodes' Variables answers *where is camera 7*.** Each Node's Variable already carries its camera ids. Tens of entries, read in milliseconds, cached by the console. That is a directory, and noticing it is the lesson's first move
 - **Why it is a directory and not a database:** small, one writer per key enforced by a Nomad ACL, and never queried by anything but an exact scan. The same three properties that made the configuration store a database make this one not
@@ -311,7 +311,7 @@ The lesson that costs almost nothing to build, because **you already built it in
 
 - **Fencing is fully testable with a filesystem and no cameras at all.** `kill -STOP`, restart the Node elsewhere, `kill -CONT`, assert on the directory tree. The correctness property has nothing to do with video
 - The lease state machine, the epoch issuer's check-and-set behaviour, and revision handling
-- The rehydration sequence against a fake directory, in the style of Lessons 11–15
+- The rehydration sequence against a fake directory, in the style of М8 Lessons 5–8
 
 **Track 2 — needs the real bench.** All of the scheduling: cluster formation, `nomad job validate`, Nomad Pack rendering, CSI attach and detach, and the power-pull exercise. Plus anything with real GStreamer and real cameras. Each lesson carries an explicit *expected output* block so a deviation is recognisable rather than mysterious.
 
@@ -321,7 +321,7 @@ The lesson that costs almost nothing to build, because **you already built it in
 
 1. **Is 2a ever right?** The course builds 2b, and the CSI detach problem means 2a cannot fail over unattended — so 2a is only defensible where an operator is on call. Whether any VMS deployment meets that description is a product question, not a technical one.
 2. **Can a task write Variables under workload identity, and can an ACL policy scope it to that Node's own prefix?** Load-bearing rather than incidental: Node identity and the epoch both live in Variables, and М12's whole one-writer-per-key property rests on Node 3 being unable to write `nodes/node-4`. The Variables documentation does not settle it. **Check before building.**
-3. **How long should a Node wait before concluding its old instance is gone?** Lesson 28 makes students pick the TTL and the margin either side of it; the product must pick them too, trading recovery time against the length of the window in which two instances exist.
+3. **How long should a Node wait before concluding its old instance is gone?** Lesson 4 makes students pick the TTL and the margin either side of it; the product must pick them too, trading recovery time against the length of the window in which two instances exist.
 
 **Resolved while designing the module:**
 
@@ -345,4 +345,4 @@ The lesson that costs almost nothing to build, because **you already built it in
 - [How to do distributed locking](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html) — fencing tokens, and why lease expiry must not depend on wall-clock time
 - [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md) · [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md)
 
-*Written 5 September 2026. Split from the combined DomainVMS module on 7 September 2026. Lessons 25–29 written 8 September; the Track 1 items above run in [`reference/`](reference/README.md), and every number the lessons print came out of them.*
+*Written 5 September 2026. Split from the combined DomainVMS module on 7 September 2026. Lessons 1–5 written 8 September; the Track 1 items above run in [`reference/`](reference/README.md), and every number the lessons print came out of them.*

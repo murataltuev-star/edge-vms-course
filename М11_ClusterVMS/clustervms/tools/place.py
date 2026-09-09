@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lesson 29 — the placement service, as a command.
+"""Lesson 5 — the placement service, as a command.
 
     python3 tools/place.py nodes                      # capacity and labels per Node (from capacity/<node>)
     python3 tools/place.py where 7                    # the directory scan

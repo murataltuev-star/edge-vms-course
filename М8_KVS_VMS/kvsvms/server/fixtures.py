@@ -1,4 +1,4 @@
-# server/fixtures.py — Lesson 13, Step 7. Development aid. Never enabled in a
+# server/fixtures.py — Lesson 6, Step 7. Development aid. Never enabled in a
 # real run: the flag is off by default, and this is the one place to look
 # when the timeline shows footage you cannot explain.
 import os

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lesson 16, Steps 4–5 — build the A/B bench disk.
+# Lesson 1, Steps 4–5 — build the A/B bench disk.
 #
 #   ESP | rootfs0 (A) | rootfs1 (B) | data
 #
@@ -29,7 +29,7 @@ trap 'set +e; for d in dev proc sys; do sudo umount /mnt/slotA/$d 2>/dev/null; d
       sudo umount /mnt/slotA/boot/efi /mnt/slotA /mnt/slotB 2>/dev/null; sudo qemu-nbd --disconnect "$NBD" >/dev/null' EXIT
 sleep 1
 
-# --- partitions (Lesson 16, Step 3) -------------------------------------
+# --- partitions (Lesson 1, Step 3) -------------------------------------
 sudo parted -s "$NBD" mklabel gpt
 sudo parted -s "$NBD" mkpart ESP     fat32  1MiB     513MiB
 sudo parted -s "$NBD" set 1 esp on
@@ -43,7 +43,7 @@ sudo mkfs.vfat -F32 -n ESP    "${NBD}p1"
 sudo mkfs.ext4 -q  -L rootfs0 "${NBD}p2"
 sudo mkfs.ext4 -q  -L rootfs1 "${NBD}p3"
 sudo mkfs.ext4 -q  -L data    "${NBD}p4"
-lsblk -f "$NBD" | tee "$BENCH/healthy-lsblk.txt"     # what healthy looked like (Lesson 18 needs it)
+lsblk -f "$NBD" | tee "$BENCH/healthy-lsblk.txt"     # what healthy looked like (Lesson 3 needs it)
 
 # --- slot A: a root filesystem built as a directory tree ----------------
 sudo mkdir -p /mnt/slotA /mnt/slotB
@@ -59,7 +59,7 @@ else
 fi
 echo 'slot A' | sudo tee /mnt/slotA/etc/slot-id >/dev/null
 
-# Everything that must be IN THE IMAGE (Lesson 19: "the moment you type it by
+# Everything that must be IN THE IMAGE (Lesson 4: "the moment you type it by
 # hand is the moment it is missing from slot B"):
 sudo install -D -m 0644 "$HERE/rauc/system.conf"            /mnt/slotA/etc/rauc/system.conf
 sudo install -D -m 0644 "$HERE/quadlet/storage.conf"        /mnt/slotA/etc/containers/storage.conf
@@ -68,7 +68,7 @@ sudo install -D -m 0755 "$HERE/health/rauc-health-check"    /mnt/slotA/usr/local
 sudo install -D -m 0644 "$HERE/health/rauc-mark-good.service" /mnt/slotA/etc/systemd/system/rauc-mark-good.service
 sudo chroot /mnt/slotA systemctl enable rauc-mark-good.service     # a plain unit: enable is right here
 # The keyring is a trust anchor and belongs in the image too — but only after
-# pki/make-ca.sh has run. Lesson 17 copies it in by hand the first time.
+# pki/make-ca.sh has run. Lesson 2 copies it in by hand the first time.
 [ -f "$HERE/pki/out/keyring.pem" ] && sudo install -D -m 0644 "$HERE/pki/out/keyring.pem" /mnt/slotA/etc/rauc/keyring.pem
 
 # fstab: the slots are ro; /data is the only writable partition
@@ -85,7 +85,7 @@ for d in dev proc sys; do sudo mount --bind /$d /mnt/slotA/$d; done
 sudo chroot /mnt/slotA grub-install --target=x86_64-efi --efi-directory=/boot/efi \
      --bootloader-id=BOOT --removable
 sudo install -D -m 0644 "$HERE/boot/grub.cfg" /mnt/slotA/boot/efi/EFI/BOOT/grub.cfg
-# Lesson 18, Step 2: seed the environment on the ESP, outside both slots.
+# Lesson 3, Step 2: seed the environment on the ESP, outside both slots.
 sudo chroot /mnt/slotA grub-editenv /boot/efi/grubenv create
 sudo chroot /mnt/slotA grub-editenv /boot/efi/grubenv set ORDER="A B" A_OK=1 A_TRY=0 B_OK=1 B_TRY=0
 sudo chroot /mnt/slotA grub-editenv /boot/efi/grubenv list

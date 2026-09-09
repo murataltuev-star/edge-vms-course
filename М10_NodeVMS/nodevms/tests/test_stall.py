@@ -1,4 +1,4 @@
-"""Lesson 23, Step 2 — a stalled stream with the socket open. Needs GStreamer
+"""Lesson 4, Step 2 — a stalled stream with the socket open. Needs GStreamer
 and tools/fake_camera.py; skipped otherwise. The assertion that matters is
 that the other 49 are still WRITING SEGMENTS, not merely in state RUNNING."""
 from __future__ import annotations

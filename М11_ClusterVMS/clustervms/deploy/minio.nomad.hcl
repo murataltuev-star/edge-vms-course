@@ -1,6 +1,6 @@
 # deploy/minio.nomad.hcl — the cluster's object store: the restore point.
 # One instance per server, host volume on /data/restore, so the object a
-# Node published is on the same room's disks. Lesson 27 needs it reachable
+# Node published is on the same room's disks. Lesson 3 needs it reachable
 # to FAIL OVER, never to run. Anonymous PUT/GET on the `cluster-restore`
 # bucket is what HttpObjectStore expects; scope it to the cluster network.
 job "minio" {

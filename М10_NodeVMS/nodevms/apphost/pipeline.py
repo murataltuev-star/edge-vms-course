@@ -1,8 +1,8 @@
-"""Lesson 22 — fifty pipelines in one process.
+"""Lesson 3 — fifty pipelines in one process.
 
 A CameraPipeline is a state machine, not a coroutine:
 
-    IDLE -> STARTING -> RUNNING -> FAILED -> (backoff, Lesson 21) -> STARTING
+    IDLE -> STARTING -> RUNNING -> FAILED -> (backoff, Lesson 2) -> STARTING
 
 Buffers move on GStreamer's own threads, in C. Python here does control only:
 state changes, bus messages, and naming a file once per segment.
@@ -73,7 +73,7 @@ class CameraPipeline:
     def segment_dir(self) -> str:
         # epoch is in the path from day one. It is 1 and never changes in
         # М10; in М11 it is the fencing token that makes a zombie's writes
-        # land where nobody reads them (Lesson 23, Step 5).
+        # land where nobody reads them (Lesson 4, Step 5).
         return os.path.join(self.settings.archive_dir, str(self.id), f"e{self.settings.epoch}")
 
     def _format_location(self, mux, fragment_id: int) -> str:
@@ -232,7 +232,7 @@ class GstActuator:
 
 
 class FakeActuator:
-    """Lesson 21's print(), grown a memory so tests can assert on it.
+    """Lesson 2's print(), grown a memory so tests can assert on it.
     `failing` is a set of camera ids (or a predicate) whose start fails."""
 
     def __init__(self, failing=frozenset(), log_calls: bool = False):

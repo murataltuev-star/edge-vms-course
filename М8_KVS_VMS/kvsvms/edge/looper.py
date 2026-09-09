@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""edge/looper.py — Lessons 5, 8 and 10: the supervisor.
+"""edge/looper.py — Lessons 2–4: the supervisor.
 
 Starts the child, restarts it with exponential backoff on failure (1 s -> 30 s
 cap), restarts it immediately on a clean exit (a finite clip reaching EOS is
@@ -7,8 +7,8 @@ the NORMAL case, and the seam is a real gap the timeline renders), and shuts
 it down cleanly on SIGINT/SIGTERM. Docker mode wraps the same argv in
 `docker run` and removes any stale container by name before every launch.
 
-    CHILD=camera_sim            Lesson 5's dummy workload (no GStreamer needed)
-    KVS_DOCKER_IMAGE=...        run the pipeline inside that image (Lesson 8)
+    CHILD=camera_sim            Lesson 2's dummy workload (no GStreamer needed)
+    KVS_DOCKER_IMAGE=...        run the pipeline inside that image (Lesson 3)
     VMS_SPOOL_DIR=/data/spool   М9: write segments to the spool instead of kvssink
 """
 from __future__ import annotations
@@ -72,7 +72,7 @@ def _build_argv():
     inner = _child_argv()
     if not DOCKER_IMAGE or CHILD == "camera_sim":
         return inner
-    # Lesson 8, Step 5: credentials by NAME only — the value never enters an argv.
+    # Lesson 3, Step 9: credentials by NAME only — the value never enters an argv.
     argv = ["docker", "run", "--name", CONTAINER_NAME]
     for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_REGION"):
         if var in os.environ:

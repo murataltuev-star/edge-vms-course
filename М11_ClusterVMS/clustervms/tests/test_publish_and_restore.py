@@ -1,4 +1,4 @@
-"""Lesson 27 — object first, then the Variable; the floor; `replicated`;
+"""Lesson 3 — object first, then the Variable; the floor; `replicated`;
 the six steps; unconfigured; a dangling pointer refused."""
 import asyncio
 from cluster.identity import Identity

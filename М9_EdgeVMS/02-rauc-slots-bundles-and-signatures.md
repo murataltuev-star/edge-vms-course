@@ -1,4 +1,4 @@
-# Lesson 17 — RAUC: Slots, Bundles, and Signatures
+# Lesson 2 — RAUC: Slots, Bundles, and Signatures
 
 **Module:** EdgeVMS — shipping the VMS as an appliance (Module 9)
 **You will build:** a certificate authority, a signed update bundle, and a working `rauc install` that writes a new system into the inactive slot — plus three proofs that an unsigned, wrongly-signed, or tampered bundle is refused.
@@ -6,15 +6,15 @@
 
 ## Why this lesson exists
 
-Lesson 16 left you with two slots and a human pressing a down arrow. This lesson replaces the human with a tool, and then spends most of its length on the part people skip: **why the box is allowed to trust the thing it is about to install.**
+Lesson 1 left you with two slots and a human pressing a down arrow. This lesson replaces the human with a tool, and then spends most of its length on the part people skip: **why the box is allowed to trust the thing it is about to install.**
 
 That ordering is deliberate. An appliance downloads updates over a network you do not control, from a URL an attacker may be able to influence, and installs them without asking anybody. The install mechanism is easy. The trust decision is the product.
 
-> **What you can verify without hardware.** The entire signing chain — building a CA, signing, verifying, and watching bad signatures get rejected — runs on any machine with `openssl` and needs no VM at all. Every command in Steps 2 and 3 was run against **OpenSSL 3.0.13** while writing this lesson, and the outputs shown are real. Steps 4–6 need the Lesson 16 bench.
+> **What you can verify without hardware.** The entire signing chain — building a CA, signing, verifying, and watching bad signatures get rejected — runs on any machine with `openssl` and needs no VM at all. Every command in Steps 2 and 3 was run against **OpenSSL 3.0.13** while writing this lesson, and the outputs shown are real. Steps 4–6 need the Lesson 1 bench.
 
 ## Prerequisites
 
-- **Lesson 16** — the QEMU bench with two slots, and the `/etc/slot-id` trick for telling them apart.
+- **Lesson 1** — the QEMU bench with two slots, and the `/etc/slot-id` trick for telling them apart.
 - `openssl` on your host: `openssl version` should report 3.x. (1.1.1 works for everything here too.)
 - RAUC installed **inside the VM**. Debian bookworm has it: `apt install rauc`. Check with `rauc --version`.
 
@@ -63,7 +63,7 @@ Every line there is a decision. Take them in turn.
 
 **`bundle-formats=-plain`.** This is the sharp edge of the lesson and it is easy to miss. RAUC supports three bundle formats — `plain`, `verity` and `crypt` — and if you configure none of them it **still defaults to `plain`**, with only a warning. `plain` is the legacy format kept for compatibility with RAUC 1.4 and earlier. The `-plain` syntax means "everything except plain", so a `plain` bundle is refused outright rather than warned about. Set this on day one; the day you need HTTP streaming you will need `verity` anyway.
 
-**Slot sections are `[slot.<class>.<index>]`.** The class (`rootfs`) groups slots that are alternatives for the same job; the index distinguishes them. `bootname` is what connects a slot to the bootloader — it must match the names GRUB knows, which in Lesson 16 were `A` and `B`, and it must be unique across all slots.
+**Slot sections are `[slot.<class>.<index>]`.** The class (`rootfs`) groups slots that are alternatives for the same job; the index distinguishes them. `bootname` is what connects a slot to the bootloader — it must match the names GRUB knows, which in Lesson 1 were `A` and `B`, and it must be unique across all slots.
 
 Now check RAUC agrees with you:
 
@@ -101,7 +101,7 @@ openssl req -x509 -newkey rsa:3072 -keyout ca.key.pem -out ca.cert.pem -nodes -d
   -addext "keyUsage=critical,keyCertSign,cRLSign"
 ```
 
-Ten years, because a root that expires bricks your update path across the whole fleet. `-nodes` leaves the key unencrypted, which is fine for a lesson and **wrong for production** — a real root key lives offline, on a smartcard or in an HSM, and is used a handful of times a year. М12 Lesson 36 comes back to this with a signing ceremony.
+Ten years, because a root that expires bricks your update path across the whole fleet. `-nodes` leaves the key unencrypted, which is fine for a lesson and **wrong for production** — a real root key lives offline, on a smartcard or in an HSM, and is used a handful of times a year. М12 Lesson 7 comes back to this with a signing ceremony.
 
 Now an issuing certificate — the one you actually sign bundles with:
 
@@ -275,7 +275,7 @@ cp keyring.pem /etc/rauc/keyring.pem
 rauc install update-2026.09-1.raucb
 ```
 
-Watch the output. RAUC verifies the signature, checks `compatible`, selects the **inactive** slot as the target, writes the image, and marks the slot for the next boot. It never asks which slot to use — that is not a decision an operator should be making, and Lesson 16's design is what makes it derivable.
+Watch the output. RAUC verifies the signature, checks `compatible`, selects the **inactive** slot as the target, writes the image, and marks the slot for the next boot. It never asks which slot to use — that is not a decision an operator should be making, and Lesson 1's design is what makes it derivable.
 
 Confirm:
 
@@ -337,7 +337,7 @@ Refused. With `verity`, corruption anywhere in the payload is caught by the hash
 | Bundle install fails with a compatible mismatch you did not expect | Whitespace or a typo — the comparison is exact. Compare `rauc info` output against `rauc status` output character by character. |
 | RAUC warns about defaulting to the `plain` format | You omitted `bundle-formats` in `system.conf` **or** `format=` in the manifest. Set both; see Step 1. |
 | `rauc bundle` fails with a key error | Check the paths — `~` is not expanded in every context. Use absolute paths if in doubt. |
-| Install fails: "target slot is booted" | RAUC will not overwrite the running slot. If both slots report as booted, `bootname` values in `system.conf` do not match what the bootloader set — check the `rauc.slot=` kernel argument from Lesson 16. |
+| Install fails: "target slot is booted" | RAUC will not overwrite the running slot. If both slots report as booted, `bootname` values in `system.conf` do not match what the bootloader set — check the `rauc.slot=` kernel argument from Lesson 1. |
 | Install from an HTTP URL fails though the bundle is `verity` | Streaming also needs a server supporting HTTP Range requests and NBD support in the kernel. Test with a local file first to isolate. |
 | `openssl cms -verify` fails on a bundle you believe is good | You are probably verifying against `dev.cert.pem` rather than `keyring.pem`. The keyring is the root, not the signer. |
 
@@ -362,4 +362,4 @@ Refused. With `verity`, corruption anywhere in the payload is caught by the hash
 
 You can now ship a signed system into the inactive slot and reboot into it. What you cannot yet do is survive that new system being *broken* — it boots, or it does not, and if it does not, nobody is there to press the down arrow.
 
-Lesson 18 closes that. GRUB gets boot-attempt logic, the new slot has to *prove* it works before it is trusted, and you will ship a deliberately broken update to watch the appliance rescue itself with nobody in the room.
+Lesson 3 closes that. GRUB gets boot-attempt logic, the new slot has to *prove* it works before it is trusted, and you will ship a deliberately broken update to watch the appliance rescue itself with nobody in the room.

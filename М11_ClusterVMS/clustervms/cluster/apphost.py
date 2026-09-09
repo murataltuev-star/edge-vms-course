@@ -1,9 +1,9 @@
 """The Node under a scheduler: М10's AppHost plus what М11 adds.
 
     prologue      identity → migrate → rehydrate → epoch by CAS → lease
-    publish()     every second: publish on change, with a floor           (Lesson 27)
-    lease()       renew by reading my epoch; fence myself if it moved      (Lesson 28)
-    heartbeat()   a timestamp in my Variable, for node_failover_seconds    (Lesson 28)
+    publish()     every second: publish on change, with a floor           (Lesson 3)
+    lease()       renew by reading my epoch; fence myself if it moved      (Lesson 4)
+    heartbeat()   a timestamp in my Variable, for node_failover_seconds    (Lesson 4)
 
 Everything М10 does — reconcile, pump_buses, report, retention, console —
 is inherited unchanged. Only the actuator's gate and the report grow:

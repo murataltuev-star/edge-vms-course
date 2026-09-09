@@ -1,4 +1,4 @@
-"""Lesson 11, Step 5 — one get_data_endpoint per API name, ever."""
+"""Lesson 5, Step 5 — one get_data_endpoint per API name, ever."""
 import os, sys, types
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

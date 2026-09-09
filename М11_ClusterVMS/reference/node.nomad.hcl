@@ -1,4 +1,4 @@
-# reference/node.nomad.hcl — Lesson 26: М10's Node as a Nomad job.
+# reference/node.nomad.hcl — Lesson 2: М10's Node as a Nomad job.
 # One job per Node. The job NAME is the Node's identity; the server it lands
 # on is Nomad's business. Requires Nomad >= 1.8.0 (the disconnect block) and
 # the nomad-driver-podman plugin on every client.
@@ -8,9 +8,9 @@ job "node-3" {
 
   group "node" {
     count = 1                       # "count = 1" does not mean "exactly one" during a
-                                    # reschedule — see Lesson 28. The epoch does.
+                                    # reschedule — see Lesson 4. The epoch does.
 
-    # Lesson 26, Step 6: cameras are not uniformly reachable. The client's
+    # Lesson 2, Step 6: cameras are not uniformly reachable. The client's
     # meta.vlans is set in its agent config from what its NICs can see.
     constraint {
       attribute = "${meta.vlans}"
@@ -18,7 +18,7 @@ job "node-3" {
       value     = "cctv-a"
     }
 
-    # Lesson 28, Step 2: the default (lost immediately, replaced while the
+    # Lesson 4, Step 2: the default (lost immediately, replaced while the
     # partitioned client keeps running its tasks) is wrong for a recorder.
     disconnect {
       lost_after           = "2m"      # how long a silent client keeps its allocation
@@ -27,7 +27,7 @@ job "node-3" {
       reconcile            = "keep_replacement"   # when it comes back, the new one wins
     }
 
-    reschedule {                       # Lesson 28, Step 1: reschedule = different server
+    reschedule {                       # Lesson 4, Step 1: reschedule = different server
       delay          = "15s"
       delay_function = "exponential"
       max_delay      = "2m"
@@ -52,7 +52,7 @@ job "node-3" {
         image        = "docker.io/library/postgres:16"
         network_mode = "host"
         # Per-Node, per-server local disk. Empty on a fresh server: that is
-        # the point — Lesson 27 rehydrates it. NEVER a shared volume here.
+        # the point — Lesson 3 rehydrates it. NEVER a shared volume here.
         volumes = ["/data/nodes/node-3/pg:/var/lib/postgresql/data:z"]
       }
       template {

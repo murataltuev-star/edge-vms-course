@@ -1,8 +1,8 @@
-"""Lesson 21 — the reconcile loop, with nothing in it.
+"""Lesson 2 — the reconcile loop, with nothing in it.
 
 Pure logic over an injected store and actuator. No database, no GStreamer,
 no network. This is the part of the product that survives the rewrite
-(Lesson 24, Step 5): only the actuator changes.
+(Lesson 5, Step 5): only the actuator changes.
 
     Desired state is persisted. Actual state is derived.
 """
@@ -72,8 +72,8 @@ class Reconciler:
         self._fail(cid, now)
 
     def status(self) -> dict[int, tuple[str, int]]:
-        """camera_id -> (position, lag). The vocabulary from Lesson 21, Step 7.
-        Positions only — reasons live on the conditions axis (Lesson 24)."""
+        """camera_id -> (position, lag). The vocabulary from Lesson 2, Step 7.
+        Positions only — reasons live on the conditions axis (Lesson 5)."""
         out: dict[int, tuple[str, int]] = {}
         for cam in self.store.desired():
             if not cam["enabled"]:

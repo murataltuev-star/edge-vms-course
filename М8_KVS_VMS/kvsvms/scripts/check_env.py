@@ -1,4 +1,4 @@
-# scripts/check_env.py — Lesson 13, Step 5: fail with a fix, not a traceback.
+# scripts/check_env.py — Lesson 6, Step 5: fail with a fix, not a traceback.
 import os
 import shutil
 import subprocess

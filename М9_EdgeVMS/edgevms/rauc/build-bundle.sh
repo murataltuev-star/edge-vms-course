@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Lesson 17, Step 4 (and Lesson 18, Steps 4–5) — build and sign a bundle.
+# Lesson 2, Step 4 (and Lesson 3, Steps 4–5) — build and sign a bundle.
 #
 #   rauc/build-bundle.sh 2026.09-1                    # good
-#   rauc/build-bundle.sh 2026.09-2-broken  --broken-kernel   # Lesson 18 failure one
-#   rauc/build-bundle.sh 2026.09-3-broken  --broken-config   # Lesson 18 failure two
-#   rauc/build-bundle.sh 2026.09-1-rogue   --rogue           # Lesson 17 Step 6, wrong signer
-#   rauc/build-bundle.sh 2026.09-1-armhf   --wrong-hardware  # Lesson 17 Step 6, compatible mismatch
+#   rauc/build-bundle.sh 2026.09-2-broken  --broken-kernel   # Lesson 3 failure one
+#   rauc/build-bundle.sh 2026.09-3-broken  --broken-config   # Lesson 3 failure two
+#   rauc/build-bundle.sh 2026.09-1-rogue   --rogue           # Lesson 2 Step 6, wrong signer
+#   rauc/build-bundle.sh 2026.09-1-armhf   --wrong-hardware  # Lesson 2 Step 6, compatible mismatch
 #
 # A signature proves who made an update. It never proves the update works:
 # the --broken-* bundles are signed by the real key on purpose.

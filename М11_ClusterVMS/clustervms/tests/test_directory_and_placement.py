@@ -1,4 +1,4 @@
-"""Lesson 29 — the directory you already built, and placement with its property tests."""
+"""Lesson 5 — the directory you already built, and placement with its property tests."""
 import random
 from cluster.directory import Directory
 from cluster.placement import Camera, Node, Placer, check_invariants

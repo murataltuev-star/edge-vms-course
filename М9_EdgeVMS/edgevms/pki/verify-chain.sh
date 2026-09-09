@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lesson 17, Step 3 — prove the signature check before trusting it.
+# Lesson 2, Step 3 — prove the signature check before trusting it.
 # Same CMS primitive RAUC uses; no RAUC, no VM. Three outcomes, all expected:
 #   1. signed by a key that chains to the keyring        -> accepted
 #   2. signed by a valid key the keyring never heard of  -> refused (who signed this?)

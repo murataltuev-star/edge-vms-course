@@ -249,7 +249,7 @@ The numbers that decide architecture — particularly the one-stream-per-camera 
 
 1. **Live view first.** Switching `PlaybackMode` to `LIVE` is a handful of lines and closes the most conspicuous gap in the finished project — right now students build a system that can only look backwards. It also teaches a real lesson: the same API answers a completely different product question depending on one argument.
 
-2. **Then GetClip.** Export-to-MP4 is the feature every real VMS has, it reuses everything Lesson 11 and 12 already teach, and the timeline hands it the exact inputs it needs. Highest value for the least new material.
+2. **Then GetClip.** Export-to-MP4 is the feature every real VMS has, it reuses everything Lesson 5 and 12 already teach, and the timeline hands it the exact inputs it needs. Highest value for the least new material.
 
 3. **Then fragment metadata, if you want a Module 8.** It's the only route to searchable events, and it's conceptually the richest thing left — it forces students to think about what has to be written at ingest time because it can never be recovered later. That's a genuinely good engineering lesson, not just an API.
 

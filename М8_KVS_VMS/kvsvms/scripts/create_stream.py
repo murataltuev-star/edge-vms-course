@@ -1,4 +1,4 @@
-# scripts/create_stream.py — Lesson 13, Step 4. Idempotent: safe to run any
+# scripts/create_stream.py — Lesson 6, Step 4. Idempotent: safe to run any
 # number of times. ONLY ResourceNotFoundException means "absent, create it";
 # every other code (AccessDenied above all) propagates.
 import os

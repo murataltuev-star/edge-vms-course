@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lesson 19, Steps 6 and 9 — the spool, its uploader, and the two numbers.
+"""Lesson 4, Steps 6 and 9 — the spool, its uploader, and the two numbers.
 
     capture -> splitmuxsink -> /data/spool/<camera>/<timestamp>.mp4
                                         |
@@ -100,7 +100,7 @@ def write_signals(path, signals):
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default="/data/spool")
-    ap.add_argument("--max-bytes", type=int, required=True, help="Lesson 16's number: cameras x bitrate x outage")
+    ap.add_argument("--max-bytes", type=int, required=True, help="Lesson 1's number: cameras x bitrate x outage")
     ap.add_argument("--policy", choices=["drop-oldest", "stop-recording"], default="drop-oldest")
     ap.add_argument("--budget", type=int, default=2, help="segments per tick during catch-up")
     ap.add_argument("--tick", type=float, default=5.0)

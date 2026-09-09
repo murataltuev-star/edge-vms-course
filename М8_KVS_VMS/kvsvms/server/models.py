@@ -1,4 +1,4 @@
-# server/models.py — Lesson 12, Step 1: the timestamp boundary.
+# server/models.py — Lesson 5, Step 6: the timestamp boundary.
 # boto3 speaks datetime; this API speaks Unix-epoch floats. The conversion
 # happens here and nowhere else.
 from datetime import datetime, timezone

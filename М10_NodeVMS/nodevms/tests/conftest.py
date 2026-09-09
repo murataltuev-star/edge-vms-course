@@ -1,6 +1,6 @@
 """Fakes for the tests that run in milliseconds on every commit.
 
-Lesson 23, Step 6: the Lesson 21 tests need no database, no GStreamer and no
+Lesson 4, Step 6: the Lesson 2 tests need no database, no GStreamer and no
 network. The rest need a Postgres container (DATABASE_URL) and a simulated
 camera (tools/fake_camera.py) — still no appliance.
 """

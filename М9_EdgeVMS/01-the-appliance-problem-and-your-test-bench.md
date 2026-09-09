@@ -1,4 +1,4 @@
-# Lesson 16 — The Appliance Problem, and Your Test Bench
+# Lesson 1 — The Appliance Problem, and Your Test Bench
 
 **Module:** EdgeVMS — shipping the VMS as an appliance (Module 9)
 **You will build:** a QEMU x86-64 UEFI virtual machine with a full A/B partition layout, booting either root filesystem on demand.
@@ -16,8 +16,8 @@ That single constraint invalidates the update model you have been using your who
 
 ## Prerequisites
 
-- **Lessons 7–8** — containers and images, and why credentials are passed by name rather than baked in. The same instinct drives this whole module.
-- **Lesson 13** — `config.py` reads settings but never credentials. That discipline is what makes an appliance image shippable at all, and Lesson 19 gives it teeth.
+- **М8 Lesson 3** — containers and images, and why credentials are passed by name rather than baked in. The same instinct drives this whole module.
+- **М8 Lesson 6** — `config.py` reads settings but never credentials. That discipline is what makes an appliance image shippable at all, and Lesson 4 gives it teeth.
 - A Linux host, or a Linux VM with nested virtualisation. macOS and Windows work through a Linux VM; running QEMU natively on either is possible but not a road this course maps.
 - Installed: `qemu-system-x86_64`, `qemu-utils`, `ovmf` (the UEFI firmware), `parted` or `sfdisk`, and `e2fsprogs`.
   - **Debian/Ubuntu:** `sudo apt install qemu-system-x86 qemu-utils ovmf parted e2fsprogs`
@@ -89,7 +89,7 @@ Updating means: write the entire new system into the slot you are *not* running 
 
 Three things about this layout are worth more attention than they usually get.
 
-**The two rootfs slots are byte-identical when you ship.** Every appliance leaves the factory with the same image in both slots. That is what makes A/B work — either slot must be able to run the product. It also means **nothing device-specific can live inside a slot**: no serial number, no certificate, no per-customer configuration. This constraint comes back in Lesson 19 and dominates М12.
+**The two rootfs slots are byte-identical when you ship.** Every appliance leaves the factory with the same image in both slots. That is what makes A/B work — either slot must be able to run the product. It also means **nothing device-specific can live inside a slot**: no serial number, no certificate, no per-customer configuration. This constraint comes back in Lesson 4 and dominates М12.
 
 **The rootfs slots are read-only at runtime.** Not by convention — mounted `ro`. If the running system can write to itself, you have quietly reintroduced in-place mutation and the second slot is theatre. Everything that needs to change goes on the data partition.
 
@@ -110,7 +110,7 @@ The fourth is a product decision, and this is the moment to take it rather than 
 
 The data partition holds three things. Configuration is kilobytes. Podman's image and volume storage is a gigabyte or two, and bounded. The third is **the spool** — footage recorded but not yet uploaded — and it is not bounded by anything except the number you pick here.
 
-You will build the spool in Lesson 19. What it needs from you now is a size, and the size answers a question in the product specification:
+You will build the spool in Lesson 4. What it needs from you now is a size, and the size answers a question in the product specification:
 
 > *How long an uplink outage must this appliance survive without losing footage?*
 
@@ -173,7 +173,7 @@ sudo mkfs.ext4 -q  -L data    /dev/nbd0p4
 lsblk -f /dev/nbd0
 ```
 
-`lsblk -f` should now list four filesystems with those four labels. **Take a screenshot or copy that output into your notes** — in Lesson 18 you will deliberately damage this system, and knowing exactly what healthy looked like is worth more than it sounds.
+`lsblk -f` should now list four filesystems with those four labels. **Take a screenshot or copy that output into your notes** — in Lesson 3 you will deliberately damage this system, and knowing exactly what healthy looked like is worth more than it sounds.
 
 ## Step 5 — Put a system in slot A, and only slot A
 
@@ -234,7 +234,7 @@ Three details in there are load-bearing:
 
 - **`root=LABEL=rootfs0`, not `/dev/sda2`.** Device names are assigned in discovery order and are not a stable identity. Labels are.
 - **`ro`.** The root filesystem mounts read-only, as Step 2 insisted.
-- **`rauc.slot=A`.** A kernel command-line marker naming the slot. Nothing reads it yet; Lesson 17 does.
+- **`rauc.slot=A`.** A kernel command-line marker naming the slot. Nothing reads it yet; Lesson 2 does.
 
 Copy slot A into slot B, exactly as the factory would:
 
@@ -301,7 +301,7 @@ touch /tmp/nothing            # works: tmpfs
 touch /marker                 # fails: read-only file system
 ```
 
-That second failure is the design working. If it succeeded, your `ro` did not take, and Lesson 18's rollback would have nothing to roll back to.
+That second failure is the design working. If it succeeded, your `ro` did not take, and Lesson 3's rollback would have nothing to roll back to.
 
 ---
 
@@ -332,11 +332,11 @@ That second failure is the design working. If it succeeded, your `ro` did not ta
 1. Work out the data partition size for **16 cameras at 6 Mbit/s surviving 12 hours**, then again for **4 cameras at 2 Mbit/s surviving 7 days**. One of those two is a much larger disk than intuition suggests — decide which before calculating, then see whether you were right.
 2. Boot slot A and try `touch /marker`. Explain in one sentence why this failing is the design working rather than a misconfiguration.
 3. Mount the data partition inside the running VM (`mount /dev/vda4 /mnt`) and confirm it is writable from **both** slots. This is the only part of the disk with that property; be able to say why.
-4. Deliberately corrupt slot B — boot slot A and run `dd if=/dev/zero of=/dev/vda3 bs=1M count=50` — then reboot and try to boot B. Watch it fail, then boot A and confirm it is completely unaffected. You have just performed, by hand, the failure that Lesson 18 makes the system handle automatically.
-5. Look at `ls -la appliance.qcow2` and compare it to the 40 GB you asked for. Explain the difference, and predict what happens to that number after Lesson 17 writes a second full system into slot B.
+4. Deliberately corrupt slot B — boot slot A and run `dd if=/dev/zero of=/dev/vda3 bs=1M count=50` — then reboot and try to boot B. Watch it fail, then boot A and confirm it is completely unaffected. You have just performed, by hand, the failure that Lesson 3 makes the system handle automatically.
+5. Look at `ls -la appliance.qcow2` and compare it to the 40 GB you asked for. Explain the difference, and predict what happens to that number after Lesson 2 writes a second full system into slot B.
 
 ## Where this is going
 
 You have two slots and a menu. Choosing between them is currently a human pressing a down arrow, which is exactly what an appliance cannot rely on.
 
-Lesson 17 replaces the human with **RAUC**: a configuration describing the slots, a signed bundle format for shipping a new system, and a signature check that is not optional. You will build a certificate authority with real `openssl`, sign a bundle with it, and prove — by watching it fail — that a bundle signed by anybody else is refused.
+Lesson 2 replaces the human with **RAUC**: a configuration describing the slots, a signed bundle format for shipping a new system, and a signature check that is not optional. You will build a certificate authority with real `openssl`, sign a bundle with it, and prove — by watching it fail — that a bundle signed by anybody else is refused.

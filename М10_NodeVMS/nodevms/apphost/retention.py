@@ -1,4 +1,4 @@
-"""Lesson 23, Step 3 — retention that runs while the disk is full.
+"""Lesson 4, Step 3 — retention that runs while the disk is full.
 
 Three rules, in the order a crash makes them matter:
 

@@ -1,4 +1,4 @@
-"""Lesson 28, Step 4 — the wrong answer first, then the right one."""
+"""Lesson 4, Step 4 — the wrong answer first, then the right one."""
 import threading, time, uuid
 from variables import Conflict, VariableLock, Variables, next_epoch
 

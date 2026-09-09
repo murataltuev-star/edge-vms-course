@@ -1,4 +1,4 @@
-"""Lesson 23, Step 3 — retention under pressure, policy honoured, event logged."""
+"""Lesson 4, Step 3 — retention under pressure, policy honoured, event logged."""
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone

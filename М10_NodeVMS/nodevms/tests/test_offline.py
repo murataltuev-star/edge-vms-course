@@ -1,4 +1,4 @@
-"""Lesson 23, Step 1 — camera offline; then 200 at once."""
+"""Lesson 4, Step 1 — camera offline; then 200 at once."""
 from __future__ import annotations
 
 import random

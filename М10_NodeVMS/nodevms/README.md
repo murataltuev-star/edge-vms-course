@@ -1,28 +1,28 @@
 # NodeVMS — the М10 project, whole
 
-The code Lessons 20–24 build, assembled as one runnable Node. `INSERT INTO
+The code Lessons 1–5 build, assembled as one runnable Node. `INSERT INTO
 cameras` starts a recording; `DELETE` stops it; `SIGKILL` loses the open
 segment and nothing else; an operator sees all of it behind a login.
 
 ```
 nodevms/
-  migrations/          Lesson 20 — schema, partitions, operators; Lesson 24 — conditions + camera_status
+  migrations/          Lesson 1 — schema, partitions, operators; Lesson 5 — conditions + camera_status
   apphost/
-    reconciler.py      Lesson 21 — the loop, with nothing in it (pure; survives the rewrite)
-    pipeline.py        Lesson 22 — CameraPipeline state machine, GstActuator, FakeActuator
-    retention.py       Lesson 23 — partitions ahead, detach+drop, the disk-full policy, orphan sweep
-    apphost.py         Lessons 21–24 — reconcile / pump_buses / report / retention, one process
+    reconciler.py      Lesson 2 — the loop, with nothing in it (pure; survives the rewrite)
+    pipeline.py        Lesson 3 — CameraPipeline state machine, GstActuator, FakeActuator
+    retention.py       Lesson 4 — partitions ahead, detach+drop, the disk-full policy, orphan sweep
+    apphost.py         Lessons 2–5 — reconcile / pump_buses / report / retention, one process
     store.py           every SQL statement, in one file, so the column split is enforced in one place
-    secrets.py         Lesson 20 — the credential that was hiding in rtsp_url
-    config.py          settings from the environment (М8 Lesson 13)
+    secrets.py         Lesson 1 — the credential that was hiding in rtsp_url
+    config.py          settings from the environment (М8 Lesson 6)
   console/
-    app.py             Lesson 24 — /login, /cameras, /status, /timeline, /events, /metrics
-    auth.py            Lesson 24 — argon2, one account, marked temporary
-  tests/               Lesson 23, Step 6 — converge, offline, stall, diskfull, restart (+ apphost)
+    app.py             Lesson 5 — /login, /cameras, /status, /timeline, /events, /metrics
+    auth.py            Lesson 5 — argon2, one account, marked temporary
+  tests/               Lesson 4, Step 6 — converge, offline, stall, diskfull, restart (+ apphost)
   tools/
-    provision.py       key, operator, camera, migrate — the hand-provisioned things Lesson 20 counts
+    provision.py       key, operator, camera, migrate — the hand-provisioned things Lesson 1 counts
     fake_camera.py     an RTSP camera you can stall with a signal, socket held open
-  quadlet/             Lesson 20, Step 9 — postgres.container, apphost.container, env example
+  quadlet/             Lesson 1, Step 9 — postgres.container, apphost.container, env example
   Containerfile
 ```
 
@@ -53,7 +53,7 @@ nodevms/
 ## Running it on the bench
 
 ```bash
-# 1. Postgres on the data partition (Lesson 20, Step 9)
+# 1. Postgres on the data partition (Lesson 1, Step 9)
 mkdir -p /data/pg /data/config /data/archive
 podman run -d --name pg -e POSTGRES_USER=nodevms -e POSTGRES_PASSWORD=change-me \
   -e POSTGRES_DB=nodevms -v /data/pg:/var/lib/postgresql/data:z -p 127.0.0.1:5432:5432 postgres:16
@@ -108,7 +108,7 @@ Honest accounting, in the module's own convention:
 - **Run, output real:** `tests/` — 27 tests, plain Python, no database, no GStreamer (reconciler, backoff and jitter, retention order and all three disk-full policies, the AppHost glue, segment naming, the credential encryption and the URL validator). Every SQL statement in `store.py` and all four migrations were executed against **PostgreSQL 16.13**, twice (idempotency), including `DETACH`/`DROP`, the `camera_status` view and the `ON CONFLICT` upsert that keeps `since` still.
 - **Written to the documentation, not executed here:** the GStreamer path in `pipeline.py` (`splitmuxsink-fragment-closed` element messages, `format-location`, `pop_filtered`), `tools/fake_camera.py`, and the HTTP layer of `console/app.py`. They compile and import; they need a bench with GStreamer 1.18+ and a real `asyncpg`/`fastapi` install to run, which the authoring sandbox did not have. Run `tests/test_stall.py` first when you have one.
 
-## One correction to Lesson 20, found by running it
+## One correction to Lesson 1, found by running it
 
 The lesson's trigger is
 
@@ -127,9 +127,9 @@ split from Step 3 enforced by the database rather than by convention.
 
 ## Known gaps, named
 
-- The column key is a file on the data partition (Lesson 20 says so; М11 delivers it as a Nomad Variable).
+- The column key is a file on the data partition (Lesson 1 says so; М11 delivers it as a Nomad Variable).
 - `stop_recording` stops *new* pipelines and lets running ones finish their open segment; it does not pre-empt a segment mid-write.
-- The orphan sweep reports and never deletes (Lesson 23, exercise 4 — the decision is yours).
+- The orphan sweep reports and never deletes (Lesson 4, exercise 4 — the decision is yours).
 - `fake_camera.py` stalls every stream on `USR1`; a per-stream stall is a small change to the valve wiring and a good exercise.
 - `CameraPipeline.stop()` sends EOS and goes to NULL without waiting for the muxer to finalize; a graceful drain is a `timed_pop_filtered` for EOS, which blocks, so it belongs in shutdown only. `SIGTERM` therefore behaves like the lesson's `SIGKILL` for the open segment.
-- Sessions are in memory. This is the fourth temporary secret; М12 Lesson 33 replaces it.
+- Sessions are in memory. This is the fourth temporary secret; М12 Lesson 4 replaces it.

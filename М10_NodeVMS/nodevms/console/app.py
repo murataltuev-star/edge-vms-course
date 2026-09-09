@@ -1,4 +1,4 @@
-"""Lesson 24 — the console: one query, positions and reasons on separate
+"""Lesson 5 — the console: one query, positions and reasons on separate
 axes, and the Node's two exported signals.
 
 Operator-owned columns are the ONLY fields any request body can carry.

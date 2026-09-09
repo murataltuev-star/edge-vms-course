@@ -1,4 +1,4 @@
-"""Lesson 13, Step 4 — idempotent provisioning; errors other than
+"""Lesson 6, Step 4 — idempotent provisioning; errors other than
 ResourceNotFoundException propagate."""
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

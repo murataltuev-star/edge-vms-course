@@ -1,4 +1,4 @@
-"""Lesson 27 — the six steps, as code.
+"""Lesson 3 — the six steps, as code.
 
     1. empty Postgres; migrations run                 (the AppHost did this)
     2. read its own Nomad Variable                    (identity.from_environment)

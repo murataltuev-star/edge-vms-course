@@ -1,4 +1,4 @@
-# Lesson 21 — A Reconcile Loop with Nothing in It
+# Lesson 2 — A Reconcile Loop with Nothing in It
 
 **Module:** NodeVMS — one Node learns what it should be (Module 10)
 **You will build:** the AppHost's reconcile loop, complete with backoff, status vocabulary and a restart test — with `print()` where GStreamer will go.
@@ -6,7 +6,7 @@
 
 ## Why this lesson exists
 
-This is the `camera_sim.py` move from Lesson 5, applied to control instead of media: **build the loop before the thing it controls.**
+This is the `camera_sim.py` move from М8 Lesson 2, applied to control instead of media: **build the loop before the thing it controls.**
 
 The reason is not convenience. A reconcile loop is about thirty lines, and every one of them is a decision. Attach real pipelines and those decisions become invisible — every bug looks like a GStreamer bug, every test takes eight seconds to run, and you cannot tell a broken state machine from a camera that is genuinely offline. Build it against a `print()` and the loop is the only thing in the room.
 
@@ -16,8 +16,8 @@ You will also make both classic mistakes on purpose, because one of them produce
 
 ## Prerequisites
 
-- **Lesson 20** — the schema, `revision`, and the operator/controller column split.
-- **Lessons 5–6** — process supervision, exponential backoff, and the self-matching `pkill` bug. The AppHost is what `looper.py` grows into.
+- **Lesson 1** — the schema, `revision`, and the operator/controller column split.
+- **М8 Lesson 2** — process supervision, exponential backoff, and the self-matching `pkill` bug. The AppHost is what `looper.py` grows into.
 - Python 3.11+. No third-party packages are needed for this lesson.
 
 ## Learning objectives
@@ -49,7 +49,7 @@ The second bug is worse in every dimension: silent, plausible, and it survives r
 ## Step 2 — The loop
 
 ```python
-"""apphost.py — Lesson 21. No database, no GStreamer: the loop only."""
+"""apphost.py — Lesson 2. No database, no GStreamer: the loop only."""
 import random
 
 CONVERGED, LAGGING, STALLED = "converged", "lagging", "stalled"
@@ -95,7 +95,7 @@ Three lines deserve attention.
 
 **`self.actual = {}` in `__init__`, with a shouted comment.** A fresh process knows nothing and must rediscover everything. The comment is there because the "optimisation" of saving it looks so reasonable at 4pm on a Friday.
 
-**`have["revision"] >= cam["revision"]`, not `==`.** Ordering, not equality — the whole reason Lesson 20 made `revision` an integer. `>=` also means a worker somehow ahead of the store is left alone rather than pointlessly restarted.
+**`have["revision"] >= cam["revision"]`, not `==`.** Ordering, not equality — the whole reason Lesson 1 made `revision` an integer. `>=` also means a worker somehow ahead of the store is left alone rather than pointlessly restarted.
 
 **The stop loop iterates `self.actual`, not `desired`.** You cannot learn about a deletion by looking at rows that exist. Everything that must be *stopped* is found by walking what you are running and asking whether it is still wanted.
 
@@ -234,7 +234,7 @@ The console will need words, and picking them now stops them being invented ad h
 
 The distinction that costs you if you skip it is **lagging versus stalled**. Both mean *not applied*. One is the system working — a change made 300 ms ago has not reached the worker — and one is the system failing. An interface that shows the same amber for both trains its operators to ignore amber, which is how a genuinely stalled camera stays stalled for a fortnight.
 
-And one thing to keep *out* of that list. `unreachable` is about the Node; the other three are about a camera. **A camera that cannot converge because the disk is full is not a fourth phase** — it is `lagging` with a *reason*. Positions and reasons are different axes, and Lesson 24 keeps them apart properly. Kubernetes shipped a phase enum and then documented why it was a mistake; this is the cheap moment to not repeat it.
+And one thing to keep *out* of that list. `unreachable` is about the Node; the other three are about a camera. **A camera that cannot converge because the disk is full is not a fourth phase** — it is `lagging` with a *reason*. Positions and reasons are different axes, and Lesson 5 keeps them apart properly. Kubernetes shipped a phase enum and then documented why it was a mistake; this is the cheap moment to not repeat it.
 
 **Deliverable:** an AppHost that converges a fake world, is silent once converged, spreads its retries, and passes a test that kills it mid-change and confirms it rebuilds from the store alone.
 
@@ -274,4 +274,4 @@ And one thing to keep *out* of that list. `unreachable` is about the Node; the o
 
 The loop works and does nothing useful: its actuator prints. Every decision in it is now visible and tested, which is exactly the state you want before adding a media framework.
 
-**Lesson 22 swaps the `print()` for GStreamer** — fifty pipelines in one Python process, the GIL boundary demonstrated by deliberately crossing it and watching the worker fall over, and the `watchdog` element doing stall detection in C so that Python never touches a buffer. It is also where М9's spool quietly becomes an archive: the same sink writes the same files, and instead of deleting each one on upload, you write an index row.
+**Lesson 3 swaps the `print()` for GStreamer** — fifty pipelines in one Python process, the GIL boundary demonstrated by deliberately crossing it and watching the worker fall over, and the `watchdog` element doing stall detection in C so that Python never touches a buffer. It is also where М9's spool quietly becomes an archive: the same sink writes the same files, and instead of deleting each one on upload, you write an index row.

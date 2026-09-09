@@ -1,4 +1,4 @@
-# reference/server.hcl — Lesson 25: one of three Nomad servers. Raft needs a
+# reference/server.hcl — Lesson 1: one of three Nomad servers. Raft needs a
 # quorum: three tolerates one loss, five tolerates two. Never two, never four.
 datacenter = "room-a"
 data_dir   = "/data/nomad"
@@ -12,5 +12,5 @@ server {
 }
 
 acl {
-  enabled = true                        # Lesson 26: Variables are ACL'd; one writer per key
+  enabled = true                        # Lesson 2: Variables are ACL'd; one writer per key
 }

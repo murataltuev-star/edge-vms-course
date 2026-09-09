@@ -49,7 +49,7 @@ clustervms/
 
 `node_failover_seconds` is recording-resumed minus the old instance's last heartbeat, recorded on the first pass that starts a pipeline after a restore, and kept as `last` and `worst` in `nodes/<node>/failover`. `node_epoch_conflicts` is the lease's count of finding a foreign epoch in its own Variable; it should be zero forever.
 
-## Bringing up a Node (Lessons 25–26)
+## Bringing up a Node (Lessons 1 and 2)
 
 ```bash
 # the cluster: deploy/server.hcl on three servers, deploy/client.hcl on every server that runs Nodes
@@ -75,7 +75,7 @@ Add cameras through М10's console (`POST /cameras`) or `psql`; within a
 second the Node publishes `node-3/rev-N` to the object store and points its
 Variable at it. `GET /cluster/where/7` answers from the directory.
 
-## The failover (Lessons 27–28)
+## The failover (Lessons 3 and 4)
 
 ```bash
 nomad node drain -enable -yes <server>        # planned: the Node moves, its open segment finalizes
@@ -117,7 +117,7 @@ in its Variable, logs `FENCED`, stops every pipeline, and
 ## Known gaps, named
 
 - **The ACL scoping of Variable writes per job is the module's open question.** `render.py --bootstrap` prints the `nomad acl policy apply -job` line the docs describe; whether the task's workload-identity token then gets exactly `nodes/node-3*` and nothing else is what to verify on the bench before trusting one-writer-per-key.
-- The archive index does not travel (Lesson 27, by design). After a failover the new instance has no index rows for the old server's footage; the rebuild-by-scan when that server returns is М10's orphan sweep run forwards and is not written here.
-- A camera move decided by `tools/place.py` is recorded in `placement/<camera>`; the Nodes do not yet *act* on it — the wire from a placement row to М10's `cameras` table on the losing and gaining Nodes is the two-writer handover Lesson 29 describes, and it belongs with М12's placement-at-the-level-above.
+- The archive index does not travel (Lesson 3, by design). After a failover the new instance has no index rows for the old server's footage; the rebuild-by-scan when that server returns is М10's orphan sweep run forwards and is not written here.
+- A camera move decided by `tools/place.py` is recorded in `placement/<camera>`; the Nodes do not yet *act* on it — the wire from a placement row to М10's `cameras` table on the losing and gaining Nodes is the two-writer handover Lesson 5 describes, and it belongs with М12's placement-at-the-level-above.
 - `HttpObjectStore` assumes anonymous PUT/GET on the bucket; a signed-S3 adapter is twenty lines of boto3 on the same two methods, left out to keep the Node image dependency-free.
 - `HEARTBEAT_INTERVAL=30` is a raft write per Node per 30 s. At a thousand Nodes that is 33 writes/s to the servers; the interval should scale with the cluster, and `node_failover_seconds` is measured at that granularity.

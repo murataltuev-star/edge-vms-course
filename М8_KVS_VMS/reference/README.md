@@ -1,4 +1,4 @@
-# Reference implementation — Lessons 14 & 15
+# Reference implementation — Lessons 7 and 8
 
 `web/index.html`, `web/style.css` and `web/app.js` here are the exact files the two
 frontend lessons build, in their finished state. They are provided so you can compare
@@ -9,11 +9,11 @@ These files were verified by rendering them in a real browser (headless Chromium
 against a stub server, across five states: footage present, empty archive, playback
 with a visible playhead, an externally-started agent, and a 380px viewport. The
 geometry and interaction logic were additionally tested in `node` — 17 and 25
-assertions respectively, reproduced verbatim in Lessons 14 and 15.
+assertions respectively, reproduced verbatim in Lessons 7 and 8.
 
 `timeline-rendered.png` is one of those renders: four runs, three gaps, the tick
 ruler, and the meta row, at 1240px.
 
 `server/` and `edge/` are not here: the lessons build them incrementally and list
-them in full in Lessons 5–13. The assembled tree — with these three web files
+them in full in Lessons 2–6. The assembled tree — with these three web files
 copied in beside it — is [`../kvsvms/`](../kvsvms/README.md).

@@ -1,7 +1,7 @@
-# Lesson 14 — The Timeline
+# Lesson 7 — The Timeline
 
-**Module:** The Frontend & Assembly (Module 7)
-**You will build:** `web/index.html`, `web/style.css`, and the geometry half of `web/app.js` — a surveillance-console timeline that renders real runs and real gaps from the server you assembled in Lesson 13.
+**Module:** KVS-VMS — a cloud VMS on Kinesis Video Streams (Module 8)
+**You will build:** `web/index.html`, `web/style.css`, and the geometry half of `web/app.js` — a surveillance-console timeline that renders real runs and real gaps from the server you assembled in Lesson 6.
 **Time:** ~90 minutes.
 
 ## Why this lesson exists
@@ -12,9 +12,9 @@ So this lesson separates the two things that usually get tangled in frontend cod
 
 ## Prerequisites
 
-- Lesson 13 — a running `make serve` with `/api/fragments` answering.
+- Lesson 6 — a running `make serve` with `/api/fragments` answering.
 - Basic JavaScript: `const`/`let`, arrow functions, `fetch`, `async/await`, array methods. No framework experience needed; there is no framework.
-- For the development loop: run the server with `VMS_FIXTURES=1` (Lesson 13, Step 7) so the timeline has runs to draw before you've published any real footage.
+- For the development loop: run the server with `VMS_FIXTURES=1` (Lesson 6, Step 7) so the timeline has runs to draw before you've published any real footage.
 
 ## Learning objectives
 
@@ -57,7 +57,7 @@ Note that these are **exported, browser-free functions**. That's not ceremony �
 
 ## Step 2 — Runs are bars; gaps are nothing
 
-The server hands you `runs` — the merged, contiguous stretches from Lesson 12. Each becomes one absolutely-positioned element:
+The server hands you `runs` — the merged, contiguous stretches from Lesson 5. Each becomes one absolutely-positioned element:
 
 ```js
 export function barGeometry(run, win) {
@@ -77,7 +77,7 @@ Four cases are handled in those four lines, and all four occur with real data wi
 
 The `Math.max(…, 0.15)` floor matters more than it looks. Over a 60-minute window, one second of footage is 0.028% of the track — about a third of a pixel at 1200px wide, which rounds away to nothing. A short recording would exist in the data and be invisible on screen, which is the worst possible outcome for an interface whose whole job is showing you what exists. The floor guarantees a hairline.
 
-**Gaps are not elements.** There is no gap object, no `.gap` class, no loop over the spaces between runs. A gap is simply the track's own background where no bar was drawn. This is the single most useful structural decision on this screen: gaps require no code, can never disagree with the runs around them, and — the reason it matters in Lesson 15 — a click that lands on a gap hits the track, not a bar, so "clicking a gap does nothing" needs no special case either.
+**Gaps are not elements.** There is no gap object, no `.gap` class, no loop over the spaces between runs. A gap is simply the track's own background where no bar was drawn. This is the single most useful structural decision on this screen: gaps require no code, can never disagree with the runs around them, and — the reason it matters in Lesson 8 — a click that lands on a gap hits the track, not a bar, so "clicking a gap does nothing" needs no special case either.
 
 ## Step 3 — A ruler on real clock minutes
 
@@ -113,8 +113,8 @@ const el = (id) => document.getElementById(id);
 const state = {
   win: windowFor(Date.now() / 1000),
   runs: [],
-  chunk: null,      // Lesson 15
-  hls: null,        // Lesson 15
+  chunk: null,      // Lesson 8
+  hls: null,        // Lesson 8
   inFlight: false,
 };
 
@@ -358,7 +358,7 @@ This is worth doing even though it feels like overkill for a page with no framew
 </html>
 ```
 
-Forty-six lines, and it is the whole interface. The status strip, player, and recording button are wired in Lesson 15; the markup is here because the layout is one composition and splitting it across two lessons would mean building it twice.
+Forty-six lines, and it is the whole interface. The status strip, player, and recording button are wired in Lesson 8; the markup is here because the layout is one composition and splitting it across two lessons would mean building it twice.
 
 The palette and type are not defaults — the spec asks for a surveillance console, not a dashboard, and names the reasoning:
 
@@ -449,7 +449,7 @@ If the runs render at plausible-but-wrong positions, don't debug the CSS. Re-run
 
 | Symptom | Likely cause |
 |---|---|
-| Timeline is blank but `/api/fragments` returns runs in `curl` | Check the browser console — most often a JS error before `renderTimeline`, or `app.js` served from cache (Lesson 13's `Cache-Control`). |
+| Timeline is blank but `/api/fragments` returns runs in `curl` | Check the browser console — most often a JS error before `renderTimeline`, or `app.js` served from cache (Lesson 6's `Cache-Control`). |
 | Overlay never hides no matter what the JS does | Missing `[hidden] { display: none !important; }` — the author `display: flex` is beating the UA stylesheet. Step 5. |
 | Page scrolls sideways on a narrow window | An edge tick label hanging outside the track; apply Step 4's clamp. |
 | Bars are in the right order but all shifted | `state.win` computed once at startup instead of at the top of each poll. |
@@ -479,4 +479,4 @@ If the runs render at plausible-but-wrong positions, don't debug the CSS. Re-run
 
 ## Where this is going
 
-The timeline renders real runs and real gaps, and it slides. Lesson 15 makes it *do* something: clicking a bar mints an HLS URL and plays that moment, the playhead tracks playback, and the Start/Stop button takes control of the edge agent — at which point every piece built since Lesson 1 is running at once, and the system is finished.
+The timeline renders real runs and real gaps, and it slides. Lesson 8 makes it *do* something: clicking a bar mints an HLS URL and plays that moment, the playhead tracks playback, and the Start/Stop button takes control of the edge agent — at which point every piece built since Lesson 1 is running at once, and the system is finished.

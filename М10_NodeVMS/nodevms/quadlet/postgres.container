@@ -1,4 +1,4 @@
-# /etc/containers/systemd/postgres.container — Lesson 20, Step 9.
+# /etc/containers/systemd/postgres.container — Lesson 1, Step 9.
 # PGDATA on the data partition, never in a rootfs slot: an A/B update that
 # destroyed every camera row would boot perfectly and never roll back.
 [Unit]

@@ -62,13 +62,13 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 
 | Module | Layer it builds | State |
 |---|---|---|
-| [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 15 lessons |
-| [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback | **Written** · 4 lessons (16–19) |
-| [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — the Node's own state<br>4 · AppHost — the loop that acts on it | **Written** · 5 lessons (20–24) |
-| [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — a Node that outlives its server, inside one cluster<br>4 · The cluster's own directory | **Written** · 5 lessons (25–29) |
-| [**М12** — DomainVMS](./М12_DomainVMS) | 4 · Several clusters, one directory of directories<br>5 · The domain as its own root: enrollment, lifetimes, identity<br>7 · Its own update server, and clusters it rents for itself | **Designed** · 8 lessons (30–37) |
-| [**М13** — Observability](./М13_Observability) | 6 · Prometheus + logs — collecting what М9–М12 emit, from the domain's hosting cluster | **Designed** · 4 lessons (38–41) |
-| [**М14** — VendorVMS](./М14_VendorVMS) | *Not a layer.* MASA, the licence system, publishing, the hosting business — and what the vendor must never be able to do | **Designed** · 5 lessons (42–46) |
+| [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 8 lessons |
+| [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback | **Written** · 4 lessons |
+| [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — the Node's own state<br>4 · AppHost — the loop that acts on it | **Written** · 5 lessons |
+| [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — a Node that outlives its server, inside one cluster<br>4 · The cluster's own directory | **Written** · 5 lessons |
+| [**М12** — DomainVMS](./М12_DomainVMS) | 4 · Several clusters, one directory of directories<br>5 · The domain as its own root: enrollment, lifetimes, identity<br>7 · Its own update server, and clusters it rents for itself | **Designed** · 8 lessons |
+| [**М13** — Observability](./М13_Observability) | 6 · Prometheus + logs — collecting what М9–М12 emit, from the domain's hosting cluster | **Designed** · 4 lessons |
+| [**М14** — VendorVMS](./М14_VendorVMS) | *Not a layer.* MASA, the licence system, publishing, the hosting business — and what the vendor must never be able to do | **Designed** · 5 lessons |
 
 **[GLOSSARY.md](./GLOSSARY.md)** defines every term the course uses precisely — Node versus Server, desired versus actual state, epoch and fencing, and the acronyms it would otherwise leave unexplained.
 
@@ -94,7 +94,7 @@ Fifteen lessons take a student who knows Python but has never built a web applic
 
 Four lessons turning that cloud VMS into an appliance: A/B partitions, signed update bundles, rollback proven by shipping a deliberately broken update, and then Podman and Quadlet.
 
-Its spine is that a real edge product has **two independent update planes** — the operating system underneath, the workload on top — and both are visible on one box. Lesson 19 is where it bites: Podman's storage must be redirected to the data partition, because images and volumes left in a rootfs slot are destroyed by the next OS update. Conflate the planes and you build systems where a config change requires an OS flash.
+Its spine is that a real edge product has **two independent update planes** — the operating system underneath, the workload on top — and both are visible on one box. М9 Lesson 4 is where it bites: Podman's storage must be redirected to the data partition, because images and volumes left in a rootfs slot are destroyed by the next OS update. Conflate the planes and you build systems where a config change requires an OS flash.
 
 The same lesson has the module's other sharp edge. **Pull the network cable for ten minutes and go looking for those ten minutes of video** — with `kvssink` publishing straight to AWS there is nothing behind it, so an uplink blink is data loss rather than a visibility problem. So the box spools segments to the data partition and uploads them separately, deleting only on acknowledgement. Those segments are the first thing in the course a later module *upgrades* rather than replaces: **М10 puts an index over the same files and they become the archive; М13 makes the upload conditional.**
 
@@ -147,9 +147,9 @@ The shape that makes it a module rather than a chapter is a campus: **three serv
 
 It turns out not to be a database at all: a key-value entry per Node for the list, an object per Node for the restore point. Five revisions of the decision record moved in one direction throughout, and the last one removed the database entirely.
 
-Because the Node is the writer, it is also the thing that must be reachable and protected: Lesson 33 gives every Node↔directory stream **mTLS from the domain's own root** — and that root is the customer's, self-signed on purpose, with nothing above it. Certificates are issued *inside* the domain, so renewal never depends on anyone — the same reason grants live in each Node and carry an expiry rather than being looked up.
+Because the Node is the writer, it is also the thing that must be reachable and protected: М12 Lesson 4 gives every Node↔directory stream **mTLS from the domain's own root** — and that root is the customer's, self-signed on purpose, with nothing above it. Certificates are issued *inside* the domain, so renewal never depends on anyone — the same reason grants live in each Node and carry an expiry rather than being looked up.
 
-**The second half is the domain looking after itself.** A box enrolls into the domain (Lesson 35) and receives its certificate from the domain's own signer; the root gets lifetimes and a rotation drill (36), because nobody above will re-issue anything; and the domain provisions a cluster in the customer's own cloud account (37) and proves the Node cannot tell where it is running. That last one closes the arc: **М8 rented a cloud VMS from Kinesis, and here the same product exists with nothing rented** — М9's hand-provisioned AWS credentials retired by no longer being needed. Its own update server and its entitlement cache (34) are what let it run with the vendor gone, which is М13's whole subject.
+**The second half is the domain looking after itself.** A box enrolls into the domain (М12 Lesson 6) and receives its certificate from the domain's own signer; the root gets lifetimes and a rotation drill (36), because nobody above will re-issue anything; and the domain provisions a cluster in the customer's own cloud account (37) and proves the Node cannot tell where it is running. That last one closes the arc: **М8 rented a cloud VMS from Kinesis, and here the same product exists with nothing rented** — М9's hand-provisioned AWS credentials retired by no longer being needed. Its own update server and its entitlement cache (34) are what let it run with the vendor gone, which is М13's whole subject.
 
 - [Module design](./М12_DomainVMS/module-design.md) — the directory of directories, placement, the domain services, enrollment, lifetimes and rotation, and a cluster the domain rents for itself
 - [Where the databases live](./М12_DomainVMS/where-the-database-lives.md) — five revisions ending with one database in the whole design, why a Node owns its configuration rather than caching someone else's, and the retention rule that protects customer footage

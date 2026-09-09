@@ -1,4 +1,4 @@
-"""Lesson 27 — the one-way publication upward, and what the operator is told.
+"""Lesson 3 — the one-way publication upward, and what the operator is told.
 
     object first, then the Variable (by CAS) — a pointer never dangles
     publish on change, with a floor — the RPO is the floor

@@ -10,7 +10,7 @@ No to both. The interesting part is *why*, because the usual reason given is the
 
 1. **Container-per-camera fails on lifecycle, not overhead.** The overhead is real but survivable. The lifecycle coupling is not.
 2. **Recording is not a second process.** It is a branch of the pipeline that already owns the camera connection.
-3. **Two supervisors, not one.** The orchestrator manages *workers*; the cluster's placement manages *cameras*. Merging them is the mistake this record exists to prevent. *(Written when the course still had a "domain controller"; the second supervisor turned out to be a stateless placement function in М11 Lesson 29, and the name was retired.)*
+3. **Two supervisors, not one.** The orchestrator manages *workers*; the cluster's placement manages *cameras*. Merging them is the mistake this record exists to prevent. *(Written when the course still had a "domain controller"; the second supervisor turned out to be a stateless placement function in М11 Lesson 5, and the name was retired.)*
 
 ---
 
@@ -63,7 +63,7 @@ I = marginal increment : the cost of pipeline N+1 in a live process
 shared: B + N·I        split: N·(B + I)        saving: (N−1)·B
 ```
 
-It reports **PSS, not RSS**. Summing RSS across N processes counts every page of libgstreamer N times and inflates the split case; PSS divides shared pages by the number of processes mapping them. Getting this wrong is how the naive measurement reaches the naive conclusion — and it is a good half-hour of Lesson 25.
+It reports **PSS, not RSS**. Summing RSS across N processes counts every page of libgstreamer N times and inflates the split case; PSS divides shared pages by the number of processes mapping them. Getting this wrong is how the naive measurement reaches the naive conclusion — and it is a good half-hour of М11 Lesson 1.
 
 ### Sizing the shard
 
@@ -141,7 +141,7 @@ These are what actually take VMS servers down in the field, and none of them are
 
 Stated plainly, because the module teaches it first and should not teach it as a mistake:
 
-- **Under ~50 cameras.** Simpler, legible, and the overhead is irrelevant. This is Lesson 19's world and it is correct there.
+- **Under ~50 cameras.** Simpler, legible, and the overhead is irrelevant. This is Lesson 4's world and it is correct there.
 - **Multi-tenant sites** where cameras belong to different trust domains — then namespace isolation is doing real work.
 - **Heterogeneous pipelines** where a handful of cameras need plugins or drivers the others do not.
 
@@ -160,7 +160,7 @@ The break-even is somewhere near 50, and it is worth having students find it rat
 | Camera-side session limits | **One pipeline owning the connection**, whichever model |
 | Operational legibility at 1000 cameras | **Sharded workers** — 25 units instead of 1000 |
 
-**Course decision: teach both, in that order.** Lesson 19 builds container-per-camera on a handful of cameras, because it is the legible thing and it is correct at that scale. Lesson 25 should then break it on purpose — run the probe, show the curve, and derive the shard. That is a better lesson than asserting the conclusion, and it follows the same pattern as the other two records in this folder: the legible choice is right for teaching and wrong for the product.
+**Course decision: teach both, in that order.** Lesson 4 builds container-per-camera on a handful of cameras, because it is the legible thing and it is correct at that scale. М11 Lesson 1 should then break it on purpose — run the probe, show the curve, and derive the shard. That is a better lesson than asserting the conclusion, and it follows the same pattern as the other two records in this folder: the legible choice is right for teaching and wrong for the product.
 
 **Product recommendation: shard, and split the supervisors.** The sharding policy — how many objects per worker, and on what signal to rebalance — is a real design decision with operational consequences, and it does not belong in the schema that records its *outcome*. It needs an owner and a measurement, not a default.
 

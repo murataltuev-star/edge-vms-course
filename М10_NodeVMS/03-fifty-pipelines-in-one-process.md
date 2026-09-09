@@ -1,4 +1,4 @@
-# Lesson 22 — Fifty Pipelines in One Process
+# Lesson 3 — Fifty Pipelines in One Process
 
 **Module:** NodeVMS — one Node learns what it should be (Module 10)
 **You will build:** the real actuator — fifty GStreamer pipelines in one Python process, stall detection that never touches a buffer, and the moment М9's spool becomes an archive.
@@ -10,13 +10,13 @@ This is the module's technical centre, and it exists to settle an argument you w
 
 `INSERT INTO cameras` starts working here.
 
-> **What you can verify without hardware — read this before starting.** Unlike Lessons 20 and 21, most of this lesson needs a real GStreamer. The design reasoning below is sourced from PyGObject's and GStreamer's own documentation and is quoted directly. **The numbers are not asserted — you produce them**, with the probe script that ships with this module. Where this text gives a figure it is an order of magnitude to check your result against, not a claim about your hardware.
+> **What you can verify without hardware — read this before starting.** Unlike Lessons 1 and 2, most of this lesson needs a real GStreamer. The design reasoning below is sourced from PyGObject's and GStreamer's own documentation and is quoted directly. **The numbers are not asserted — you produce them**, with the probe script that ships with this module. Where this text gives a figure it is an order of magnitude to check your result against, not a claim about your hardware.
 
 ## Prerequisites
 
-- **Lesson 21** — the reconcile loop and its state vocabulary. You are replacing one function.
-- **Lessons 9–10** — GStreamer pipelines, elements, pads and caps. Built there with `gst-launch-1.0`; built here from Python.
-- **М9 Lesson 19** — the spool, `splitmuxsink`, and delete-on-acknowledgement. Step 7 is where that changes.
+- **Lesson 2** — the reconcile loop and its state vocabulary. You are replacing one function.
+- **М8 Lesson 4** — GStreamer pipelines, elements, pads and caps. Built there with `gst-launch-1.0`; built here from Python.
+- **М9 Lesson 4** — the spool, `splitmuxsink`, and delete-on-acknowledgement. Step 7 is where that changes.
 - PyGObject and GStreamer with the bad plugins:
   - **Debian/Ubuntu:** `sudo apt install python3-gi gstreamer1.0-plugins-{base,good,bad} gir1.2-gst-plugins-base-1.0`
   - Verify: `python3 -c "import gi; gi.require_version('Gst','1.0'); from gi.repository import Gst; Gst.init(None); print(Gst.version_string())"`
@@ -53,14 +53,14 @@ pipeline = Gst.parse_launch(DESC.format(url=url, out=cam["dir"]))
 pipeline.set_state(Gst.State.PLAYING)
 ```
 
-`Gst.parse_launch` takes the same string syntax as `gst-launch-1.0` from Lesson 9, so everything you learned there transfers. Building the graph element-by-element with `Gst.ElementFactory.make` is the alternative; it is more code and buys nothing until you need to reach into a pipeline at runtime.
+`Gst.parse_launch` takes the same string syntax as `gst-launch-1.0` from М8 Lesson 4, so everything you learned there transfers. Building the graph element-by-element with `Gst.ElementFactory.make` is the alternative; it is more code and buys nothing until you need to reach into a pipeline at runtime.
 
-**`compose_rtsp_url` is where Lesson 20's split gets paid for.** The credential is decrypted, used, and never stored back into a variable that outlives the call — because the composed URL is about to be interpolated into a pipeline description that GStreamer will happily print in an error message. Log `cam["rtsp_url"]`, never `url`, and put that in a comment so the next person does not "simplify" it.
+**`compose_rtsp_url` is where Lesson 1's split gets paid for.** The credential is decrypted, used, and never stored back into a variable that outlives the call — because the composed URL is about to be interpolated into a pipeline description that GStreamer will happily print in an error message. Log `cam["rtsp_url"]`, never `url`, and put that in a comment so the next person does not "simplify" it.
 
 Two properties are doing real work:
 
 - **`protocols=tcp`.** RTSP over UDP loses packets and gives you corrupt recorded segments — not slightly worse pictures, actually broken files. Over anything but a quiet LAN, use TCP. This matters even more in М12, where the camera may be streaming across the internet.
-- **`max-size-time=600000000000`** — ten minutes in nanoseconds. Segment length is a real product decision: it bounds what a crash loses (Lesson 23), it sets the granularity of retention, and it decides how many index rows you write.
+- **`max-size-time=600000000000`** — ten minutes in nanoseconds. Segment length is a real product decision: it bounds what a crash loses (Lesson 4), it sets the granularity of retention, and it decides how many index rows you write.
 
 ## Step 2 — Where the work happens, and why fifty is fine
 
@@ -121,7 +121,7 @@ Worth stating now, because it is the part that survives a change of language. Th
 | **Go** | Enter the Go runtime from a C thread through cgo. Cheaper, still real, and the rules on passing pointers make it awkward | Same discipline required |
 | **C++** | Nothing. There is no boundary | The rule dissolves |
 
-That last row is the real argument for C++ in the media worker — a better one than "C++ is faster", which for a pipeline that never decodes would barely be true. Lesson 24 comes back to it.
+That last row is the real argument for C++ in the media worker — a better one than "C++ is faster", which for a pipeline that never decodes would barely be true. Lesson 5 comes back to it.
 
 ## Step 4 — Stall detection without touching a buffer
 
@@ -177,15 +177,15 @@ IDLE ──▶ STARTING ──▶ RUNNING ──▶ FAILED ──▶ (backoff) �
                               watchdog / ERROR on bus
 ```
 
-This lives in a `CameraPipeline` object, one per camera, driven by the loop from Lesson 21 — **not** in a coroutine per camera, for the reasons that lesson gave.
+This lives in a `CameraPipeline` object, one per camera, driven by the loop from Lesson 2 — **not** in a coroutine per camera, for the reasons that lesson gave.
 
-The backoff you wrote in Lesson 21 needs no changes. It was tested against a fake actuator that returned `False`; here `False` means `set_state` returned `Gst.StateChangeReturn.FAILURE` or the bus produced an error before `RUNNING`. **That the policy did not have to change is the point of having built it separately** — and it is worth noticing explicitly, because it is the same property that lets Lesson 24 argue the whole thing could be rewritten in Go without redesigning anything.
+The backoff you wrote in Lesson 2 needs no changes. It was tested against a fake actuator that returned `False`; here `False` means `set_state` returned `Gst.StateChangeReturn.FAILURE` or the bus produced an error before `RUNNING`. **That the policy did not have to change is the point of having built it separately** — and it is worth noticing explicitly, because it is the same property that lets Lesson 5 argue the whole thing could be rewritten in Go without redesigning anything.
 
 ## Step 7 — The spool becomes the archive
 
 Here is the module's thesis in one diff, and it is smaller than it should be.
 
-М9 Lesson 19 wrote segments to `/data/spool` and an uploader deleted each one after KVS acknowledged it. The pipeline was:
+М9 Lesson 4 wrote segments to `/data/spool` and an uploader deleted each one after KVS acknowledged it. The pipeline was:
 
 ```
 rtspsrc ! rtph264depay ! h264parse ! splitmuxsink location=/data/spool/%05d.mp4
@@ -240,7 +240,7 @@ Thread count too: each recording pipeline creates roughly three to five native t
 
 **One segfault takes the whole shard.** Fifty cameras stop, not one.
 
-That is the price paid for the per-process baseline, and it is bounded rather than eliminated: by shard size (fifty, not a thousand), by systemd restarting the unit in seconds, and by `splitmuxsink` — a crash loses the open segment and nothing already closed. Lesson 23 measures that loss.
+That is the price paid for the per-process baseline, and it is bounded rather than eliminated: by shard size (fifty, not a thousand), by systemd restarting the unit in seconds, and by `splitmuxsink` — a crash loses the open segment and nothing already closed. Lesson 4 measures that loss.
 
 **Deliverable:** `INSERT INTO cameras` produces a recording; `DELETE` stops it. Fifty pipelines in one process with measured PSS and thread count. And a `git diff` against М9's pipeline that fits on one screen.
 
@@ -252,7 +252,7 @@ That is the price paid for the per-process baseline, and it is bounded rather th
 |---|---|
 | `gst-inspect-1.0 watchdog` finds nothing | `gst-plugins-bad` is not installed. The element lives there, not in base or good. |
 | Corrupt or unplayable recorded segments | RTSP over UDP with packet loss. Set `protocols=tcp`. |
-| A camera password appears in a log or a bus error | Something logged the composed URL rather than the credential-free one. This is why Lesson 20 split the column. |
+| A camera password appears in a log or a bus error | Something logged the composed URL rather than the credential-free one. This is why Lesson 1 split the column. |
 | The worker is fine at 5 cameras and collapses at 50 | A per-buffer callback survived. Search for `add_probe`, `appsink`, and `identity`. Step 3. |
 | Bus messages arrive seconds late | `pump_buses` is blocked — usually `timed_pop_filtered` instead of `pop_filtered`, or blocking I/O in a handler. |
 | Pipelines go PLAYING then immediately error | Read the actual bus error rather than guessing; `rtspsrc` reports authentication and unreachable-host distinctly. |
@@ -267,20 +267,20 @@ That is the price paid for the per-process baseline, and it is bounded rather th
 - **Python touches control, never data.** The rule generalises: it is about crossing a language boundary per frame, so Go needs the same discipline and C++ dissolves it.
 - The `watchdog` element detects a stalled-but-open stream in C and reports it on the bus you already read.
 - One asyncio task drains every bus with non-blocking `pop_filtered`. No second event loop.
-- The backoff policy from Lesson 21 needed **no changes** when the actuator became real. That is the payoff for building the loop first.
+- The backoff policy from Lesson 2 needed **no changes** when the actuator became real. That is the payoff for building the loop first.
 - **The spool became an archive because something started keeping a record of it.** Nothing deletes segments now; an index row is written instead. `epoch` is present, unused, and saves an archive-wide migration in М11.
 - Measure PSS, not RSS. One segfault takes the whole shard — bounded by shard size, systemd, and segment discipline.
 
 ## Exercises
 
 1. Add the buffer probe, measure CPU and bus latency at 10, 30 and 50 cameras, then remove it and repeat. Plot both. This is the most convincing graph in the module.
-2. Find `B` and `I` for your hardware, then compute how many cameras fit in 2 GB. Keep the number — М11 Lesson 25 asks for it to size a shard.
+2. Find `B` and `I` for your hardware, then compute how many cameras fit in 2 GB. Keep the number — М11 Lesson 1 asks for it to size a shard.
 3. Unplug a camera's network cable mid-recording and time how long the `watchdog` takes to report. Then set `timeout=1000` and find the false-positive rate on a healthy camera.
 4. Replace `pump_buses`'s polling with `bus.get_pollfd()` and `loop.add_reader()`. Measure whether the difference is detectable at 50 cameras. Then decide whether you would ship it.
-5. Kill the worker with `SIGKILL` mid-segment and work out exactly what was lost, in seconds of footage and in index rows. Lesson 23 makes this a test; predicting it first is the point.
+5. Kill the worker with `SIGKILL` mid-segment and work out exactly what was lost, in seconds of footage and in index rows. Lesson 4 makes this a test; predicting it first is the point.
 
 ## Where this is going
 
 You can start and stop cameras from SQL, and fifty of them run in one process. Everything so far has assumed things mostly work.
 
-**Lesson 23 assumes nothing works.** Cameras go offline, streams stall with the socket open, the disk fills, and the AppHost is killed mid-segment — each induced on purpose, each handled, each asserted by a test. It is also where Lesson 20's partitioning earns its place, because retention has to run *while* the disk is full, and where the fencing rule arrives in its smallest form: on restart, never resume the previous segment.
+**Lesson 4 assumes nothing works.** Cameras go offline, streams stall with the socket open, the disk fills, and the AppHost is killed mid-segment — each induced on purpose, each handled, each asserted by a test. It is also where Lesson 1's partitioning earns its place, because retention has to run *while* the disk is full, and where the fencing rule arrives in its smallest form: on restart, never resume the previous segment.

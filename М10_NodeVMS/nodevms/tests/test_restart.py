@@ -1,4 +1,4 @@
-"""Lesson 23, Steps 4–5 — the AppHost dies mid-change; and the fencing rule
+"""Lesson 4, Steps 4–5 — the AppHost dies mid-change; and the fencing rule
 in its smallest form: on restart, never resume the previous segment."""
 from __future__ import annotations
 

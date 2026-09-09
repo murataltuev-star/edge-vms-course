@@ -1,4 +1,4 @@
-# Lesson 29 — The Cluster Directory, and Where a Camera Goes
+# Lesson 5 — The Cluster Directory, and Where a Camera Goes
 
 **Module:** ClusterVMS — a Node that outlives the server recording on it (Module 11)
 **You will build:** *where is camera 7* answered from the cluster in one scan, and a placement function with property tests — including the one that fails the first time somebody adds a tidy-looking rebalance.
@@ -6,18 +6,18 @@
 
 ## Why this lesson exists
 
-This is the lesson that costs almost nothing to build, because **you already built it in Lesson 26 and called it something else.** Every Node has a Variable listing its camera ids. Scan them and you have answered the question a directory exists to answer. Noticing that is the lesson's first move, and the rest of it is about what kind of thing that makes the directory — not a database, and strongly consistent in a way the level above this one can never be.
+This is the lesson that costs almost nothing to build, because **you already built it in Lesson 2 and called it something else.** Every Node has a Variable listing its camera ids. Scan them and you have answered the question a directory exists to answer. Noticing that is the lesson's first move, and the rest of it is about what kind of thing that makes the directory — not a database, and strongly consistent in a way the level above this one can never be.
 
 The second half is the other direction: a new camera arrives, and something has to decide which Node gets it. That decision is small, it is a pure function, and it has one rule that every clever improvement violates. The property test that catches the violation is the deliverable.
 
-> **What you can verify without hardware.** All of the placement — [`reference/placement.py`](reference/placement.py) and [`reference/test_placement.py`](reference/test_placement.py) run with no cluster, no cameras, in milliseconds, and every output below is real. The directory scan needs the Lesson 25 cluster and a few Node Variables, which you have.
+> **What you can verify without hardware.** All of the placement — [`reference/placement.py`](reference/placement.py) and [`reference/test_placement.py`](reference/test_placement.py) run with no cluster, no cameras, in milliseconds, and every output below is real. The directory scan needs the Lesson 1 cluster and a few Node Variables, which you have.
 
 ## Prerequisites
 
-- **Lesson 26** — each Node's Variable, and the ACL that makes it one-writer-per-key.
-- **Lesson 25** — `B` and `I` from the probe. Placement is by measured capacity, and this is where the measurement pays.
-- **Lesson 28** — the epoch. Rebalancing is the one two-writer operation in this module, and it needs it.
-- **М10 Lesson 24, Step 4** — *site is a first-class operator concept; server is not, and Node barely is.* Placement is the controller-owned row that lesson said a client may never write.
+- **Lesson 2** — each Node's Variable, and the ACL that makes it one-writer-per-key.
+- **Lesson 1** — `B` and `I` from the probe. Placement is by measured capacity, and this is where the measurement pays.
+- **Lesson 4** — the epoch. Rebalancing is the one two-writer operation in this module, and it needs it.
+- **М10 Lesson 5, Step 4** — *site is a first-class operator concept; server is not, and Node barely is.* Placement is the controller-owned row that lesson said a client may never write.
 
 ## Learning objectives
 
@@ -32,7 +32,7 @@ The second half is the other direction: a new camera arrives, and something has 
 
 ## Step 1 — You already have a directory
 
-Lesson 26 gave every Node a Variable:
+Lesson 2 gave every Node a Variable:
 
 ```
 nodes/node-1   node=node-1  cameras=1,2,3,...,48   config=node-1/rev-207  revision=207
@@ -55,8 +55,8 @@ node-1
 
 Four Variables, read in milliseconds, cached by the console. **That is a directory**, and it has three properties worth naming because they decide what it is *not*:
 
-- **Small.** Tens of entries, hundreds of bytes each. It fits Lesson 26's 64 KiB rule with room to spare.
-- **One writer per key**, enforced by the ACL from Lesson 26: Node 3 writes `nodes/node-3` and nothing else can. There is no reconciliation because there is no contention.
+- **Small.** Tens of entries, hundreds of bytes each. It fits Lesson 2's 64 KiB rule with room to spare.
+- **One writer per key**, enforced by the ACL from Lesson 2: Node 3 writes `nodes/node-3` and nothing else can. There is no reconciliation because there is no contention.
 - **Never queried by anything but an exact scan.** Nobody asks *which Nodes have more than forty cameras* of a directory; they ask *where is 7* and *what does Node 3 hold*.
 
 Those are exactly the three properties that made the configuration store a **database** in М10 — large, contended, queried — with the sign flipped. The same rule that put configuration in Postgres puts the directory in Variables. Same rule, opposite answer, and that is how you know it is a rule rather than a habit.
@@ -69,17 +69,17 @@ Say this out loud, because it is the single thing the level above this one canno
 
 When Node 3 publishes a new camera list, that write is a raft commit. Every read after it — from any server, from the console, from a placement decision — sees it. There is no window in which two servers disagree about where camera 7 is, because there is only one log. Failover does not change the answer, because the answer is about the *Node*, and the Node did not change.
 
-Across clusters there is no raft at all. Nomad regions are joined by gossip and share no state; a directory spanning two clusters is a directory of directories, each consistent within itself and none of them consistent with each other. [М12](../М12_DomainVMS/module-design.md) builds that, and Lesson 30 there asks the student to name what was lost at the boundary. The answer is this step.
+Across clusters there is no raft at all. Nomad regions are joined by gossip and share no state; a directory spanning two clusters is a directory of directories, each consistent within itself and none of them consistent with each other. [М12](../М12_DomainVMS/module-design.md) builds that, and М12 Lesson 1 there asks the student to name what was lost at the boundary. The answer is this step.
 
 ## Step 3 — Placement by measured capacity
 
-A camera arrives. Something decides which Node records it, and М10 Lesson 24 already decided *who*: not the operator. The operator names a **site**; the controller turns that into a Node. Here is the controller's half.
+A camera arrives. Something decides which Node records it, and М10 Lesson 5 already decided *who*: not the operator. The operator names a **site**; the controller turns that into a Node. Here is the controller's half.
 
 Two inputs, both measured rather than guessed:
 
-**Capacity**, in units the probe gave you. A Node's capacity is `(memory budget − B) / I` from Lesson 25, expressed as *cameras' worth of load*. A camera's load is its bitrate relative to the probe's reference stream: a 720p camera is `1.0`, a 4K stream at eight times the bitrate is `8.0`. Two hundred cameras is not two hundred units; it is whatever they add up to.
+**Capacity**, in units the probe gave you. A Node's capacity is `(memory budget − B) / I` from Lesson 1, expressed as *cameras' worth of load*. A camera's load is its bitrate relative to the probe's reference stream: a 720p camera is `1.0`, a 4K stream at eight times the bitrate is `8.0`. Two hundred cameras is not two hundred units; it is whatever they add up to.
 
-**Constraints**, as labels. A camera on VLAN `cctv-b` can only be recorded by a Node whose server reaches `cctv-b` — Lesson 26's `meta.vlans`, now on the camera as well:
+**Constraints**, as labels. A camera on VLAN `cctv-b` can only be recorded by a Node whose server reaches `cctv-b` — Lesson 2's `meta.vlans`, now on the camera as well:
 
 ```python
 @dataclass(frozen=True)
@@ -117,7 +117,7 @@ def place(self, cam, cameras):
 
 Three things it does that a naive version would not:
 
-- **It returns `None` rather than raising**, and the caller says *the system is full* — М10 Lesson 24's rule that capacity is expressed as the system, not a Node.
+- **It returns `None` rather than raising**, and the caller says *the system is full* — М10 Lesson 5's rule that capacity is expressed as the system, not a Node.
 - **It stores a reason and a revision.** At 3am, *why is camera 812 on Node 3* is a row: `most free capacity (14.0) among 2 eligible`, at revision 4471. Not a hash to recompute.
 - **It never touches an existing placement.** That is the next step.
 
@@ -139,7 +139,7 @@ def test_adding_a_node_moves_nothing():
         assert p.placed == before                       # the rule
 ```
 
-Why it matters: **a camera moving between Nodes is a stop and a start** — a pipeline torn down on one server and built on another, a gap in that camera's archive, an index split across two servers' disks, and two instances of a writer for the duration, which is Lesson 28's problem invited on purpose. A placement that shuffles cameras to be tidy turns a capacity expansion into two hundred small outages.
+Why it matters: **a camera moving between Nodes is a stop and a start** — a pipeline torn down on one server and built on another, a gap in that camera's archive, an index split across two servers' disks, and two instances of a writer for the duration, which is Lesson 4's problem invited on purpose. A placement that shuffles cameras to be tidy turns a capacity expansion into two hundred small outages.
 
 Now the test the lesson is named for. Somebody adds a rebalance. It re-places everything from scratch, biggest cameras first, because that packs better. It is well-intentioned, it passes every invariant — every camera on exactly one eligible Node, nothing over capacity — and:
 
@@ -189,7 +189,7 @@ def rebalance(self, cameras, budget):
 - **Interruptible**: stop calling it and it stops. There is no background thread deciding on its own.
 - **A dead band**: within ten percent, nothing moves. Perfect balance is not a goal; not thrashing is.
 
-And every move is **the one two-writer operation in this module**: the old Node must stop camera 7 and the new one must start it, and for the seconds in between both hold its configuration. That is exactly the situation Lesson 28 built the epoch for. A move is a failover you asked for, and it uses the same token.
+And every move is **the one two-writer operation in this module**: the old Node must stop camera 7 and the new one must start it, and for the seconds in between both hold its configuration. That is exactly the situation Lesson 4 built the epoch for. A move is a failover you asked for, and it uses the same token.
 
 ## Step 6 — Why not consistent hashing
 
@@ -203,7 +203,7 @@ A stored placement with a reason and a revision is a table you can read, sort, a
 
 ## Step 7 — What this placement does not decide
 
-One boundary, stated so the next module can cross it: **placement here chooses a Node. It does not choose a cluster**, because this cluster is the only one that exists so far. When a site has cameras on two networks in two buildings, and each building has its own cluster, something has to decide *which cluster* before this function decides *which Node* — and that decision uses different information (reachability from the site, not capacity of a Node) and lives at a different level. М12 Lesson 30 is where it arrives, and the student is asked to name why it cannot use this function.
+One boundary, stated so the next module can cross it: **placement here chooses a Node. It does not choose a cluster**, because this cluster is the only one that exists so far. When a site has cameras on two networks in two buildings, and each building has its own cluster, something has to decide *which cluster* before this function decides *which Node* — and that decision uses different information (reachability from the site, not capacity of a Node) and lives at a different level. М12 Lesson 1 is where it arrives, and the student is asked to name why it cannot use this function.
 
 **Deliverable:** *where is camera 7* answered from Variables in one scan on the bench; and `test_placement.py` passing — including the tidy-rebalance test, which you should first watch fail by removing the stability assertion and re-adding it.
 
@@ -214,7 +214,7 @@ One boundary, stated so the next module can cross it: **placement here chooses a
 | Symptom | Likely cause |
 |---|---|
 | The scan finds camera 7 on two Nodes | Two Nodes' Variables both list it. The ACL is not enforcing one-writer-per-key, or a rebalance moved it without removing it from the source. The placement store is the truth; the Variables must follow it. |
-| The scan finds camera 7 nowhere | It was placed and the Node has not published since. Lesson 27's *not yet replicated*, seen from the directory side. |
+| The scan finds camera 7 nowhere | It was placed and the Node has not published since. Lesson 3's *not yet replicated*, seen from the directory side. |
 | Placement always picks the same Node | `free > best_free` with all Nodes equal picks the first. Fine — or add a tiebreak on Node id for determinism. Never randomness: the reason must be reproducible. |
 | The stability test passes but cameras still move in production | Something other than `place()` writes the placement — a reconciler "correcting" it. Find it. Store the placement; do not derive it. |
 | `rebalance` moves the same camera back and forth | No dead band, or the budget is larger than the imbalance. Ten percent and a small budget. |
@@ -222,7 +222,7 @@ One boundary, stated so the next module can cross it: **placement here chooses a
 
 ## Recap
 
-- **The Node Variables from Lesson 26 already are the cluster directory.** *Where is camera 7* is a scan of tens of entries.
+- **The Node Variables from Lesson 2 already are the cluster directory.** *Where is camera 7* is a scan of tens of entries.
 - It is a directory and not a database because it is small, one-writer-per-key, and only ever scanned — the three-stores rule with the sign flipped.
 - **Inside a cluster the directory is strongly consistent, because it is one raft.** That property stops at the cluster's edge, and М12 has to live without it.
 - Placement is by **measured** capacity (`(budget − B)/I`, loads in units of `I`) under label constraints, returns *the system is full*, and stores a reason and a revision.

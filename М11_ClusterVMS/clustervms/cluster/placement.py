@@ -1,4 +1,4 @@
-"""Lesson 29 — placement onto Nodes: capacity measured, constraints as
+"""Lesson 5 — placement onto Nodes: capacity measured, constraints as
 labels, the placement STORED in Variables (placement/<camera>), and one
 rule with a property test: adding a Node moves nothing.
 

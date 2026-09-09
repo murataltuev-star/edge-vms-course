@@ -1,6 +1,6 @@
--- 0001 — Lesson 20, Steps 1–3: configuration. The Node owns this database.
+-- 0001 — Lesson 1, Steps 1–3: configuration. The Node owns this database.
 -- Expand-only. Nothing here is ever renamed or dropped in the release that
--- starts using it (Lesson 20, Step 8).
+-- starts using it (Lesson 1, Step 8).
 
 CREATE TABLE IF NOT EXISTS sites (
     id    text PRIMARY KEY,
@@ -49,7 +49,7 @@ CREATE OR REPLACE TRIGGER cameras_bump BEFORE UPDATE ON cameras
     )
     EXECUTE FUNCTION bump_revision();
 
--- Lesson 21, Step 3: NOTIFY is latency, never correctness. The AppHost polls.
+-- Lesson 2, Step 3: NOTIFY is latency, never correctness. The AppHost polls.
 CREATE OR REPLACE FUNCTION notify_cameras() RETURNS trigger AS $$
 BEGIN
     PERFORM pg_notify('cameras', COALESCE(NEW.id, OLD.id)::text);

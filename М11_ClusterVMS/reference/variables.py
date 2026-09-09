@@ -1,4 +1,4 @@
-"""A faithful stand-in for the two Nomad primitives Lesson 28 compares.
+"""A faithful stand-in for the two Nomad primitives Lesson 4 compares.
 
 Nomad Variables (HTTP API): every variable carries a raft-assigned
 ModifyIndex. PUT ?cas=<index> succeeds only if the stored ModifyIndex still

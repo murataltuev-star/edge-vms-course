@@ -1,5 +1,5 @@
 #!/bin/sh
-# Lesson 18, Step 2 — run INSIDE the VM once (build-disk.sh already did it at
+# Lesson 3, Step 2 — run INSIDE the VM once (build-disk.sh already did it at
 # build time). Both slots known good, A first. Run `grub-editenv ... list`
 # after every step from here on: it is the window into the whole mechanism.
 set -e

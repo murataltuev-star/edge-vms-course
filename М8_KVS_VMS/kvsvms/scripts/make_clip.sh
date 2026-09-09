@@ -1,5 +1,5 @@
 #!/bin/sh
-# Lesson 9 — a 60-second H.264 test clip, the camera stand-in.
+# Lesson 4 — a 60-second H.264 test clip, the camera stand-in.
 set -e
 OUT="${1:-./media/clip.mp4}"
 mkdir -p "$(dirname "$OUT")"

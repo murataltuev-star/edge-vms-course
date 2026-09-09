@@ -1,4 +1,4 @@
-# Lesson 17, Step 4 — template; build-bundle.sh fills in the version.
+# Lesson 2, Step 4 — template; build-bundle.sh fills in the version.
 [update]
 compatible=example-vms-appliance-x86-64
 version=@VERSION@

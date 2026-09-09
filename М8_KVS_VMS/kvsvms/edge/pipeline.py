@@ -1,4 +1,4 @@
-# edge/pipeline.py — Lesson 10, Step 4: the argv, as a list. Never a shell
+# edge/pipeline.py — Lesson 4, Step 9: the argv, as a list. Never a shell
 # string, never shell=True: gst-launch-1.0 parses its own mini-language and
 # nothing here is ever handed to /bin/sh.
 from __future__ import annotations
@@ -24,7 +24,7 @@ def build_pipeline_argv(clip_path, stream_name, aws_region, retention_hours):
 
 
 def build_spool_pipeline_argv(clip_path, spool_dir, segment_seconds, launch_epoch):
-    """М9 Lesson 19: the one media-layer change. Same source, same parse; the
+    """М9 Lesson 4: the one media-layer change. Same source, same parse; the
     sink writes segments to the spool and a separate process uploads them.
     Filenames sort as time: <launch epoch>-<index>.mp4, so oldest-first is a
     sort, and a restart starts a new prefix rather than resuming a file."""
@@ -43,7 +43,7 @@ def build_spool_pipeline_argv(clip_path, spool_dir, segment_seconds, launch_epoc
 
 
 def build_upload_argv(path, stream_name, aws_region, retention_hours, file_start_epoch):
-    """М9 Lesson 19's uploader: re-publish a CLOSED segment into KVS with its
+    """М9 Lesson 4's uploader: re-publish a CLOSED segment into KVS with its
     ORIGINAL start time. streaming-type=offline makes kvssink wait for the
     service to persist before EOS completes; file-start-time keeps the
     archive's timeline at capture time, not upload time. No identity sync:

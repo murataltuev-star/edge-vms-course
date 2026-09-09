@@ -1,4 +1,4 @@
--- 0004 — Lesson 24: positions and reasons on separate axes, and one query
+-- 0004 — Lesson 5: positions and reasons on separate axes, and one query
 -- that answers "is camera 7 recording, and how far behind is it?"
 
 CREATE TABLE IF NOT EXISTS camera_conditions (

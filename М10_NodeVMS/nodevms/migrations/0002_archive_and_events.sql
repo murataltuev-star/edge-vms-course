@@ -1,4 +1,4 @@
--- 0002 — Lesson 20, Steps 4–6: the archive index and events.
+-- 0002 — Lesson 1, Steps 4–6: the archive index and events.
 -- Both are rolling windows, partitioned by month from day one, because
 -- DELETE is not a retention strategy (276,768 rows in 231 ms freed zero disk;
 -- DETACH + DROP TABLE freed 38 MB in 5 ms).

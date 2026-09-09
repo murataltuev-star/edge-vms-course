@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""edge/upload_segment.py — the piece М9 Lesson 19 needed and М8 never wrote.
+"""edge/upload_segment.py — the piece М9 Lesson 4 needed and М8 never wrote.
 
     vms-upload-segment /data/spool/cam-01/1757350800-00003.mp4
 

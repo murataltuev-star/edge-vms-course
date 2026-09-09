@@ -1,8 +1,8 @@
-"""Lesson 24, Step 3 — a login, marked temporary.
+"""Lesson 5, Step 3 — a login, marked temporary.
 
 One account, provisioned by hand at commissioning, all capabilities. The
 `grants` table exists and nothing consults it. This is the course's fourth
-temporary secret; М12 Lesson 33 replaces it with a token from the domain
+temporary secret; М12 Lesson 4 replaces it with a token from the domain
 signer and removes the password hash from the Node entirely.
 """
 from __future__ import annotations

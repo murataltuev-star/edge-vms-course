@@ -1,4 +1,4 @@
-"""Lesson 28 — the two numbers this module exports, in Prometheus text form,
+"""Lesson 4 — the two numbers this module exports, in Prometheus text form,
 appended to М10's /metrics.
 
   node_failover_seconds{kind="last"|"worst"}   the RTO. Worst case is the one that matters.

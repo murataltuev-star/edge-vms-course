@@ -74,7 +74,7 @@ After the Nomad BUSL discussion, worth stating plainly: **there is no BUSL anywh
 | Fewest dependencies | **systemd-sysupdate** — already installed |
 | Complete platform, fastest to something working | **Mender** — at the cost of lock-in |
 
-**Course decision: keep RAUC.** Widest bootloader coverage means Lessons 16–19 port to ARM with only the bootloader chapter changing. Unconditional signature verification makes Lesson 17's security content real rather than optional. And it is the best-documented of the set, which matters when students are learning the concept rather than the tool.
+**Course decision: keep RAUC.** Widest bootloader coverage means Lessons 1–4 port to ARM with only the bootloader chapter changing. Unconditional signature verification makes Lesson 2's security content real rather than optional. And it is the best-documented of the set, which matters when students are learning the concept rather than the tool.
 
 **Product recommendation: evaluate bootc.** The target platform and the container-native stack both point at it, and collapsing two delivery pipelines into one is a genuine reduction in moving parts for a team shipping appliances.
 

@@ -1,4 +1,4 @@
-# server/app.py — Lesson 13, Step 6: everything in one process.
+# server/app.py — Lesson 6, Step 6: everything in one process.
 # API routes are declared BEFORE the static mount, or the mount swallows them.
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -17,7 +17,7 @@ WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 app = FastAPI(title="Cloud VMS")
 
 
-# ---- archive (Lesson 12) --------------------------------------------------
+# ---- archive (Lesson 5) --------------------------------------------------
 
 @app.get("/api/fragments", response_model=FragmentsResponse)
 def get_fragments(start: float, end: float):
@@ -60,7 +60,7 @@ def get_hls(start: float, end: float):
     return HLSResponse(url=resp["HLSStreamingSessionURL"])
 
 
-# ---- recording control (Lesson 6, now aimed at the real pipeline) ----------
+# ---- recording control (Lesson 2, now aimed at the real pipeline) ----------
 
 @app.get("/api/recording", response_model=RecordingState)
 def recording_status():
@@ -80,7 +80,7 @@ def recording_stop():
         raise HTTPException(409, str(e))
 
 
-# ---- М9 Lesson 18: the health check's row 2 --------------------------------
+# ---- М9 Lesson 3: the health check's row 2 --------------------------------
 # "The VMS answers." Nothing more: whether footage is being written is row 3,
 # and it is answered by the spool (М9) or the Node (М10), never by this route.
 

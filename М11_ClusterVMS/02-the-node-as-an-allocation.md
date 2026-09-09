@@ -1,4 +1,4 @@
-# Lesson 26 — The Node as an Allocation
+# Lesson 2 — The Node as an Allocation
 
 **Module:** ClusterVMS — a Node that outlives the server recording on it (Module 11)
 **You will build:** М10's Node running as a Nomad job, behaving exactly as it did under Quadlet — and a Node identity that survives being moved to another server.
@@ -6,19 +6,19 @@
 
 ## Why this lesson exists
 
-Lesson 25 built a cluster with nothing on it. This lesson puts a Node on it, and the first half is deliberately unexciting: a Quadlet unit and a Nomad task say the same things in different syntax, and a translation table gets you most of the way.
+Lesson 1 built a cluster with nothing on it. This lesson puts a Node on it, and the first half is deliberately unexciting: a Quadlet unit and a Nomad task say the same things in different syntax, and a translation table gets you most of the way.
 
 The second half is the reason the lesson exists. Once Nomad can move a Node between servers, the question *which Node is this?* stops having an obvious answer. The process that starts on Server B has an empty disk. It must know, before it does anything, that it is Node 3 — that camera 7 is its, that its configuration is object `rev-812`, that its last epoch was 5. Where does that knowledge come from, given that everything it knew is on a disk in a dead machine?
 
 There is an answer that looks right and has a documented bug that corrupts archives, and there is the right one. The lesson has you meet both.
 
-> **What you can verify without hardware.** The translation table and the jobspec are checkable with `nomad job validate` against the Lesson 25 cluster, and the Variables behaviour is what Lesson 28's [`reference/variables.py`](reference/variables.py) simulates from the API docs. Running the Node needs the bench and the М10 image. Rescheduling it needs a second server — which you have.
+> **What you can verify without hardware.** The translation table and the jobspec are checkable with `nomad job validate` against the Lesson 1 cluster, and the Variables behaviour is what Lesson 4's [`reference/variables.py`](reference/variables.py) simulates from the API docs. Running the Node needs the bench and the М10 image. Rescheduling it needs a second server — which you have.
 
 ## Prerequisites
 
-- **Lesson 25** — the cluster, ACLs enabled, `meta.vlans` set on each client.
-- **М10 Lesson 24** — the Node as it stands: Postgres, AppHost, the console on 8080. [`nodevms/`](../М10_NodeVMS/nodevms/README.md) is what gets scheduled.
-- **М9 Lesson 19** — Quadlet: `postgres.container` and `apphost.container` are the source text for the translation.
+- **Lesson 1** — the cluster, ACLs enabled, `meta.vlans` set on each client.
+- **М10 Lesson 5** — the Node as it stands: Postgres, AppHost, the console on 8080. [`nodevms/`](../М10_NodeVMS/nodevms/README.md) is what gets scheduled.
+- **М9 Lesson 4** — Quadlet: `postgres.container` and `apphost.container` are the source text for the translation.
 - A container image of the AppHost on every client (`localhost/nodevms-apphost:latest`, from `nodevms/Containerfile`).
 
 ## Learning objectives
@@ -42,7 +42,7 @@ Put the two side by side. Left, М10's `quadlet/apphost.container`; right, the s
 | `EnvironmentFile=/data/config/apphost.env` | `template { ... env = true }` | the environment now comes from the scheduler, not a file on the box |
 | `Network=host` | `network_mode = "host"` | |
 | `[Unit] Requires=postgres.service` | two tasks in one **group** | a group is co-scheduled onto one server, which is what `Requires` was for |
-| `[Service] Restart=always` | `restart { }` and `reschedule { }` | Lesson 28: restart is the same server, reschedule is a different one |
+| `[Service] Restart=always` | `restart { }` and `reschedule { }` | Lesson 4: restart is the same server, reschedule is a different one |
 | `[Install] WantedBy=` | `type = "service"` | a service job runs until stopped |
 | `StopTimeout=20` | `kill_timeout = "20s"` | the open segment still finalizes |
 
@@ -100,9 +100,9 @@ Two things to notice before running it.
 
 **The job name is the Node's name.** `job "node-3"` — one job per Node, and the name is stable across every server it will ever run on. This is the first half of identity, and it is the easy half.
 
-**The volumes are local, per Node, per server.** `/data/nodes/node-3/pg` on whichever server the job lands on. On a fresh server that directory is empty, Postgres initialises an empty database, М10's migrations run, and the Node has no cameras. **That is correct and expected**, and Lesson 27 is about what happens next. It is *not* a shared volume, and Lesson 27 shows why the obvious "fix" of making it one breaks failover.
+**The volumes are local, per Node, per server.** `/data/nodes/node-3/pg` on whichever server the job lands on. On a fresh server that directory is empty, Postgres initialises an empty database, М10's migrations run, and the Node has no cameras. **That is correct and expected**, and Lesson 3 is about what happens next. It is *not* a shared volume, and Lesson 3 shows why the obvious "fix" of making it one breaks failover.
 
-`resources` are the numbers Lesson 25 measured: `B + 50 × I` for the AppHost, rounded up. A Nomad client will not place a task whose reservation does not fit, which is the first time the probe's numbers do work for you.
+`resources` are the numbers Lesson 1 measured: `B + 50 × I` for the AppHost, rounded up. A Nomad client will not place a task whose reservation does not fit, which is the first time the probe's numbers do work for you.
 
 ```bash
 nomad job validate node.nomad.hcl
@@ -130,7 +130,7 @@ Three task drivers matter to a VMS, and it is worth knowing which are plugins be
 
 | Driver | Runs | Built in? | A VMS wants it for |
 |---|---|---|---|
-| `podman` | OCI containers via Podman | **No** — separate plugin, installed in Lesson 25 | the same images and runtime as М9; nothing changes |
+| `podman` | OCI containers via Podman | **No** — separate plugin, installed in Lesson 1 | the same images and runtime as М9; nothing changes |
 | `exec2` | a native process, sandboxed with **Landlock** and cgroups v2 | **No** — separate official plugin; beta in 1.8.0, GA in 1.9.0 | a worker that needs direct device access — a capture card, a GPU — without a container in the way |
 | `virt` | a virtual machine | No — plugin | isolating a third-party analytics vendor's binary from the recorder |
 | `docker`, `exec`, `raw_exec` | | yes | not on an appliance: `exec` has no Landlock, `raw_exec` has nothing |
@@ -161,7 +161,7 @@ nodevms_cameras 0
 
 Zero cameras. Postgres initialised on an empty directory, migrations ran, and the Node is a Node with no idea what it was. It is also, at this moment, not obviously Node 3 at all: nothing in the running process says so except the job name in its environment, and the job name is not enough to *find* its configuration, its camera list or its last epoch — all of which are on `srv-b`'s disk.
 
-This is the lesson's actual subject. Before the Node can restore anything (Lesson 27), it must know **what it is**, and that knowledge cannot be on any disk.
+This is the lesson's actual subject. Before the Node can restore anything (Lesson 3), it must know **what it is**, and that knowledge cannot be on any disk.
 
 ## Step 4 — The wrong answer: the allocation index
 
@@ -171,7 +171,7 @@ Every allocation gets `NOMAD_ALLOC_INDEX` — an integer, `0` for a `count = 1` 
 
 The index is assigned per *allocation*, and Nomad's contract is that indices are unique among the *running* allocations of a group — not that a rescheduled allocation gets the same index the old one had, and not, as it turned out, even that two running allocations never share one. [Nomad issue #10727](https://github.com/hashicorp/nomad/issues/10727) reports **two simultaneously-running allocations with the same index**; it was accepted as a bug and later fixed. #4264 and #11628 are the same family. A fixed bug is still the wrong foundation: the index was designed as a *label* — fine for a metrics dimension, fine for a log prefix — and correctness of an archive was never something it was promised to carry.
 
-Consider what "two allocations, one index" would have done here: two processes, both believing they are Node 3, both writing camera 7's archive. Lesson 28 is about exactly that failure, and it takes a fencing token to survive it. Building identity on a label that can be duplicated is building that failure in on purpose.
+Consider what "two allocations, one index" would have done here: two processes, both believing they are Node 3, both writing camera 7's archive. Lesson 4 is about exactly that failure, and it takes a fencing token to survive it. Building identity on a label that can be duplicated is building that failure in on purpose.
 
 > **Rule: the allocation index is a label. Node identity is never derived from it.**
 
@@ -218,16 +218,16 @@ Now reschedule again, and the process that starts on the new server has, in its 
 
 - **It survives rescheduling by construction.** The Variable is in raft; the task reads it wherever it lands.
 - **It is the second half of identity.** The job name says *which* Node; the Variable says *what that Node knows about itself*. Together they are enough to start the restore.
-- **It is ACL'd, one writer per key.** [`reference/node-3-policy.hcl`](reference/node-3-policy.hcl) grants `nodes/node-3` and `nodes/node-3/*` to Node 3's workload identity and read-only on `nodes/*`. Bind it: `nomad acl policy apply -namespace default -job node-3 node-3 node-3-policy.hcl`. Node 3 cannot write `nodes/node-4`, and Lesson 29's directory rests on that. **The module design lists this as the open question to verify on the bench before building on it** — do so: try to write `nodes/node-4` with Node 3's token and confirm the 403.
-- **The password is no longer in a file on the data partition.** М10 Lesson 20 called the column key's placement a debt and named the Variable as the payment. This is it, for the database password; the column key follows the same path.
+- **It is ACL'd, one writer per key.** [`reference/node-3-policy.hcl`](reference/node-3-policy.hcl) grants `nodes/node-3` and `nodes/node-3/*` to Node 3's workload identity and read-only on `nodes/*`. Bind it: `nomad acl policy apply -namespace default -job node-3 node-3 node-3-policy.hcl`. Node 3 cannot write `nodes/node-4`, and Lesson 5's directory rests on that. **The module design lists this as the open question to verify on the bench before building on it** — do so: try to write `nodes/node-4` with Node 3's token and confirm the 403.
+- **The password is no longer in a file on the data partition.** М10 Lesson 1 called the column key's placement a debt and named the Variable as the payment. This is it, for the database password; the column key follows the same path.
 
 ## Step 6 — What does *not* go in a Variable
 
-The instinct once Variables work is to put the configuration there too — the cameras, their URLs, their retention — and be done with Lesson 27 before it starts. Resist it, for a reason the maintainers state themselves.
+The instinct once Variables work is to put the configuration there too — the cameras, their URLs, their retention — and be done with Lesson 3 before it starts. Resist it, for a reason the maintainers state themselves.
 
-Variables cap at **64 KiB per item** (originally 16 KiB, raised in 1.5.0), and they are capped at all because, in HashiCorp's words, the limit exists *"to reduce the potential performance impact of Variables on our raft store."* Read that as a design statement: raft is memory-resident and replicated to every server, so anything that grows is in the wrong place. A thousand cameras' settings do not fit in 64 KiB and should not be asked to; and a key-value store cannot answer *which cameras have retention over thirty days* anyway, which М10 Lesson 20 built a database to do.
+Variables cap at **64 KiB per item** (originally 16 KiB, raised in 1.5.0), and they are capped at all because, in HashiCorp's words, the limit exists *"to reduce the potential performance impact of Variables on our raft store."* Read that as a design statement: raft is memory-resident and replicated to every server, so anything that grows is in the wrong place. A thousand cameras' settings do not fit in 64 KiB and should not be asked to; and a key-value store cannot answer *which cameras have retention over thirty days* anyway, which М10 Lesson 1 built a database to do.
 
-What *does* fit is **the pointer**: a Node's identity, its camera ids, and *where its configuration object is and at which revision* — hundreds of bytes. That is what Step 5's Variable holds. The configuration itself goes somewhere built for large, rare, opaque blobs, and Lesson 27 chooses it.
+What *does* fit is **the pointer**: a Node's identity, its camera ids, and *where its configuration object is and at which revision* — hundreds of bytes. That is what Step 5's Variable holds. The configuration itself goes somewhere built for large, rare, opaque blobs, and Lesson 3 chooses it.
 
 Three stores, chosen by shape, and this is the rule the rest of the course stores things by:
 
@@ -239,11 +239,11 @@ Three stores, chosen by shape, and this is the rule the rest of the course store
 
 > **Small and consistent goes in the scheduler's store. Large and queryable goes in a database. Large and opaque goes in an object store.**
 
-Lesson 29 will point out that the Variables you just wrote — one per Node, each listing its cameras — already *are* the cluster's directory. Notice it now; the lesson collects on it.
+Lesson 5 will point out that the Variables you just wrote — one per Node, each listing its cameras — already *are* the cluster's directory. Notice it now; the lesson collects on it.
 
 ## Step 7 — Placement constraints: cameras are not everywhere
 
-One more thing before the Node is properly placed. Camera 7 is on VLAN `cctv-a`, reachable from `srv-a` and `srv-b` and not from `srv-c`, whose NICs are on `cctv-b`. Nomad does not know that; you tell it, using the `meta.vlans` each client declared in Lesson 25:
+One more thing before the Node is properly placed. Camera 7 is on VLAN `cctv-a`, reachable from `srv-a` and `srv-b` and not from `srv-c`, whose NICs are on `cctv-b`. Nomad does not know that; you tell it, using the `meta.vlans` each client declared in Lesson 1:
 
 ```hcl
   group "node" {
@@ -254,9 +254,9 @@ One more thing before the Node is properly placed. Camera 7 is on VLAN `cctv-a`,
     }
 ```
 
-Drain `srv-a` and `srv-b` at once and the job goes **pending** rather than landing on `srv-c` where it would record nothing. Pending is the right answer: a Node placed where it cannot reach its cameras is М10 Lesson 21's lying cache with a scheduler attached. The console shows the reason — `nomad job status` says which constraint filtered which node — and that reason is what Lesson 24's "the system is full" message is built from.
+Drain `srv-a` and `srv-b` at once and the job goes **pending** rather than landing on `srv-c` where it would record nothing. Pending is the right answer: a Node placed where it cannot reach its cameras is М10 Lesson 2's lying cache with a scheduler attached. The console shows the reason — `nomad job status` says which constraint filtered which node — and that reason is what М10 Lesson 5's "the system is full" message is built from.
 
-Recordings, meanwhile, stay on the server that wrote them: `/data/nodes/node-3/archive` is a local path. **Do not put video bulk on replicated storage** — М9 Lesson 16 sized the data partition at hundreds of gigabytes per day; replicating that is a network you did not buy, and Lesson 27 shows it buys nothing for failover either.
+Recordings, meanwhile, stay on the server that wrote them: `/data/nodes/node-3/archive` is a local path. **Do not put video bulk on replicated storage** — М9 Lesson 1 sized the data partition at hundreds of gigabytes per day; replicating that is a network you did not buy, and Lesson 3 shows it buys nothing for failover either.
 
 **Deliverable:** М10's Node running as a Nomad job with the behaviour it had under Quadlet; then drained off its server and started on another with `NODE_ID`, `CONFIG_OBJECT` and `CAMERA_IDS` in its environment, read from a Variable nothing on either disk ever held.
 
@@ -272,7 +272,7 @@ Recordings, meanwhile, stay on the server that wrote them: `/data/nodes/node-3/a
 | Postgres task restarts in a loop with `initdb: directory exists but is not empty` | Two allocations of the same Node on the same server, or a leftover from a previous run. Local per-Node directories are per server; clean it. |
 | The job runs but the AppHost cannot reach Postgres | `network_mode = "host"` missing on one of the two tasks. Both must be on the host network or both on a group network. |
 | `exec2` task never starts | No Landlock: `cat /sys/kernel/security/lsm`. Or cgroups v1. Both are OS-image problems, not job problems. |
-| After a reschedule, the Node reports zero cameras | **Correct for this lesson.** The restore is Lesson 27. |
+| After a reschedule, the Node reports zero cameras | **Correct for this lesson.** The restore is Lesson 3. |
 
 ## Recap
 
@@ -296,4 +296,4 @@ Recordings, meanwhile, stay on the server that wrote them: `/data/nodes/node-3/a
 
 The Node has an identity that travels. It arrives on the new server knowing that it is Node 3 and that its configuration is object `rev-812` — and with an empty database.
 
-**Lesson 27 is the restore**: what must travel and what must not, the shared-storage trap that looks like the grown-up answer and cannot fail over unattended, the six-step rehydration sequence, and the number this design costs — the recovery point objective — measured rather than promised.
+**Lesson 3 is the restore**: what must travel and what must not, the shared-storage trap that looks like the grown-up answer and cannot fail over unattended, the six-step rehydration sequence, and the number this design costs — the recovery point objective — measured rather than promised.
