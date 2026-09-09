@@ -9,9 +9,9 @@ A shipped edge VMS is seven layers deep. The course builds them in dependency or
 | # | Layer | The question it answers | Module | State |
 |---|---|---|---|---|
 | 1 | **RAUC** | What OS is this box running, and can I change it safely? | М9 | Designed |
-| 2 | **Nomad + Podman** | What workload is running, and where? | М9 (one box) · М11 (a cluster) | Designed |
-| 3 | **Postgres** | What does this system know about itself? | М10 | Designed |
-| 4 | **The directory** | Which Node, which cluster — and is that answer complete? | М11 (a cluster's) · М12 (across clusters) | Designed |
+| 2 | **Nomad + Podman** | What workload is running, and where? | М9 (one box) · М11 (a cluster) | Written |
+| 3 | **Postgres** | What does this system know about itself? | М10 | Written |
+| 4 | **The directory** | Which Node, which cluster — and is that answer complete? | М11 (a cluster's) · М12 (across clusters) | Written (М11) · Designed (М12) |
 | 5 | **The domain signer** | Who is allowed to know what, and how do they prove it? | М12 — the domain is its own root; *OpenBao only for a multi-tenant vendor, М13* | Designed |
 | 6 | **Prometheus + logs** | Is it working, and how would I know? | М13 — domain-level; the remote observer is a domain service | Designed |
 | 7 | **The vendor boundary** | What may the vendor do, and what must it never be able to? | М14 | Designed |
@@ -94,7 +94,7 @@ This is deliberate and follows the course's existing discipline — `camera_sim.
 
 ## The modules
 
-### М10 — NodeVMS: Postgres and the AppHost · 5 lessons (20–24) · [designed](./М10_NodeVMS/module-design.md)
+### М10 — NodeVMS: Postgres and the AppHost · 5 lessons (20–24) · [written](./М10_NodeVMS/README.md)
 
 The cloud VMS spec forbade a database outright. The appliance needs one, and understanding *why the answer flipped* is half the module: in the cloud, KVS held the configuration; on-prem, the box holds it. The other half is that a row saying a camera should be recording is a wish until something makes it true.
 
@@ -104,7 +104,7 @@ The cloud VMS spec forbade a database outright. The appliance needs one, and und
 - The reconcile loop, built against a fake actuator first: desired persisted, actual derived, `observed_revision >= revision` as the only test of applied
 - Fifty GStreamer pipelines in one Python process — the GIL boundary demonstrated, `watchdog` for stall detection, and where Python stops being the right answer
 
-### М11 — ClusterVMS: a Node that outlives its server · 5 lessons (25–29) · [designed](./М11_ClusterVMS/module-design.md)
+### М11 — ClusterVMS: a Node that outlives its server · 5 lessons (25–29) · [written](./М11_ClusterVMS/README.md)
 
 The only module where getting it wrong corrupts customer data rather than merely stopping a service. М10's loop works on one box; this is one cluster — servers on one network you would bet recording on — and a Node that survives any of them dying.
 

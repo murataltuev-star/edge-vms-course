@@ -345,4 +345,4 @@ The lesson that costs almost nothing to build, because **you already built it in
 - [How to do distributed locking](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html) — fencing tokens, and why lease expiry must not depend on wall-clock time
 - [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md) · [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md)
 
-*Written 5 September 2026. Split from the combined DomainVMS module on 7 September 2026.*
+*Written 5 September 2026. Split from the combined DomainVMS module on 7 September 2026. Lessons 25–29 written 8 September; the Track 1 items above run in [`reference/`](reference/README.md), and every number the lessons print came out of them.*
