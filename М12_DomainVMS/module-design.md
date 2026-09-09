@@ -43,6 +43,7 @@ Which is also why this is the first layer in the course **allowed to be unavaila
 | A dead cluster | **Reported, never healed** | Its cameras are on its network and its footage on its disks. Rebalancing them elsewhere produces Nodes failing to reach a dead network and hides the real fault. |
 | Domain layer | **A directory of directories, and not consistent** | Cross-cluster lookup, choosing a cluster, and saying when an answer is partial. Within-cluster lookup, placement and rebalance are М11's. |
 | Directory storage | **No database at all.** A federated read across each cluster's Variables | The clusters already hold the answer; the domain aggregates rather than copies. Restore points stay in each cluster's own object store and the domain never reads them. |
+| The camera list the UI sees | **A read model built from status snapshots each Node publishes as an object beside its heartbeat — never a fan-out to Node consoles, never Variables** | The directory answers *where*, not *what*: names, phases and `last_seen` live in each Node's Postgres. Asking N consoles per page waits for the slowest and breaks on the first dead Node; putting status in Variables is the three-stores rule broken (frequent, large, replicated to every server). A snapshot is the same shape as the heartbeat, so it goes where the heartbeat went. The read view holds it in memory, shows its age, and can be rebuilt from the objects in one pass. Writes never go through it. See *The camera list* below. |
 | Convergence token | **Monotonic revision**, not token equality | Ordering expresses *distance*; equality only *difference*. See below. |
 | Transport | **mTLS, from the domain's own self-signed root** | The Node↔directory streams carry configuration, grants and status. A credential says who is calling; it says nothing about the channel. **The root is the customer's and stays self-signed on purpose** — a vendor-held root above it would be a vendor that can impersonate the customer's whole trust domain. |
 | Authentication | **A hand-provisioned credential per Node, marked temporary — until Lesson 6** | The course's existing discipline: the stand-in is named where it appears. Lesson 6's enrollment replaces it with an LDevID issued by the domain's own signer. |
@@ -135,7 +136,7 @@ The word *domain controller* was retired from this course on purpose, because it
 | **The CA** | holds a key, signs certificates | renewal stops — bounded by certificate lifetime minus margin |
 | **The token issuer** | holds a key, signs identity tokens | nobody *new* logs in; existing tokens run to expiry; break-glass (Lesson 4) |
 | **Cluster-level placement** | stateless computation | new cameras get no cluster |
-| **The aggregating read view** | stateless, federated reads | the console sees only its own cluster |
+| **The aggregating read view** | stateless; an in-memory read model rebuilt from the snapshots Nodes publish | the console sees only its own cluster — from its own object store, by the same code |
 | **The remote observer** | stateless, scrapes the other clusters | nobody is told a cluster went silent — [М13](../М13_Observability/module-design.md) |
 
 Every outage in that column is bounded, and none of it is recording or recovery. That is the thesis, made into a table.
@@ -178,6 +179,32 @@ The operator names the hosting **cluster**. **Nomad names the server**, continuo
 ### Cold start, which the rehydration lesson never had to face
 
 М11's М11 Lesson 3 walks a Node's restart step by step. A *domain's* first start has a step that sequence does not: **before the signer runs, no Node in the domain can present a certificate.** The order is Nomad up on its own install-time TLS → the signer scheduled → certificates issued → Nodes begin publishing. In that window a Node records — that is the whole design — but cannot yet be seen by anything above it. Lesson 1 walks this sequence, because a student who has not seen it will build a signer that depends on a Node that depends on the signer.
+
+---
+
+## The camera list, and where the console gets it
+
+The first screen any UI wants is the one the architecture so far cannot draw: *every camera, with its name, its site, whether it is recording, and when it was last seen* — across Nodes, and across clusters. The directory does not have it. М11's directory answers **where** camera 7 is, in one raft, correctly; it holds camera ids and a pointer to a configuration object, and nothing an operator would recognise as a camera. Names, phases, conditions and `last_seen` live in each Node's own Postgres, because М10 put them there and М11's *a Node owns its configuration* keeps them there. So the list is not stored anywhere. It has to be **assembled**, and the question is by whom and from what.
+
+Three ways to assemble it, and the shape rule from М11 Lesson 2 — *small, rare and consistent is raft; large, rare and never queried is an object; everything a Node needs at once is its Postgres* — decides between them before any of them is built.
+
+| | What it is | Why not |
+|---|---|---|
+| **Fan-out** | the console discovers every Node through Nomad's service catalogue and calls N consoles per page | Every page waits for the slowest Node; the first dead Node either hangs the list or forces partial-response logic into every screen; and each refresh is N network calls. Works at three Nodes, fails at thirty. |
+| **Status in Variables** | every Node adds its camera phases to its own Variable | Two hundred cameras from fifty Nodes every ten seconds is a hundred raft commits a second replicated to every server, for data nobody looks up by key. This is precisely why the heartbeat was moved out of Variables (М11 Lesson 4). |
+| **Published snapshots** | every Node writes `<node>/status` to the cluster's object store beside its heartbeat — the same JSON its own `/status` returns; the read view reads N small objects and holds them in memory | Frequent, medium, never queried by key: **an object**. No Node is called. No raft is written. A dead Node costs nothing but a stale snapshot. |
+
+The third is the decision, and it is not a new mechanism: **it is the heartbeat, carrying its payload.** The Node already has the task; it grows from `{ts, epoch}` to `{ts, epoch, cameras: [...]}`, at `HEARTBEAT_INTERVAL`. The arithmetic is the reason it is cheap: two hundred cameras at roughly two hundred bytes each is a 40 kB object per Node every ten seconds; fifty Nodes are 200 kB/s into an object store that was sized for footage restore points. Nothing about that needs a design.
+
+**What the read view is, and is not.** It is a process that lists `*/status` in each cluster's object store, keeps the result in memory, and serves the list, search and pagination from there — no call to any Node on any request. It is **not a database** (the *No database at all* decision stands): it holds nothing it cannot rebuild from the objects in one pass, and a restart of it is exactly that pass. It is a cache that admits to being one, which is М10's *desired is persisted, actual is derived* one layer up — the snapshots are actual state, and a copy of actual state is only ever a cache.
+
+**Staleness is shown, never hidden.** Every row carries the age of the snapshot it came from, and the UI prints it: *as of 8 s ago*. A Node whose snapshot is older than `lost_after` is shown as *unreachable — last known state*, with its cameras still listed, greyed, from the last object. The console never blocks on a Node, never times out on a page, and never presents a Node's silence as its cameras' absence — which is the *not mine* versus *not anywhere* distinction from the thesis, applied to a screen.
+
+**Writes never go through it.** When the operator edits a camera from that list, the UI asks the directory *where is camera 7*, gets the Node, and writes to **that Node's** console. The owner does not change; one-writer-per-key is not touched; and the edit shows up in the list when the next snapshot carries it, with `replicated` (М11 Lesson 3) still the only place the UI learns that the edit reached the cluster's restore point. A read model that also accepted writes would be a second owner of configuration, and the whole of М11 is about there being one.
+
+**It is the same code at both levels.** A single-cluster customer runs the read view against their own object store and gets the whole list with no domain at all — that is the *the console sees only its own cluster* row in the services table, and it is not a degraded mode but the same process pointed at one store. The domain's read view is that process pointed at every cluster's store, which is the first concrete thing in this module that is *a directory of directories*: it merges N lists that were each consistent inside their cluster, marks which cluster each row came from, and says when one of the clusters has gone silent — the third thing a cluster cannot know, made visible on the first screen.
+
+**What this costs the Node:** one field in the heartbeat and nothing else — the snapshot is the `/status` it already renders. **What it costs the module:** the read view stops being *federated reads of Variables plus whatever Nodes report* and becomes reads of objects, which is simpler, and Lesson 3's deliverable — two hundred cameras across four Nodes, kill a server, one cause displayed — is now specified down to where the two hundred rows come from and how old they are allowed to be.
 
 ---
 
@@ -227,7 +254,7 @@ The course's own convention — the stand-in before the real thing — at the to
 
 ### Lesson 3 — The API, and what it refuses
 
-- The read view: the directory list merged with what Nodes report, **grouped by failure domain**, so a dead server reads as one cause. There is no join to write — it is a merge in the API process, which is what a directory of tens of entries permits
+- The read view: the directory list merged with the status snapshots Nodes publish (*The camera list* above), **grouped by failure domain**, so a dead server reads as one cause. There is no join to write — it is a merge in the API process, which is what a directory of tens of entries permits
 - **Positions and reasons.** `phase` says where an object is; conditions say why it cannot get further. Kubernetes shipped the phase enum and then documented why it was wrong
 - Write API: camera CRUD with **idempotency keys**, and **what it refuses** — a client may not set placement
 - **Detectors.** Another worker class with its own opaque config; the domain does not change. So **where inference runs is a deployment question**, not a schema one
