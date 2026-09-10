@@ -126,6 +126,7 @@ What is left once a cluster works alone: **everything that stops being knowable 
 - **Human identity:** Nodes hold the signer's public key, never a password hash; the signer federates to the customer's own IdP. One domain, one Alice
 - **A cluster the domain rents for itself**, from the customer's cloud account — and proof the Node cannot tell where it runs. The bandwidth arithmetic (fifty cameras at 4 Mbps is 200 Mbps up) makes *mixed* the default shape, and closes the arc with М8's rented cloud
 - **Its own update server and entitlement cache**, which is what lets it run with the vendor gone
+- **Who serves browsers: never a Node.** A console and a live gateway as two cluster-level jobs — the Node's only clients — with the failure arithmetic that keeps a web problem away from a recorder. Lesson 3 grows a section for it when the lessons are written
 
 ### М13 — Observability: Prometheus and logs · 4 lessons · [designed](./М13_Observability/module-design.md)
 

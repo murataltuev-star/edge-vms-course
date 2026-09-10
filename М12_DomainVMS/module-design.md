@@ -44,6 +44,7 @@ Which is also why this is the first layer in the course **allowed to be unavaila
 | Domain layer | **A directory of directories, and not consistent** | Cross-cluster lookup, choosing a cluster, and saying when an answer is partial. Within-cluster lookup, placement and rebalance are М11's. |
 | Directory storage | **No database at all.** A federated read across each cluster's Variables | The clusters already hold the answer; the domain aggregates rather than copies. Restore points stay in each cluster's own object store and the domain never reads them. |
 | The camera list the UI sees | **A read model built from status snapshots each Node publishes as an object beside its heartbeat — never a fan-out to Node consoles, never Variables** | The directory answers *where*, not *what*: names, phases and `last_seen` live in each Node's Postgres. Asking N consoles per page waits for the slowest and breaks on the first dead Node; putting status in Variables is the three-stores rule broken (frequent, large, replicated to every server). A snapshot is the same shape as the heartbeat, so it goes where the heartbeat went. The read view holds it in memory, shows its age, and can be rebuilt from the objects in one pass. Writes never go through it. See *The camera list* below. |
+| Who serves browsers | **Never a Node. Two cluster-level jobs — a *console* (UI, API façade, the read model, TLS, token verification) and a *live gateway* (WebRTC/WHEP live, fMP4 playback, TURN, transcoding) — stateless, `count ≥ 2`, placed by constraint where they need a GPU or a public address** | A Node's memory is `B + n·I`, budgeted for cameras; a browser is numerous, untrusted, on a bad network and opens six tabs. A Node serves *few, trusted, internal* clients — the gateway subscribes to its live tee once per camera, the console reads its status — and never a viewer. Enforcement stays with the owner: the gateway forwards the user's token and the Node's grants decide. Both jobs run in every cluster, so a single-cluster customer has them with no domain; the domain's console is the same code pointed at every cluster. See *Who serves browsers* below. |
 | Convergence token | **Monotonic revision**, not token equality | Ordering expresses *distance*; equality only *difference*. See below. |
 | Transport | **mTLS, from the domain's own self-signed root** | The Node↔directory streams carry configuration, grants and status. A credential says who is calling; it says nothing about the channel. **The root is the customer's and stays self-signed on purpose** — a vendor-held root above it would be a vendor that can impersonate the customer's whole trust domain. |
 | Authentication | **A hand-provisioned credential per Node, marked temporary — until Lesson 6** | The course's existing discipline: the stand-in is named where it appears. Lesson 6's enrollment replaces it with an LDevID issued by the domain's own signer. |
@@ -140,8 +141,12 @@ The word *domain controller* was retired from this course on purpose, because it
 | **Cluster-level placement** | stateless computation | new cameras get no cluster |
 | **The aggregating read view** | stateless; an in-memory read model rebuilt from the snapshots Nodes publish | the console sees only its own cluster — from its own object store, by the same code |
 | **The remote observer** | stateless, scrapes the other clusters | nobody is told a cluster went silent — [М13](../М13_Observability/module-design.md) |
+| **The console** *(every cluster)* | stateless: the UI, the API façade, the read model, TLS, token verification | nobody logs in or sees the list; recording and established live sessions continue |
+| **The live gateway** *(every cluster)* | stateless fan-out: one subscription per camera to the Node's tee, N browser sessions out; transcoding and TURN where needed | live view and playback stop; recording continues |
 
 Every outage in that column is bounded, and none of it is recording or recovery. That is the thesis, made into a table.
+
+The last two rows are not domain services: they run in **every cluster**, because a single-cluster customer needs a screen and a picture with no domain at all, and the domain cluster runs the same console pointed at every cluster's stores. They are in this table because the question they answer — *who serves browsers* — is the one the Node-centred modules never had to ask.
 
 **The CA and the token issuer are one service.** They are the same operational thing — a process that holds keys and signs — with one availability story bounded by the same arithmetic and one thing to protect. Run them as one Nomad job with two keys, not two jobs. Calling them *the domain signer* keeps the point visible.
 
@@ -214,6 +219,28 @@ The third is the decision, and it is not a new mechanism: **it is the heartbeat,
 
 ---
 
+## Who serves browsers
+
+Everything up to here has been about recorders talking to stores. Nothing has said who talks to *people*: the operator's browser, the sixteen-up wall in the lobby, the investigator scrubbing yesterday's footage. М10 Lesson 5 put a console on the Node, and it was the right console for the right client — the Node's own status, for the Node's own operator, one query. It never said who is allowed to be that console's client, and the answer matters, because the wrong one turns every viewer into a subtraction from the camera count.
+
+**A Node serves few, trusted, internal clients. Something else serves many, untrusted, external ones.** A Node's memory is `B + n·I` (М10 Lesson 3), budgeted for cameras; a browser is everything a camera is not — numerous, on a bad network, behind NAT, inclined to open six tabs and leave them. The moment a Node serves browsers directly, a slow viewer on a Saturday night competes with recording for the same process. So the Node's clients are exactly two: the live gateway, which subscribes to its live tee once per camera, and the console, which reads its status and forwards edits. The Node never sees a viewer.
+
+That leaves two processes, and they are separate because they fail differently.
+
+**The console** is the web UI's static files, the API the browser talks to, the read model (*The camera list* above), TLS termination and token verification against the signer's public key. It is stateless — nothing in it cannot be rebuilt from Variables and objects — so it is an ordinary Nomad job with `count = 2`, placed anywhere, found by service discovery. Its writes are proxied, never owned: an edit goes to the directory, then to the owning Node's console, and *that* Node's grants decide whether the caller may (the *Authorization* row). The console needs a public key and nothing that fails when the domain is down.
+
+**The live gateway** turns a Node's one live stream into fifty browser sessions: WebRTC (WHEP) for live, fMP4 over HTTP with range requests for playback, a TURN relay when browsers sit behind NAT, transcoding where a browser cannot decode what the camera sends. It is the middle tier М9's process-model note predicted — *demand-driven, not camera-driven; sized by concurrent viewers; hardware-bound* — and it is the one legitimate place a specific server comes back into the design: a gateway that transcodes wants the GPU, a gateway that faces the internet wants the public address, and both are **constraints**, so Nomad places it on that server because of them and nobody types its name. The same rule the domain signer has for a TPM. Playback goes the same way: the Node serves segment files over HTTP to the gateway, the gateway serves the browser with the token check in front.
+
+**Where the picture comes from.** Two sources, and the cameras decide. Most IP cameras serve several RTSP sessions, so the gateway may open the camera's *sub-stream* directly while the Node records the main profile — one more session on the camera, nothing on the Node. Where the camera cannot (session caps, a saturated uplink, a DriverPack source with no second session), the Node's media worker carries a `tee` after the parser: one branch into `splitmuxsink` as always, one into a local live endpoint the gateway subscribes to. The live branch is **fire-and-forget** — a leaky queue, never a blocking one — so a stalled gateway loses frames rather than stalling the recorder behind it. Either way the gateway finds the Node through the directory (*where is camera 7*) and service discovery (*where is that Node's endpoint*), so a failover moves the endpoint and the gateway reconnects; nobody configures an address.
+
+**The failure arithmetic, which is the point of the split.** Console down: nobody logs in or sees the list; recording continues, and live sessions already established continue. Gateway down: live view and playback stop; recording continues. Node down: its cameras go dark on the wall and the console shows them from the last snapshot with their age; every other camera is untouched. In no case does a web problem reach a recorder, and in no case does a recorder's process host a viewer.
+
+**Two lines to hold.** The gateway relays and does not authorise: it forwards the user's token when it subscribes, and the Node's grants decide who may see a camera, or enforcement has moved into a process that cannot survive the domain being down. And both jobs run in **every cluster**: a single-cluster customer gets a screen and a picture with no domain at all, and the domain cluster's console is the same code with every cluster's stores behind it — which is the read model's *directory of directories* again, now with a picture under each row.
+
+**What this does to the lessons:** Lesson 3 is the console's lesson already and grows a section for the gateway; its deliverable gains *and a browser watching one of them live through the gateway, with the Node's viewer count still zero*.
+
+---
+
 ## Lessons
 
 *Five lessons. The three things a cluster cannot know, and the discipline of a layer that may be down.*
@@ -264,9 +291,10 @@ The course's own convention — the stand-in before the real thing — at the to
 - **Positions and reasons.** `phase` says where an object is; conditions say why it cannot get further. Kubernetes shipped the phase enum and then documented why it was wrong
 - Write API: camera CRUD with **idempotency keys**, and **what it refuses** — a client may not set placement
 - **Detectors.** Another worker class with its own opaque config; the domain does not change. So **where inference runs is a deployment question**, not a schema one
+- **Who serves browsers** (the section above): the console and the live gateway as two cluster-level jobs; the Node's clients are those two and nothing else; the gateway relays the token and the Node's grants decide; WHEP for live, fMP4 for playback; the `tee` with a leaky queue, or the camera's sub-stream
 - The API is unauthenticated, and the lesson says so
 
-**Deliverable:** the console showing two hundred cameras across four Nodes; kill a server; one cause displayed.
+**Deliverable:** the console showing two hundred cameras across four Nodes; kill a server; one cause displayed. And a browser watching one of them live through the gateway, with the Node's own viewer count still zero.
 
 ---
 

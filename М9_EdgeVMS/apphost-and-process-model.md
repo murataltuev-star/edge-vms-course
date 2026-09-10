@@ -101,7 +101,7 @@ Decode and encode. Live transcoding for an operator's 16-up wall, and analytics 
 | Transcode / analytics | Concurrent demand | Yes | 4–16 workers, GPU-pinned |
 | Control plane | Fixed | No | 1 controller |
 
-The middle tier is **demand-driven, not camera-driven** — sized by concurrent viewers and enabled detectors. It is also hardware-bound, which is where Nomad's `exec2` and `virt` drivers earn the argument made in [`kubernetes-vs-nomad.md`](../М11_ClusterVMS/kubernetes-vs-nomad.md): a native process needing direct device access does not have to be containerised.
+The middle tier is **demand-driven, not camera-driven** — sized by concurrent viewers and enabled detectors. (This tier becomes М12's *live gateway* — see *Who serves browsers* in [М12's design record](../М12_DomainVMS/module-design.md) — and the rule that a Node never serves a browser is stated there.) It is also hardware-bound, which is where Nomad's `exec2` and `virt` drivers earn the argument made in [`kubernetes-vs-nomad.md`](../М11_ClusterVMS/kubernetes-vs-nomad.md): a native process needing direct device access does not have to be containerised.
 
 ---
 
