@@ -120,7 +120,7 @@ What is left once a cluster works alone: **everything that stops being knowable 
 
 - **A directory of directories, and it cannot be consistent.** Inside a cluster there is one raft; across clusters there is none, so the domain aggregates — partial, bounded-stale, and honest about incompleteness. The CAP boundary drawn by a network you stopped trusting
 - **Three-level placement, split by what each level knows:** Nomad picks the server, the cluster picks the Node on capacity, the domain picks the cluster on **reachability**
-- **No domain controller.** One signer job, a stateless placement, a read view, an update server — hosted by one designated cluster, Nomad choosing the server. The signer's key is the only state, a software key in raft on purpose, backed up beyond the cluster and rotated on a drill
+- **No domain controller.** One signer job, a stateless placement, a read view, an update server — hosted by one designated cluster — the **domain cluster**, Nomad choosing the server. The signer's key is the only state, a software key in raft on purpose, backed up beyond the cluster and rotated on a drill
 - **The domain is its own root.** A vendor-held root that signs the customer's CA can impersonate their whole trust domain; so the root is self-signed, permanent, and the customer's. Enrollment (registrar, LDevID, approval, TPM) is the domain's; only the MASA voucher is the vendor's
 - **Lifetimes against offline tolerance:** *tolerable outage = certificate lifetime − renewal margin*. Revocation at the edge is a lifetime problem, not a list problem
 - **Human identity:** Nodes hold the signer's public key, never a password hash; the signer federates to the customer's own IdP. One domain, one Alice

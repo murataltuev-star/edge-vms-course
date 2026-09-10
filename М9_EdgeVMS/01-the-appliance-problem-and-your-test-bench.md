@@ -75,9 +75,9 @@ If that file exists and you can read it, add `-enable-kvm` to every `qemu-system
 The answer the embedded industry settled on is to keep two complete root filesystems and boot one of them.
 
 ```
-        ┌──────────────────────────────────────┐
+        ┌────────────────────────────────────────┐
         │  ESP  │  rootfs A  │  rootfs B  │ data │
-        └──────────────────────────────────────┘
+        └────────────────────────────────────────┘
            ▲         ▲            ▲         ▲
            │         │            │         └── never duplicated, never wiped
            │         │            └── inactive: the update is written HERE

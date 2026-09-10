@@ -68,7 +68,7 @@ A Node owns its own retention policy, so it cannot go stale on that. Entitlement
 
 **Per cluster** (М11): Nomad servers and clients — the cluster *is* a Nomad region; an object store on the cluster's own servers holding each Node's restore point; and the cluster directory, which is nothing more than each Node's Nomad Variable, scanned.
 
-**Per domain** (М12) — five services, hosted by one designated cluster, Nomad choosing the server, no controller and no authoritative state:
+**Per domain** (М12) — five services, hosted by one designated cluster — the **domain cluster**, Nomad choosing the server, no controller and no state that is not backed up beyond that cluster:
 
 | Service | Kind | When it is down |
 |---|---|---|
@@ -94,7 +94,7 @@ There is exactly one database in the design, and it belongs to a Node. Everythin
 | **Nomad Variables** | per cluster (raft) | each Node's identity and camera ids; the epoch; the signer's keys | raft is memory-resident and replicated to every server, so it must stay small; it is also the only store that offers **check-and-set** |
 | **Object store** | per cluster | each Node's published configuration — the restore point | a blob nobody but its author parses, read once in the life of a failover; durability is the whole requirement |
 
-And a short list of things deliberately in no store: a boot-path assignment file on each Node, so it can start recording while Postgres is still coming up; the domain root's backup, kept somewhere the hosting cluster's death cannot reach.
+And a short list of things deliberately in no store: a boot-path assignment file on each Node, so it can start recording while Postgres is still coming up; the domain root's backup, kept somewhere the domain cluster's death cannot reach.
 
 **The domain has no database.** Its directory is a federated read across each cluster's Variables. This was the sixth revision of that decision, and every revision moved in the same direction.
 
@@ -277,7 +277,7 @@ The rule that came out of it — *small and consistent in the scheduler's store;
 
 **The question:** where does the domain controller live?
 
-**The answer:** there isn't one. What runs at the domain is five small services — a signer, placement, a read view, an update server, a remote observer — hosted by one designated cluster, Nomad choosing the server, failing over within that cluster like any allocation, and dying with it. **The signer's key is the only state**: a software key in the cluster's raft, on purpose, because a TPM-sealed key pins the signer to one server and defeats the failover it just gained; acceptable because everything it signs is short-lived. The word *domain controller* was retired, because it named a component the design had dissolved and implied an authority the layer does not have.
+**The answer:** there isn't one. What runs at the domain is five small services — a signer, placement, a read view, an update server, a remote observer — hosted by one designated cluster — the **domain cluster**, Nomad choosing the server, failing over within that cluster like any allocation, and dying with it. **The signer's key is the only state that cannot be regenerated — and, where the customer has no identity provider, the local user records beside it** (М12, *Where users live*; both published as objects for restore): a software key in the cluster's raft, on purpose, because a TPM-sealed key pins the signer to one server and defeats the failover it just gained; acceptable because everything it signs is short-lived. The word *domain controller* was retired, because it named a component the design had dissolved and implied an authority the layer does not have.
 
 ### Step 10 — The layer above the domain does not exist
 
@@ -299,7 +299,7 @@ The rule that came out of it — *small and consistent in the scheduler's store;
 
 **The finding:** it was already there, unnamed — the health-check ladder, spool age, `camera_silent_seconds`, failover time, replica lag — each defined where its failure was introduced. The observability module collects rather than introduces. And its remote observer is *one more domain service*, so the module is domain-level and belongs directly after the domain, before the vendor — which resolved a sequencing hedge that had survived three restructures, since the vendor module's demo (*the vendor disappears for thirty days*) can only be demonstrated with instrumentation in place.
 
-The module's own thesis is the one datacentre monitoring gets for free and this product cannot: **in a datacentre, no news is bad news; at the edge, no news is no news.** Two observers — local, seeing everything and dying with the cluster; remote, in the hosting cluster, whose only job is to tell silence from health. Detail is local, summary is domain, for the fourth data type — which the database record had predicted would arrive.
+The module's own thesis is the one datacentre monitoring gets for free and this product cannot: **in a datacentre, no news is bad news; at the edge, no news is no news.** Two observers — local, seeing everything and dying with the cluster; remote, in the domain cluster, whose only job is to tell silence from health. Detail is local, summary is domain, for the fourth data type — which the database record had predicted would arrive.
 
 ### Step 12 — What was designed out, and why
 

@@ -30,7 +30,7 @@ A Prometheus running as a Nomad job inside the domain it watches dies with that 
 
 Both halves are true, so there is no single correct place, and the resolution is that **there are two observers with different jobs**:
 
-| | **Local** — in the cluster | **Remote** — in the domain's hosting cluster |
+| | **Local** — in the cluster | **Remote** — in the domain cluster |
 |---|---|---|
 | Sees | everything, at full resolution | whether the site is alive, and a handful of aggregates |
 | Dies with | the site | nothing the site can cause |
@@ -155,7 +155,7 @@ Not legal advice, and the anti-tivoisation clause in §6 deserves its own look f
 - **What crosses the uplink**, and the arithmetic beside М13's: metrics measured in kilobits per second against footage measured in megabits. Monitoring must not compete with the product for the link
 - **Remote write**: v1.0 is the stable spec (April 2023) and mandates **Snappy** compression; v2.0 is still marked experimental. Say which you are using and why
 - **Federation** is for pulling *selected*, typically *aggregated*, series between servers. The widespread advice not to federate everything is community practice rather than a documented warning — **teach the reasoning, and attribute it honestly**
-- Where the *remote* observer lives: **the domain's hosting cluster**, as one more domain service — a different failure domain from every other cluster, and the same one as the signer. It is allowed to be down, so it may not be the thing that decides anything; and it watches the hosting cluster itself only from *inside*, which is the one blind spot the design accepts and names
+- Where the *remote* observer lives: **the domain cluster**, as one more domain service — a different failure domain from every other cluster, and the same one as the signer. It is allowed to be down, so it may not be the thing that decides anything; and it watches the domain cluster itself only from *inside*, which is the one blind spot the design accepts and names
 
 **Deliverable:** kill an entire cluster and show that the domain still reports it as unreachable within a stated window — and that nothing in that cluster stopped recording.
 
@@ -202,7 +202,7 @@ The capstone, and it is a reading exercise as much as a building one.
 
 1. **Does this module belong before М13?** Three of М13's lessons lean on instrumentation taught here. Emitting low softened it; the argument is not dead.
 2. **One Prometheus per domain, or per site?** They are the same thing when a domain is one building and different when a domain is a cloud region serving fifty small sites — which М13's mixed deployment makes routine.
-3. **Who watches the hosting cluster?** The remote observer lives there, so it cannot see its own cluster from outside. The vendor could host a second-level heartbeat as a support service — but the product must not *depend* on it, so the honest answer may be that the hosting cluster's death is discovered by a human noticing the console is gone.
+3. **Who watches the domain cluster?** The remote observer lives there, so it cannot see its own cluster from outside. The vendor could host a second-level heartbeat as a support service — but the product must not *depend* on it, so the honest answer may be that the domain cluster's death is discovered by a human noticing the console is gone.
 4. **Is a customer-installed Grafana an acceptable answer**, or does the product need a dashboard it ships? The licensing section takes a position; a product manager may not accept it.
 5. **What is the retention for metrics at a site?** Sized against the same partition as the spool and the archive, and therefore competing with footage for disk. Nobody has costed this.
 

@@ -154,12 +154,12 @@ The instinct is right: an operator wants to assign cameras, not machines. The us
 
 But servers are physical, and physics leaks in four places where hiding it would be a lie:
 
-| Where it surfaces | What the operator actually needs to know |
-|---|---|
-| **Capacity** | *"You cannot add camera 1001."* Expressed as **the system is full**, not *Node 3 is full* — but the number has to come from somewhere real |
+| Where it surfaces    | What the operator actually needs to know                                                                                                                                    |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Capacity**         | *"You cannot add camera 1001."* Expressed as **the system is full**, not *Node 3 is full* — but the number has to come from somewhere real                                  |
 | **Storage locality** | Recordings live on the **server** that wrote them, and a Node moving does not move them. A dead server means unavailable footage, and that must be visible *before* it dies |
-| **Failure grouping** | When a server fails, its Nodes move and two hundred cameras go red together. The console must show **one cause**, not two hundred faults |
-| **Reachability** | A camera on an isolated VLAN may be reachable from only some servers. The operator expresses this as a **site**; the controller turns it into a placement constraint |
+| **Failure grouping** | When a server fails, its Nodes move and two hundred cameras go red together. The console must show **one cause**, not two hundred faults                                    |
+| **Reachability**     | A camera on an isolated VLAN may be reachable from only some servers. The operator expresses this as a **site**; the controller turns it into a placement constraint        |
 
 > **Site is a first-class operator concept. Server is not, and Node barely is.**
 
@@ -189,11 +189,11 @@ Three things end Python's case for the *product*, and none of them is "Python is
 
 ### Binding reality, because it is easy to choose wrong
 
-| Binding | Status |
-|---|---|
-| **`gstreamer-rs`** (Rust) | Maintained by GStreamer's own developers; the strongest non-C binding by some distance |
-| **`go-gst`** | The live Go binding, successor to `tinyzimmer/go-gst`. Real, and a much smaller community |
-| **`gstreamermm`** (C++) | **Archived.** C++ means calling the C API directly — which is what C++ projects do anyway |
+| Binding                   | Status                                                                                    |
+| ------------------------- | ----------------------------------------------------------------------------------------- |
+| **`gstreamer-rs`** (Rust) | Maintained by GStreamer's own developers; the strongest non-C binding by some distance    |
+| **`go-gst`**              | The live Go binding, successor to `tinyzimmer/go-gst`. Real, and a much smaller community |
+| **`gstreamermm`** (C++)   | **Archived.** C++ means calling the C API directly — which is what C++ projects do anyway |
 
 That last row surprises people and then stops being surprising: a C++ wrapper around a C API adds a layer whose only job is to be idiomatic, and GStreamer's C API is already object-oriented in all but syntax.
 
@@ -201,14 +201,14 @@ If the team is Rust-shaped rather than C++-shaped, `gstreamer-rs` is a genuinely
 
 ### What the rewrite does *not* touch — the point of having written it in Python
 
-| Survives unchanged | Gets rewritten |
-|---|---|
-| The schema | The actuator |
-| The reconcile loop's **logic** | Its implementation language |
-| The state machine and its transitions | |
-| The backoff and jitter policy | |
-| The desired/actual contract, and `observed_revision >= revision` | |
-| The status vocabulary and the conditions model | |
+| Survives unchanged                                               | Gets rewritten              |
+| ---------------------------------------------------------------- | --------------------------- |
+| The schema                                                       | The actuator                |
+| The reconcile loop's **logic**                                   | Its implementation language |
+| The state machine and its transitions                            |                             |
+| The backoff and jitter policy                                    |                             |
+| The desired/actual contract, and `observed_revision >= revision` |                             |
+| The status vocabulary and the conditions model                   |                             |
 
 **Only the actuator changes.** Everything expensive to get right — and everything that was wrong in your first draft — is language-independent, and you established all of it in a language where a wrong idea costs ten minutes instead of an afternoon.
 

@@ -35,12 +35,12 @@ There is also a trap in it that looks like the grown-up answer. Shared storage w
 
 Node 3's data sits on Server A's disk. Nomad moves Node 3 to Server B. Go through the four things in its Postgres from М10 Lesson 1 and ask of each: *does the new instance need this to do its job?*
 
-| | On the dead server | Comes with the Node? |
-|---|---|---|
-| **Footage** | stays | **No — and it does not need to.** The past stays where it was written; a replacement records the future. Moving terabytes to move a process would be the tail wagging the dog |
-| **Archive index** | stays | **Rebuilt.** М10 Lesson 4 made it derivable from the segments on disk; when Server A returns, its index comes back with it |
-| **Events** | stays | Expendable. They are observations, and М10 Lesson 1 said so |
-| **Configuration** | stays | **Must come. It is the source of truth, and losing it loses the Node** |
+|                   | On the dead server | Comes with the Node?                                                                                                                                                          |
+| ----------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Footage**       | stays              | **No — and it does not need to.** The past stays where it was written; a replacement records the future. Moving terabytes to move a process would be the tail wagging the dog |
+| **Archive index** | stays              | **Rebuilt.** М10 Lesson 4 made it derivable from the segments on disk; when Server A returns, its index comes back with it                                                    |
+| **Events**        | stays              | Expendable. They are observations, and М10 Lesson 1 said so                                                                                                                   |
+| **Configuration** | stays              | **Must come. It is the source of truth, and losing it loses the Node**                                                                                                        |
 
 So exactly one thing has to travel, and it is the smallest of the four: a few hundred rows of what the operator asked for. Everything else is either derivable or belongs where it is.
 
