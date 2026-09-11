@@ -73,3 +73,15 @@ async def test_unseen_node_records_nothing_and_says_so():
     r = await host.prologue()
     assert r.state == "unconfigured" and await host.reconcile_once() == []
     assert host.settings.epoch == 1                                       # it still holds an epoch: an operator may configure it
+
+
+async def test_heartbeat_carries_the_status_snapshot():
+    """М12: the console's camera list is built from this object, never from a call to the Node."""
+    v, objs = world(); clk = Clock(); wall = Clock(10_000.0)
+    ident = await _seen_node(v, objs, [7, 8])
+    host = ClusterAppHost(settings(), FakeClusterStore(), v, objs, ident, actuator=FakeActuator(), clock=clk, wall=wall)
+    await host.prologue(); await host.reconcile_once()
+    hb = host.heartbeat_payload()
+    assert hb["ts"] == 10_000.0 and hb["epoch"] == 1 and hb["server"]
+    assert [(c["id"], c["phase"]) for c in hb["cameras"]] == [(7, "running"), (8, "running")]
+    assert hb["cameras"][0]["name"] == "cam7" and hb["cameras"][0]["site"] == "hq"

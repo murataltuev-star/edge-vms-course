@@ -116,3 +116,21 @@ func TestUnseenNodeRecordsNothingAndSaysSo(t *testing.T) {
 		t.Fatal("epoch")
 	}
 }
+
+// М12: the console's camera list is built from this object, never from a call to the Node.
+func TestHeartbeatCarriesTheStatusSnapshot(t *testing.T) {
+	v, objs := world(t)
+	clk, wall := &fakeClock{1000}, &fakeClock{10_000}
+	ident := seenNode(t, v, objs, 7, 8)
+	host := NewClusterAppHost(testSettings(), NewFakeClusterStore(), v, objs, ident, NewFakeActuator(), clk.now, wall.now)
+	_, err := host.Prologue()
+	must(t, err)
+	host.ReconcileOnce()
+	hb := host.HeartbeatPayload()
+	if hb.TS != 10_000 || hb.Epoch != 1 || hb.Server == "" || len(hb.Cameras) != 2 {
+		t.Fatalf("%+v", hb)
+	}
+	if hb.Cameras[0].ID != 7 || hb.Cameras[0].Phase != "running" || hb.Cameras[0].Name != "cam7" || hb.Cameras[0].Site != "hq" {
+		t.Fatalf("%+v", hb.Cameras[0])
+	}
+}

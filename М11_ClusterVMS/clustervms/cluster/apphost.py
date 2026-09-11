@@ -158,13 +158,29 @@ class ClusterAppHost(AppHost):
         except ValueError:
             return None
 
+    # М12: the heartbeat carries its payload. The same object grows from
+    # {ts, epoch} to {ts, epoch, server, cameras: [...]} — the Node's own
+    # /status — and the cluster's console builds the camera list from it
+    # without calling any Node (М12, "The camera list"). `server` is what
+    # lets the console show a dead server as ONE cause.
+    def heartbeat_payload(self) -> dict:
+        phases = self.phases()
+        cams = []
+        for cam in self.desired.rows:
+            rev, phase = phases.get(cam["id"], (0, "pending"))
+            cams.append({"id": cam["id"], "name": cam.get("name", ""), "site": cam.get("site_id", ""),
+                         "enabled": bool(cam.get("enabled", True)), "phase": phase,
+                         "revision": cam.get("revision", 0), "observed_revision": rev})
+        return {"ts": self.wall(), "epoch": self.settings.epoch, "revision": self.identity.config_revision,
+                "server": os.environ.get("NOMAD_NODE_ID") or os.environ.get("NOMAD_NODE_NAME") or os.uname().nodename,
+                "cameras": cams}
+
     async def heartbeat(self) -> None:
         import json
         while not self.stopping.is_set():
             try:
                 if self.lease is not None and self.lease.may_write():
-                    self.objects.put(f"{self.identity.node}/heartbeat",
-                                     json.dumps({"ts": self.wall(), "epoch": self.settings.epoch}).encode())
+                    self.objects.put(f"{self.identity.node}/heartbeat", json.dumps(self.heartbeat_payload()).encode())
             except Exception:                            # noqa: BLE001
                 log.debug("heartbeat write failed (object store unreachable?)")
             await asyncio.sleep(self.heartbeat_interval)

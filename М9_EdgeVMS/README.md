@@ -19,10 +19,10 @@ And a third thing that belongs to neither: **the data**. It must outlive both pl
 
 | # | Lesson | You'll be able to... |
 |---|---|---|
-| 16 | [The Appliance Problem, and Your Test Bench](01-the-appliance-problem-and-your-test-bench.md) | Explain why in-place updates are unsafe on an unattended box; describe A/B slots and what is *not* duplicated; size a data partition from a stated outage requirement; build and boot a QEMU UEFI bench with two independent root filesystems. |
-| 17 | [RAUC: Slots, Bundles, and Signatures](02-rauc-slots-bundles-and-signatures.md) | Write a `system.conf` with current keys; build a two-level CA; sign a bundle; **demonstrate** that a wrongly-signed, wrong-hardware, or tampered bundle is refused; install into the inactive slot with the running one untouched. |
-| 18 | [Rollback That Actually Works](03-rollback-that-actually-works.md) | Explain why "did it boot?" is not success; implement the try/OK state machine in GRUB; write a health check that reaches *is footage being written*; induce three failures and document each recovery. |
-| 19 | [Podman, Quadlet, the Three-Way Boundary, and the Spool](04-podman-quadlet-and-the-spool.md) | Run the VMS as systemd-managed containers; move container storage off the rootfs; provision credentials at commissioning; **watch footage vanish during an outage**, then build the spool that stops it. |
+| 1 | [The Appliance Problem, and Your Test Bench](01-the-appliance-problem-and-your-test-bench.md) | Explain why in-place updates are unsafe on an unattended box; describe A/B slots and what is *not* duplicated; size a data partition from a stated outage requirement; build and boot a QEMU UEFI bench with two independent root filesystems. |
+| 2 | [RAUC: Slots, Bundles, and Signatures](02-rauc-slots-bundles-and-signatures.md) | Write a `system.conf` with current keys; build a two-level CA; sign a bundle; **demonstrate** that a wrongly-signed, wrong-hardware, or tampered bundle is refused; install into the inactive slot with the running one untouched. |
+| 3 | [Rollback That Actually Works](03-rollback-that-actually-works.md) | Explain why "did it boot?" is not success; implement the try/OK state machine in GRUB; write a health check that reaches *is footage being written*; induce three failures and document each recovery. |
+| 4 | [Podman, Quadlet, the Three-Way Boundary, and the Spool](04-podman-quadlet-and-the-spool.md) | Run the VMS as systemd-managed containers; move container storage off the rootfs; provision credentials at commissioning; **watch footage vanish during an outage**, then build the spool that stops it. |
 
 ## What each lesson leaves running
 

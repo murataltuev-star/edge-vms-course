@@ -243,7 +243,7 @@ That leaves two processes, and they are separate because they fail differently.
 
 ## Lessons
 
-*Five lessons. The three things a cluster cannot know, and the discipline of a layer that may be down.*
+*Eight lessons, written — [the index](README.md). The three things a cluster cannot know, and the discipline of a layer that may be down. What follows is the plan each lesson was written from.*
 
 ### Lesson 1 — What a cluster cannot know
 
@@ -445,6 +445,14 @@ The domain's root is self-signed and it is the top. That removes a layer and add
 **Deliverable:** one domain, two clusters — one local, one rented from the customer's cloud account by the domain itself — both recording, both in one directory, and a written bandwidth-and-cost estimate for a fifty-camera site saying which it should be.
 
 ---
+## The code, whole
+
+[`domainvms/`](./domainvms/README.md) is the eight lessons as one runnable package, built **on** М11's `clustervms/` — the domain reads each cluster's Variables through М11's `Directory` and its object store through М11's adapters, and holds no database. Every decision above has a file: `federation.py` (an `Answer` that says what it could not reach), `placement.py` (reachability, CAS, a dead cluster is not a trigger), `shadow.py`, `readview.py` and `console.py` (the camera list from snapshots, one cause per dead server), `gateway.py` (the tee with a leaky queue, one subscription per camera), `tokens.py` / `signer.py` / `identity.py` / `grants.py` / `agent.py` (the signer, users that never reach a Node, Node-local grants with expiry, the agent that carries only trust), `enroll.py` (voucher and approval), `entitlement.py`, `cloud.py`. Four Nomad jobs and two ACL policies under `deploy/`. Its 37 tests run with no Nomad, no Postgres and no browser, and each lesson's deliverable is a named test.
+
+One change went back into М11 for it: the Node's heartbeat now carries its status snapshot (`{ts, epoch, revision, server, cameras}`), in both `clustervms/` and `clustervms-go/`.
+
+---
+
 ## Verification plan
 
 **Track 1 — verified in the authoring sandbox.** Nearly all of it, because a directory is logic and a file:
@@ -456,6 +464,8 @@ The domain's root is self-signed and it is the top. That removes a layer and add
 - The mTLS chain, with real `openssl`, exactly as М9 Lesson 2 built the RAUC chain — and now the whole of Lesson 7: lifetimes, expiry, root rotation with an overlap window, and clock-skew failures, all by issuing short certificates and moving time rather than waiting
 - **Enrollment end to end with a simulated MASA** — the registrar, the voucher, EST, the LDevID — and the approval fallback with its queue and audit trail. A student without a TPM reads Lesson 6's attestation section rather than running it, and the lesson says at which paragraph that starts
 - The bandwidth and cost arithmetic of Lesson 8, which is a spreadsheet
+
+**Done, in `domainvms/tests/`:** all of Track 1 above except the mTLS chain with real `openssl` (the chain, lifetimes, rotation, cross-signing and skew are done with `cryptography`'s X.509 instead, which is the same chain the Nodes will verify) — 37 tests, run in the sandbox and on the author's machine. `deploy/verify-bench.sh` scripts Track 2's federation, forwarded-read, ACL and pulled-uplink checks.
 
 **Track 2 — needs the real bench.** Anything that needs several real Nodes on several real servers: shadow mode against live traffic, the rebalance budget under load, the packaging exercise, and a rented cluster provisioned from a real cloud account. **TPM 2.0** cannot be faked in any way worth teaching.
 

@@ -11,8 +11,8 @@ A shipped edge VMS is seven layers deep. The course builds them in dependency or
 | 1 | **RAUC** | What OS is this box running, and can I change it safely? | М9 | Designed |
 | 2 | **Nomad + Podman** | What workload is running, and where? | М9 (one box) · М11 (a cluster) | Written |
 | 3 | **Postgres** | What does this system know about itself? | М10 | Written |
-| 4 | **The directory** | Which Node, which cluster — and is that answer complete? | М11 (a cluster's) · М12 (across clusters) | Written (М11) · Designed (М12) |
-| 5 | **The domain signer** | Who is allowed to know what, and how do they prove it? | М12 — the domain is its own root; *OpenBao only for a multi-tenant vendor, М13* | Designed |
+| 4 | **The directory** | Which Node, which cluster — and is that answer complete? | М11 (a cluster's) · М12 (across clusters) | Written (М11) · Written (М12) |
+| 5 | **The domain signer** | Who is allowed to know what, and how do they prove it? | М12 — the domain is its own root; *OpenBao only for a multi-tenant vendor, М13* | Written |
 | 6 | **Prometheus + logs** | Is it working, and how would I know? | М13 — domain-level; the remote observer is a domain service | Designed |
 | 7 | **The vendor boundary** | What may the vendor do, and what must it never be able to? | М14 | Designed |
 
@@ -114,7 +114,7 @@ The only module where getting it wrong corrupts customer data rather than merely
 - **The cluster directory, which was already built.** Each Node's Variable holds its camera ids; scanning them answers *where is camera 7*, in one raft, strongly consistent. Placement onto Nodes by measured capacity, the stability rule, and why consistent hashing is the reflexive wrong answer
 - **The whole module exists twice** — `clustervms/` in Python and `clustervms-go/` in Go, passing the same tests, restoring from each other's publications, and measured side by side: the language argument from М10 confirmed on a module rather than a file
 
-### М12 — DomainVMS: several clusters, and the top of the product · 8 lessons · [designed](./М12_DomainVMS/module-design.md)
+### М12 — DomainVMS: several clusters, and the top of the product · 8 lessons · [written](./М12_DomainVMS/README.md) · [design](./М12_DomainVMS/module-design.md) · [code](./М12_DomainVMS/domainvms/README.md)
 
 What is left once a cluster works alone: **everything that stops being knowable with more than one cluster** — and, since nothing above the domain belongs to the product, everything a domain must do for itself.
 

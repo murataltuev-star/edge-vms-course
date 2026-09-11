@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"sort"
 	"strconv"
 	"sync"
@@ -283,8 +284,46 @@ func (h *ClusterAppHost) Wake() {
 // thousand tiny objects a second is nothing to an object store.
 
 type heartbeat struct {
-	TS    float64 `json:"ts"`
-	Epoch int64   `json:"epoch"`
+	TS       float64        `json:"ts"`
+	Epoch    int64          `json:"epoch"`
+	Revision int64          `json:"revision,omitempty"`
+	Server   string         `json:"server,omitempty"`
+	Cameras  []cameraStatus `json:"cameras,omitempty"`
+}
+
+// cameraStatus is the Node's own /status row, carried in the heartbeat so
+// the cluster console builds the camera list without calling any Node
+// (М12, "The camera list"). Server lets a dead server read as one cause.
+type cameraStatus struct {
+	ID               int64  `json:"id"`
+	Name             string `json:"name"`
+	Site             string `json:"site"`
+	Enabled          bool   `json:"enabled"`
+	Phase            string `json:"phase"`
+	Revision         int64  `json:"revision"`
+	ObservedRevision int64  `json:"observed_revision"`
+}
+
+// HeartbeatPayload is the object the heartbeat task writes.
+func (h *ClusterAppHost) HeartbeatPayload() heartbeat {
+	rows := h.Desired.Rows()
+	phases := map[int64]StatusRow{}
+	for _, p := range h.phases() {
+		phases[p.Camera] = p
+	}
+	cams := make([]cameraStatus, 0, len(rows))
+	for _, r := range rows {
+		p := phases[r.ID]
+		if p.Phase == "" {
+			p.Phase = "pending"
+		}
+		cams = append(cams, cameraStatus{r.ID, r.Name, r.SiteID, r.Enabled, p.Phase, r.Revision, p.ObservedRevision})
+	}
+	server := os.Getenv("NOMAD_NODE_ID")
+	if server == "" {
+		server, _ = os.Hostname()
+	}
+	return heartbeat{h.Wall(), h.Settings.Epoch, h.Identity.ConfigRevision, server, cams}
 }
 
 func (h *ClusterAppHost) readHeartbeat() *heartbeat {
@@ -303,7 +342,7 @@ func (h *ClusterAppHost) heartbeatOnce() {
 	if h.Lease == nil || !h.Lease.MayWrite() {
 		return
 	}
-	b, _ := json.Marshal(heartbeat{h.Wall(), h.Settings.Epoch})
+	b, _ := json.Marshal(h.HeartbeatPayload())
 	if err := h.Objects.Put(h.Identity.Node+"/heartbeat", b); err != nil {
 		log.Printf("heartbeat write failed (object store unreachable?): %v", err)
 	}
