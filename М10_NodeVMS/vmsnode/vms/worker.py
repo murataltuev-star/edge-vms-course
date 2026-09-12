@@ -59,10 +59,16 @@ class FakeActuator:
 
 
 class VmsWorker(Worker):
-    def __init__(self, name: str, vars_: Variables, objects: ObjectStore, actuator=None,
+    """`name` is a slot. Given (systemd's %i, Nomad's alloc index) it is
+    claimed by that name; None means "whichever slot is free" — a lapsed one
+    first, so a replacement inherits its assignment."""
+
+    def __init__(self, name: str | None, vars_: Variables, objects: ObjectStore, actuator=None,
                  lease_ttl: float = 30.0, lease_margin: float = 5.0, clock=time.monotonic, wall=time.time,
-                 server: str | None = None):
-        super().__init__(VMS, name, vars_, objects, lease_ttl, lease_margin, clock, wall)
+                 server: str | None = None, capacity: int = 50, instance: str | None = None, slot_ttl: float = 45.0):
+        super().__init__(VMS, None, vars_, objects, lease_ttl, lease_margin, clock, wall, instance, slot_ttl)
+        self.claim_slot(prefer=name)
+        self.capacity = capacity          # cameras this process can carry: М9 Lesson 7's B + n·I, measured on its server
         self.actuator = actuator or FakeActuator()
         self.rows: list[dict] = []
         self.assignment_rev = 0
@@ -123,6 +129,9 @@ class VmsWorker(Worker):
         assigned to me is a reassignment: let it go. A lost lease on a camera
         that IS still mine means another instance of ME took it: I am the
         zombie, and the whole instance fences."""
+        if not self.renew_slot():
+            self.fence(f"slot {self.name} is held by another instance now")
+            return list(self.epochs)
         lost = self.renew_leases()
         if not lost:
             return []
@@ -162,9 +171,15 @@ class VmsWorker(Worker):
                         "epoch": self.epochs.get(str(cid), 0)})
         return out
 
+    def headroom(self) -> int:
+        """What the autoscaler reads: cameras this worker could still take.
+        Not CPU — a worker at 40 % CPU with no assignment left is full."""
+        return max(0, self.capacity - len(self.rows))
+
     def heartbeat_once(self) -> None:
-        self.heartbeat(self.status(), server=self.server, assignment_rev=self.assignment_rev,
-                       fenced=not self.recording_allowed, conflicts=self.conflicts(), passes=self.passes)
+        self.heartbeat(self.status(), server=self.server, instance=self.instance, assignment_rev=self.assignment_rev,
+                       fenced=not self.recording_allowed, conflicts=self.conflicts(), passes=self.passes,
+                       capacity=self.capacity, headroom=self.headroom())
 
     def run(self, poll: float = 2.0, stop=None) -> None:
         """One box: the loop as a process. Nomad or systemd restarts it."""
@@ -185,3 +200,4 @@ class VmsWorker(Worker):
             stop.wait(poll)
         self.actuator.stop_all()
         self.heartbeat_once()
+        self.release_slot()                           # an orderly stop says so; a crash says nothing

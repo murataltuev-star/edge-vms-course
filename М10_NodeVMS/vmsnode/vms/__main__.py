@@ -2,7 +2,9 @@
 
     PLATFORM_DIR=/data/platform     the platform's stores (config/, objects/)
     SPOOL=/data/spool  ARCHIVE=/data/archive  MEDIA_DIR=/data/media
-    WORKER_NAME=w-1                  the worker's stable name (systemd: %i)
+    WORKER_NAME=w-1                  the slot to claim (systemd: %i); unset: NOMAD_ALLOC_INDEX → w-<index>;
+                                     neither: the first free slot, a lapsed one first
+    CAPACITY=50                      cameras this worker can carry — exported as headroom for the autoscaler
     CONSOLE_PORT=8080                the controller's console
 """
 from __future__ import annotations
@@ -28,8 +30,8 @@ for s in (signal.SIGTERM, signal.SIGINT):
 
 
 def worker() -> None:
-    name = os.environ.get("WORKER_NAME", "w-1")
-    vars_ = FileVariables(os.path.join(root, "config"), writer=name, acl={name: ["vms/epoch/*"]})
+    name = os.environ.get("WORKER_NAME") or (f"w-{os.environ['NOMAD_ALLOC_INDEX']}" if "NOMAD_ALLOC_INDEX" in os.environ else None)
+    vars_ = FileVariables(os.path.join(root, "config"), writer="vmsworker", acl={"vmsworker": ["vms/epoch/*", "vms/slots/*"]})
     objects = FsObjectStore(os.path.join(root, "objects"))
     spool, archive = os.environ.get("SPOOL", "/data/spool"), os.environ.get("ARCHIVE", "/data/archive")
     try:
@@ -41,7 +43,9 @@ def worker() -> None:
     res = ArchiveResource(spool, archive)
     for p in res.closed_in_spool(grace_seconds=30, now=__import__("time").time()):     # what the last instance closed but did not promote
         res.promote(p)
-    VmsWorker(name, vars_, objects, act).run(stop=stop)
+    w = VmsWorker(name, vars_, objects, act, capacity=int(os.environ.get("CAPACITY", "50")))
+    logging.info("worker %s (instance %s) claimed its slot", w.name, w.instance)
+    w.run(stop=stop)
 
 
 def controller() -> None:
@@ -53,7 +57,8 @@ def controller() -> None:
     srv = serve(ctl, archive, os.environ.get("CONSOLE_HOST", "127.0.0.1"), int(os.environ.get("CONSOLE_PORT", "8080")))
     while not stop.is_set():
         try:
-            ctl.ensure_placed()                       # new cameras onto the workers it sees; nothing else, ever
+            ctl.ensure_placed()                       # new cameras onto the workers it sees
+            ctl.redistribute()                        # cameras of a RELEASED slot (scale-in) onto the rest; nothing else, ever
         except Exception:                             # noqa: BLE001
             logging.exception("placement pass failed")
         stop.wait(5)

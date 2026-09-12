@@ -5,6 +5,18 @@ and it is all of this:
     assignment rows        <name>/workers/<worker>       what each worker should run
     a heartbeat object     <name>/<worker>/heartbeat     {ts, status: [...]} — the worker's own report
     an epoch prefix        <name>/epoch/<unit>           fencing tokens the workers take by CAS
+    a slot prefix          <name>/slots/<worker>         identity by claim: a worker's name is a slot it
+                                                         holds by CAS and renews; a replacement process
+                                                         takes the lapsed slot and inherits its assignment
+
+Who decides how many workers there are: not the controller. The scheduler
+runs `count` of them (Nomad, or `systemctl start vmsworker@w-N` on one box)
+and an autoscaler moves `count` from a headroom metric the workers export.
+The platform's part is to give `count` interchangeable processes stable
+names — the slots — so that assignments survive a reschedule. A slot is
+released on an orderly stop (scale-in); the controller then redistributes
+what the slot held. A slot that merely lapses (a crash) is left alone: the
+scheduler brings the process back, and it claims the same slot.
 
 `Controller` and `Worker` are the two base classes. The platform never
 imports anything from a subsystem; tests/test_second_subsystem.py proves the
@@ -13,7 +25,10 @@ shape is generic by running a subsystem that counts seconds through it.
 from __future__ import annotations
 
 import json
+import os
+import socket
 import time
+import uuid
 from dataclasses import dataclass, field
 
 from .epoch import Lease, next_epoch
@@ -37,11 +52,14 @@ class Subsystem:
     def epoch_key(self, unit: str) -> str:
         return f"{self.name}/epoch/{unit}"
 
+    def slot_key(self, worker: str) -> str:
+        return f"{self.name}/slots/{worker}"
+
     def acl_controller(self) -> list[str]:
         return [f"{self.name}/*"]
 
     def acl_worker(self) -> list[str]:
-        return [f"{self.name}/epoch/*"]
+        return [f"{self.name}/epoch/*", f"{self.name}/slots/*"]
 
 
 @dataclass
@@ -75,6 +93,38 @@ class Heartbeat:
         d = json.loads(raw)
         extra = {k: v for k, v in d.items() if k not in ("worker", "ts", "status")}
         return cls(d["worker"], float(d["ts"]), list(d.get("status", [])), extra)
+
+
+@dataclass
+class Slot:
+    """A worker's name, as a row: who holds it, until when (wall clock), and
+    whether the last holder let go of it on purpose."""
+    name: str
+    holder: str = ""
+    until: float = 0.0
+    released: bool = True
+    gen: int = 0
+
+    def to_items(self) -> dict:
+        return {"holder": self.holder, "until": self.until, "released": "true" if self.released else "false", "gen": self.gen}
+
+    @classmethod
+    def from_items(cls, name: str, items: dict | None) -> "Slot":
+        if not items:
+            return cls(name)
+        return cls(name, items.get("holder", ""), float(items.get("until", 0)), items.get("released") == "true",
+                   int(items.get("gen", 0)))
+
+    def lapsed(self, now: float) -> bool:
+        return not self.released and self.holder != "" and now > self.until
+
+    def claimable(self, now: float) -> bool:
+        return self.released or self.holder == "" or now > self.until
+
+
+def slot_number(name: str) -> int:
+    tail = name.rsplit("-", 1)[-1]
+    return int(tail) if tail.isdigit() else 0
 
 
 class Controller:
@@ -148,6 +198,35 @@ class Controller:
             out[worker] = self.assignment(worker)
         return out
 
+    # -- slots: read them, never hand them out ------------------------------------
+    def slots(self) -> dict[str, Slot]:
+        out = {}
+        for path in self.vars.list(self.sub.name + "/slots/"):
+            name = path.rsplit("/", 1)[1]
+            items, _ = self.vars.get(path)
+            out[name] = Slot.from_items(name, items)
+        return out
+
+    def released_slots(self) -> list[str]:
+        """Slots whose holder let go on purpose (scale-in, or `retire`) and
+        that still have an assignment: what a subsystem redistributes. A slot
+        that merely lapsed is NOT here — that is a crash, and the scheduler
+        brings its process back under the same name."""
+        return sorted((n for n, s in self.slots().items() if s.released and self.assignment(n).units),
+                      key=slot_number)
+
+    def retire(self, worker: str) -> Slot:
+        """An operator's statement that a slot is gone for good (the process
+        that held it will not return). Marks it released; the subsystem's
+        redistribution takes it from there. The controller never decides this
+        on its own from a silence."""
+        def mutate(items):
+            s = Slot.from_items(worker, items)
+            if s.released:
+                return None
+            return Slot(worker, s.holder, s.until, True, s.gen).to_items()
+        return Slot.from_items(worker, self.write(self.sub.slot_key(worker), mutate))
+
 
 class Worker:
     """Runs its assignment and reports. Reads <name>/workers/<me> and the
@@ -155,13 +234,85 @@ class Worker:
     that unit's epoch by CAS. Never writes configuration. A fresh worker
     rediscovers everything from the store."""
 
-    def __init__(self, sub: Subsystem, name: str, vars_: Variables, objects: ObjectStore,
-                 lease_ttl: float = 30.0, lease_margin: float = 5.0, clock=time.monotonic, wall=time.time):
-        self.sub, self.name, self.vars, self.objects = sub, name, vars_, objects
+    def __init__(self, sub: Subsystem, name: str | None, vars_: Variables, objects: ObjectStore,
+                 lease_ttl: float = 30.0, lease_margin: float = 5.0, clock=time.monotonic, wall=time.time,
+                 instance: str | None = None, slot_ttl: float = 45.0):
+        self.sub, self.vars, self.objects = sub, vars_, objects
         self.clock, self.wall = clock, wall
         self.lease_ttl, self.lease_margin = lease_ttl, lease_margin
         self.epochs: dict[str, int] = {}          # unit -> epoch this worker holds
         self.leases: dict[str, Lease] = {}
+        self.instance = instance or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:6]}"   # the process; a name is a slot
+        self.slot_ttl = slot_ttl
+        self.slot: Slot | None = None
+        self.name = name                          # None until claim_slot(); a fixed name is a slot claimed by that name
+
+    # -- identity by claim ----------------------------------------------------------
+    def claim_slot(self, prefer: str | None = None, retries: int = 50) -> str:
+        """Become somebody. With `prefer` (Nomad's NOMAD_ALLOC_INDEX, systemd's
+        %i) take that slot, by CAS, even from a holder that has not lapsed —
+        the scheduler is the authority on which process is the current one,
+        and the old holder finds out on its next renewal. Without it, take a
+        lapsed slot — its assignment is waiting — before an unused number. Holding is renewed by `renew_slot`; losing it fences the
+        instance. The controller never hands names out; a process takes one."""
+        prefix = self.sub.name + "/slots/"
+        now = self.wall()
+        for _ in range(retries):
+            names = [p[len(prefix):] for p in self.vars.list(prefix)]
+            known = {n: Slot.from_items(n, self.vars.get(prefix + n)[0]) for n in names}
+            if prefer is not None:
+                order = [prefer]
+            else:
+                lapsed = sorted((n for n, s in known.items() if s.lapsed(now)), key=lambda n: known[n].until)
+                free = sorted((n for n, s in known.items() if s.claimable(now) and not s.lapsed(now)), key=slot_number)
+                nxt = f"w-{max([slot_number(n) for n in names] + [0]) + 1}"
+                order = lapsed + free + [nxt]
+            for cand in order:
+                items, idx = self.vars.get(prefix + cand)
+                cur = Slot.from_items(cand, items)
+                if prefer is None and not cur.claimable(now):
+                    continue                                   # a preferred slot is taken regardless: the scheduler
+                                                               # said this index is mine; the old holder fences on renewal
+                new = Slot(cand, self.instance, now + self.slot_ttl, False, cur.gen + 1)
+                try:
+                    self.vars.put(prefix + cand, new.to_items(), cas=idx)
+                except Conflict:
+                    continue                                   # somebody took it between the read and the write
+                self.slot, self.name = new, cand
+                return cand
+        raise RuntimeError(f"{self.instance}: could not claim a slot in {retries} tries")
+
+    def renew_slot(self) -> bool:
+        """Still me? Read the slot; if another instance holds it now, the
+        instance is fenced as a whole. Extends `until` by CAS otherwise."""
+        if self.slot is None:
+            return True
+        items, idx = self.vars.get(self.sub.slot_key(self.name))
+        cur = Slot.from_items(self.name, items)
+        if cur.holder != self.instance:
+            return False
+        new = Slot(self.name, self.instance, self.wall() + self.slot_ttl, False, cur.gen)
+        try:
+            self.vars.put(self.sub.slot_key(self.name), new.to_items(), cas=idx)
+        except Conflict:
+            return False
+        self.slot = new
+        return True
+
+    def release_slot(self) -> None:
+        """An orderly stop (SIGTERM from the scheduler: scale-in, or a drain).
+        Says so in the row — `released` — which is what tells scale-in from a
+        crash. A crash says nothing, and the slot merely lapses."""
+        if self.slot is None:
+            return
+        items, idx = self.vars.get(self.sub.slot_key(self.name))
+        cur = Slot.from_items(self.name, items)
+        if cur.holder == self.instance:
+            try:
+                self.vars.put(self.sub.slot_key(self.name), Slot(self.name, self.instance, self.wall(), True, cur.gen).to_items(), cas=idx)
+            except Conflict:
+                pass
+        self.slot = None
 
     def assignment(self) -> Assignment:
         items, _ = self.vars.get(self.sub.assignment(self.name))

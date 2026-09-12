@@ -6,7 +6,7 @@ writes go through the controller, the only writer.
     GET  /timeline/<id>?from&to   segments from the archive resource's manifest, fenced ones marked
     POST /cameras                 create (Idempotency-Key required)
     PUT  /cameras/<id>            update — refuses placement and controller-owned fields
-    GET  /metrics                 vms_epoch_conflicts, vms_workers_live, vms_cameras_recording
+    GET  /metrics                 vms_epoch_conflicts, vms_workers_live, vms_worker_headroom (the autoscaler's), vms_cameras_recording
 """
 from __future__ import annotations
 
@@ -48,6 +48,11 @@ def make_handler(ctl: VmsController, archive: ArchiveResource | None):
                     lines = ["# TYPE vms_epoch_conflicts counter",
                              *[f'vms_epoch_conflicts{{worker="{w}"}} {hb.extra.get("conflicts", 0)}' for w, hb in hbs.items()],
                              "# TYPE vms_workers_live gauge", f"vms_workers_live {len(hbs)}",
+                             "# TYPE vms_worker_headroom gauge",
+                             *[f'vms_worker_headroom{{worker="{w}"}} {hb.extra.get("headroom", 0)}' for w, hb in hbs.items()],
+                             f"vms_headroom {sum(int(hb.extra.get('headroom', 0)) for hb in hbs.values())}",
+                             "# TYPE vms_worker_load gauge",              # assigned / capacity: what a target-value policy scales on
+                             *[f'vms_worker_load{{worker="{w}"}} {1 - int(hb.extra.get("headroom", 0)) / max(1, int(hb.extra.get("capacity", 1))):.3f}' for w, hb in hbs.items()],
                              "# TYPE vms_cameras_recording gauge",
                              f"vms_cameras_recording {sum(1 for hb in hbs.values() for s in hb.status if s['phase'] == 'running')}"]
                     raw = ("\n".join(lines) + "\n").encode()

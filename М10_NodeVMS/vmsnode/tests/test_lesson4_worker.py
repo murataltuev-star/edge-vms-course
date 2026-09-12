@@ -111,8 +111,9 @@ def test_restart_with_the_controller_stopped():
 
 def test_the_zombie_on_one_box():
     """Two instances of w-1 given the same assignment (a pause, then a
-    replacement): the second takes the next epochs; the first fences itself
-    on renewal and stops everything."""
+    replacement): the second takes the slot and the next epochs; the first
+    fences itself on renewal — at the slot, and the epochs agree — and stops
+    everything."""
     box, ctl = _box_with_cameras(1)
     ctl.assign("w-1", ["1"])
     a_act, b_act = FakeActuator(), FakeActuator()
@@ -121,9 +122,42 @@ def test_the_zombie_on_one_box():
     b = VmsWorker("w-1", box.vars, box.objects, b_act, clock=box.clock, wall=box.wall)     # the replacement
     b.reconcile_once(); assert b_act.running == {1} and b_act.epochs[1] == 2
     assert a.lease_pass() == ["1"] and not a.recording_allowed and a_act.running == set()   # A wakes, renews, fences
-    assert "newer epoch" in a.fenced_reason and a.conflicts() == 1
+    assert "slot w-1" in a.fenced_reason                      # fenced at the slot first...
+    assert a.renew_leases() == ["1"] and a.conflicts() == 1   # ...and the camera's epoch says the same
     assert a.reconcile_once() == [("failed", 1)]              # it may start nothing
     assert b.lease_pass() == [] and b_act.running == {1}      # B is fine
+
+
+def test_a_replacement_without_a_name_inherits_the_lapsed_slot():
+    """Nomad started `count = 2` workers and nobody told them their names.
+    One dies; its replacement claims whatever is free — the lapsed slot first —
+    and records the dead one's cameras from the assignment, asking nobody."""
+    box, ctl = _box_with_cameras(4)
+    a = VmsWorker(None, box.vars, box.objects, FakeActuator(), clock=box.clock, wall=box.wall)
+    b = VmsWorker(None, box.vars, box.objects, FakeActuator(), clock=box.clock, wall=box.wall)
+    assert (a.name, b.name) == ("w-1", "w-2")
+    ctl.assign("w-1", ["1", "2"]); ctl.assign("w-2", ["3", "4"])
+    a.reconcile_once(); b.reconcile_once()
+    box.wall.advance(46)                                      # A is dead: its slot lapsed, its cameras are listed on w-1
+    b.lease_pass()                                            # B is alive and renews
+    act = FakeActuator()
+    c = VmsWorker(None, box.vars, box.objects, act, clock=box.clock, wall=box.wall)     # the replacement alloc
+    assert c.name == "w-1"                                    # not w-3: the lapsed slot, and with it the assignment
+    assert c.reconcile_once() == [("start", 1), ("start", 2)] and act.epochs == {1: 2, 2: 2}
+    assert not a.renew_slot() and c.lease_pass() == []        # A, wherever it is, is fenced at the slot; C is fine
+
+
+def test_the_zombie_is_fenced_at_the_slot_first():
+    """The replacement that Nomad starts under the same index takes the slot
+    outright; the paused instance finds out at its next renewal, before any
+    epoch is looked at."""
+    box, ctl = _box_with_cameras(1)
+    ctl.assign("w-1", ["1"])
+    a = VmsWorker("w-1", box.vars, box.objects, FakeActuator(), clock=box.clock, wall=box.wall)
+    a.reconcile_once()
+    b = VmsWorker("w-1", box.vars, box.objects, FakeActuator(), clock=box.clock, wall=box.wall)   # same index, new alloc
+    assert b.slot.gen == 2 and a.lease_pass() == ["1"] and "slot w-1" in a.fenced_reason
+    assert b.lease_pass() == []
 
 
 def test_a_reassignment_is_not_a_zombie():

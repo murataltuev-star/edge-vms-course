@@ -95,6 +95,35 @@ def test_the_failure_arithmetic():
     assert w2.reconcile_once() == [("start", 1), ("start", 2)] and w2.rows[0]["name"] == "edited while w-1 was down"
 
 
+def test_scale_in_releases_a_slot_and_the_controller_redistributes():
+    """Nomad decided `count` 3 → 2. The worker it stops releases its slot;
+    the controller's placement pass moves that slot's cameras — its one
+    unasked move — and nothing else. A crash releases nothing and moves nothing."""
+    box = Box(); ctl = VmsController(box.vars, box.objects, capacity=4, wall=box.wall)
+    ws = [VmsWorker(None, box.vars, box.objects, FakeActuator(), clock=box.clock, wall=box.wall, capacity=4) for _ in range(3)]
+    for w in ws:
+        w.heartbeat_once()
+    for i in range(1, 7):
+        ctl.create_camera({"source": f"driverpack://file/{i}.mp4"})
+    ctl.ensure_placed()
+    assert {w: len(a.units) for w, a in ctl.assignments().items()} == {"w-1": 2, "w-2": 2, "w-3": 2}
+    assert ctl.headroom() == 12 and ctl.redistribute() == []           # nothing released: nothing moves
+    box.wall.advance(46)                                               # w-3 crashed: silent, not released
+    ws[0].heartbeat_once(); ws[1].heartbeat_once()
+    assert ctl.redistribute() == [] and ctl.where(3) == "w-3"          # a crash is Nomad's to fix; the cameras wait for w-3
+    ws[2].release_slot()                                               # scale-in: SIGTERM, an orderly stop
+    moves = ctl.redistribute()
+    assert [(cid, frm) for cid, frm, _ in moves] == [(3, "w-3"), (6, "w-3")]
+    assert ctl.assignment("w-3").units == [] and {ctl.where(3), ctl.where(6)} <= {"w-1", "w-2"}
+    assert "slot w-3 released" in ctl.placement(3).reason
+    ws[0].reconcile_once(); ws[1].reconcile_once()
+    for w in ws[:2]:
+        w.heartbeat_once()
+    assert ctl.headroom() == 8 - 6                                     # 2 workers × 4, six cameras: what the autoscaler reads
+    ctl.retire("w-1")                                                  # the operator's word that a slot is gone for good
+    assert ctl.released_slots() == ["w-1"]
+
+
 def test_the_console_over_http():
     box = Box(); ctl = VmsController(box.vars, box.objects, wall=box.wall)
     w = VmsWorker("w-1", box.vars, box.objects, FakeActuator(), clock=box.clock, wall=box.wall, server="srv-1")

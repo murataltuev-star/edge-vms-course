@@ -42,7 +42,9 @@ Three servers, two workers, two hundred cameras. Then:
 |---|---|---|
 | The cluster's shape | **Workers, resources, one controller — 2c** *(12 September 2026)* | The Node was a recorder bound to its disk with its own database. Split by what moves and what cannot: workers move, resources do not, the controller is not needed to move anything. [ARCHITECTURE §1.11](../ARCHITECTURE.md) has the row-by-row assignment. |
 | Camera ownership | **An assignment on a worker's stable name**, written by the controller, read by the worker | Failover moves the worker; the assignment is in raft under its name; nothing is rewritten. |
-| Worker identity | **Stable, carried in a Nomad Variable — never the allocation index** | Variables survive rescheduling. The allocation index has had documented uniqueness bugs: fine for a label, never for correctness. |
+| Worker identity | **A slot in a Nomad Variable, claimed by CAS** (`vms/slots/<name>`, М10's identity by claim); the allocation index is the *preference* the claim starts from, never the proof *(12 September 2026)* | Variables survive rescheduling; the claim is what makes the index safe to use at all. If two allocations ever carry one index — the documented bug — the CAS decides and the loser fences on its next renewal. A replacement of index 3 takes slot `w-3` outright and inherits its assignment; nothing is rewritten and nobody is asked. |
+| Who decides how many workers, and where | **Nomad places them; the Nomad Autoscaler sets `count`** from a `scaling` policy on the worker job whose metric is the workers' own load (`vms_worker_load` = assigned ÷ capacity, from the heartbeats via the console's `/metrics`), **never the controller** *(12 September 2026)* | Placement of processes onto servers is the platform's (ARCHITECTURE §1.11): constraints, affinities, resources, draining, and now the count. The controller has no Nomad client; it places cameras onto the workers it sees. CPU is the wrong metric — a worker with two hundred idle cameras at 03:00 is full. The Autoscaler is a separate agent, MPL-2.0, run as a fourth cluster-level job. |
+| Scale-in | **A worker stopped by the scheduler releases its slot (`released: true` on SIGTERM, inside `kill_timeout`); the controller's placement pass redistributes that slot's cameras to the workers that remain — its one unasked move.** A slot that merely lapses (a crash, a drain still in flight) is left alone: Nomad brings the process back under the same index | The word in the row is what tells scale-in from a crash; without it the controller would have to infer from a silence, which is the healing it must never do. `retire(slot)` is the operator's statement for a process that will not return. |
 | Configuration authority | **The controller, and only the controller, by CAS into the cluster's Variables** | One writer per key, one level up. Edits are consistent because the store is one raft; the controller's outage stops edits and nothing else. М12's domain reads; it never writes into a cluster. |
 | What travels on failover | **Nothing.** The assignment and the camera rows are already replicated to every server by raft | The first design published a configuration object on every change and measured its RPO. Under 2c the RPO inside a cluster is zero by construction. What М12 still publishes upward is a *snapshot* for the domain's read model, and that has an RPO — the domain's, not the cluster's. |
 | The archive | **A resource: server-bound, unreplicated by default, with a manifest beside the footage** | Footage locality kept; no quorum that can stop every camera at once; the manifest is the index and needs no rebuild. An erasure-coded pool is the option for a customer who buys durability over locality and has the network (*the storage knob* below). |
@@ -170,6 +172,29 @@ The placement service of the first design, with a name, two properties and one m
 
 **Placement onto workers is by measured capacity**, from М9 Lesson 7's `B + n·I` — the probe is why this is observed rather than guessed — under label constraints (a camera on an isolated VLAN is reachable from the workers on servers that see it). **The stability rule, with a property test:** *adding a worker moves nothing.* Every camera lands on exactly one worker; no constraint violated; the tidy rebalance that every invariant lets through is the test that fails first. **Store the placement, do not derive it**: at 3 am *why is camera 812 on w-3* is a row with a reason and a timestamp. **Rebalance is explicit** — budgeted, observable, interruptible, with a dead band — and it is the one two-writer operation in the module, which is why each move takes a new epoch.
 
+**It never decides how many workers there are, or where.** Nomad places the worker job under its constraints; the Nomad Autoscaler moves `count` from `vms_worker_load`; the controller has no Nomad client and places cameras on the workers it sees heartbeating. Its one unasked move is the mirror of that: when a worker stopped by the scheduler *releases* its slot, the next placement pass moves that slot's cameras to the workers that remain, each move with a reason that names the slot. A slot that merely lapsed is not touched — the process is coming back under the same index with its assignment intact, and moving its cameras would be the healing this controller does not do.
+
+The `scaling` block on the worker job is the whole of the VMS's say in the matter — a number it exports and two bounds an operator sets:
+
+```hcl
+group "vmsworker" {
+  count = 2
+  scaling {
+    min = 1
+    max = 12                                   # the servers' budget, from М9 Lesson 7's B + n·I
+    policy {
+      cooldown            = "5m"               # longer than a failover, so a reschedule is not read as demand
+      evaluation_interval = "1m"
+      check "load" {
+        source = "prometheus"
+        query  = "avg(vms_worker_load)"        # assigned ÷ capacity, from the heartbeats — never CPU
+        strategy "target-value" { target = 0.9 }
+      }
+    }
+  }
+}
+```
+
 **Its two properties**, restated because everything depends on them: it is **stateless and correct by CAS**, so `count = 1` is a preference and not a correctness requirement; it is **never on the recovery path**, so a worker that restarts on a new server reads its assignment and asks nobody. When the controller is down, the console can still show every camera (from heartbeats), a worker can still fail over, and the only thing an operator cannot do is change something.
 
 **The second subsystem shows it is a shape, not a special case.** Detectors are `detectorcontroller` and `detectorworker` over the same platform: a config prefix `det/*`, an assignment per worker, a heartbeat, and a resource — GPU compute — that pins the worker by affinity. The platform's job files differ in a name and a prefix. Lesson 5 builds enough of it to prove that, and М12's gateway is the third.
@@ -195,13 +220,14 @@ The placement service of the first design, with a name, two properties and one m
 ### Lesson 2 — Workers, resources and the controller as jobs
 
 - Jobspec structure; the Podman task driver; `exec2` and `virt`, and what `exec2` demands of the OS (Landlock, cgroups v2; a plugin the image must carry)
-- **Three shapes**: the worker as a `service` job with a stable name in a Variable; the archive as a `system` job pinned to servers with disks (`meta.archive`); the controller as a `service` job with `count = 1`
-- **Identity: where it comes from and where it must not.** The allocation index has had uniqueness bugs — a label, never correctness. A worker reads *which worker am I* from its Variable and *what am I assigned* from `vms/workers/<name>`
+- **Four shapes**: the worker as a `service` job with `count = N` and a `scaling` block; the archive as a `system` job pinned to servers with disks (`meta.archive`); the controller as a `service` job with `count = 1`; the Nomad Autoscaler as a `service` job with `count = 1` reading the console's `/metrics`
+- **Identity by claim.** A worker claims `vms/slots/w-<NOMAD_ALLOC_INDEX>` by CAS and renews it; the index is the preference, the Variable is the proof — if two allocations ever carry one index, the CAS decides and the loser fences. A worker reads *what am I assigned* from `vms/workers/<name>`
+- **Who decides `N`.** The `scaling` policy: `min`, `max`, `target-value` on `avg(vms_worker_load)` at 0.9, `cooldown` longer than a failover; why the metric is assigned ÷ capacity and not CPU; what the controller does on scale-in (redistribute the released slot) and on a crash (nothing)
 - **What goes in Variables and what does not.** Camera rows do (small, consistent, one writer). Footage, heartbeats and snapshots do not (the 64 KiB cap exists *"to reduce the potential performance impact of Variables on our raft store"* — the maintainers stating the rule)
 - Placement constraints and affinities: cameras are not uniformly reachable; workers prefer the servers that carry their resources
 - **The ACL that makes one-writer-per-key true**: the controller writes `vms/*`; a worker writes its epochs and nothing else; `deploy/verify-bench.sh` proves both
 
-**Deliverable:** М10's controller, worker and resource running as three jobs with the behaviour they had under `systemd`, a worker identity that survives being rescheduled, and the ACL proven from inside an allocation.
+**Deliverable:** М10's controller, worker and resource running as jobs with the behaviour they had under `systemd`, a worker identity that survives being rescheduled, `nomad job scale vmsworker 3` → the new slot claimed and the next camera placed on it, `… 2` → the released slot's cameras redistributed within one placement pass, and the ACL proven from inside an allocation.
 
 ---
 
@@ -250,7 +276,7 @@ The placement service of the first design, with a name, two properties and one m
 
 **Track 1 — in the authoring sandbox.** The controller's placement and assignment with two racing writers; the worker's reconcile loop over an assignment with a fake actuator (М9's tests); the lease and the epoch issuer's CAS; the manifest merge across two resources; the acknowledgement change (an edit lands in the store or is refused, never *pending*); the second subsystem through the same platform code. `clustervms/` and `clustervms-go/` already carry the fencing, lease, publish and placement tests; the rewrite moves them under `vms/` and `platform/` from М10 and keeps their meaning.
 
-**Track 2 — needs the bench** (three VMs, Nomad ≥ 1.8.0, Podman, MinIO): cluster formation, `nomad job validate` for the three job shapes, the `system` job pinned to servers with `meta.archive`, the ACL from inside an allocation (`deploy/verify-bench.sh`), draining, the `disconnect` block, and the power pull with the failover drill (`deploy/failover-drill.sh`).
+**Track 2 — needs the bench** (three VMs, Nomad ≥ 1.8.0, Podman, MinIO, the Nomad Autoscaler): cluster formation, `nomad job validate` for the four job shapes, `nomad job scale` out and in against the slot claim and the redistribution, the `system` job pinned to servers with `meta.archive`, the ACL from inside an allocation (`deploy/verify-bench.sh`), draining, the `disconnect` block, and the power pull with the failover drill (`deploy/failover-drill.sh`).
 
 ---
 
@@ -260,7 +286,7 @@ The placement service of the first design, with a name, two properties and one m
 2. **Can a task write Variables under workload identity, scoped by ACL to its own prefix?** `verify-bench.sh` tests it; needs the bench. Load-bearing: the controller's monopoly on `vms/*` and a worker's on its own epochs rest on it.
 3. ~~How long before a worker's old instance is assumed gone?~~ — **Decided:** 30 / 5 / 25 / 45, reasoning in Lesson 4.
 4. **The rewrite order.** М10's `platform/` and `vms/` first; then `clustervms/` becomes the Nomad implementations of `platform/` plus the controller's placement, and the lessons follow this record. Which lesson is rewritten first — 3 (resources) or 5 (the controller) — is open; the contract is not.
-5. **Who changes the worker count.** The operator, or the controller through Nomad's API when the assigned load exceeds the per-worker budget. Inherited from М10; decided here, because here is where there is a scheduler to ask.
+5. ~~Who changes the worker count.~~ — **Decided (12 September 2026): the Nomad Autoscaler, from the workers' own load; the controller never.** Rows *Who decides how many workers* and *Scale-in* above; the identity-by-claim mechanism is М10's.
 
 ---
 

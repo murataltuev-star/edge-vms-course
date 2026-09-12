@@ -25,7 +25,8 @@ This lesson builds that platform, on one box, and writes down the contract. The 
 3. Build the epoch issuer and the lease as platform pieces, generic to any writer.
 4. Write the subsystem contract as a table a second team could implement from.
 5. Explain why the ACL is *one writer per prefix* and what breaks without it.
-6. Say what a Node is now.
+6. Give `count = N` interchangeable processes stable names without a controller handing them out — identity by claim — and say who decides N.
+7. Say what a Node is now.
 
 ---
 
@@ -82,14 +83,15 @@ Four threads issuing twenty-five epochs each get `1..100` with no number twice. 
 | assignment rows `<name>/workers/<worker>` — `{units, rev}` | a **worker**: `count = N`, reads its row and the units it names, runs the work, heartbeats |
 | a heartbeat object `<name>/<worker>/heartbeat` — `{worker, ts, status: [...], ...}` | what goes in `status` — for the VMS, each camera's phase, epoch and revisions |
 | an epoch prefix `<name>/epoch/<unit>`, taken by workers by CAS | which key the epoch goes in |
+| a slot prefix `<name>/slots/<worker>` — a worker's *name*, claimed by CAS and renewed (Step 5a) | a headroom number in its heartbeat, for whoever decides `N` |
 | a metrics scrape per job (М13) | its two numbers |
 
 ```
-vms/cameras/7   vms/workers/w-1   vms/w-1/heartbeat   vms/epoch/7
-controller ACL: ['vms/*']        worker ACL: ['vms/epoch/*']
+vms/cameras/7   vms/workers/w-1   vms/w-1/heartbeat   vms/epoch/7   vms/slots/w-1
+controller ACL: ['vms/*']        worker ACL: ['vms/epoch/*', 'vms/slots/*']
 ```
 
-`Controller` has `write(path, mutate)` — read-modify-write by CAS with a retry — plus `workers_seen()`, which is not a list it keeps but a fact it reads: the workers whose heartbeat object is younger than `lost_after`. `Worker` has `assignment()`, `take_epoch(unit)`, `may_write(unit)`, `renew_leases()` and `heartbeat(status)`, and one abstract method, `reconcile_once`. Neither base class imports anything from `vms/`, and `test_the_platform_knows_nothing_about_video` fails if one ever does — or if the word *camera* appears in the package outside its docstring.
+`Controller` has `write(path, mutate)` — read-modify-write by CAS with a retry — plus `workers_seen()`, which is not a list it keeps but a fact it reads: the workers whose heartbeat object is younger than `lost_after`; and `slots()`, `released_slots()`, `retire()`, which read slots and never hand them out. `Worker` has `claim_slot()`, `renew_slot()`, `release_slot()`, `assignment()`, `take_epoch(unit)`, `may_write(unit)`, `renew_leases()` and `heartbeat(status)`, and one abstract method, `reconcile_once`. Neither base class imports anything from `vms/`, and `test_the_platform_knows_nothing_about_video` fails if one ever does — or if the word *camera* appears in the package outside its docstring.
 
 ## Step 5 — One writer per prefix
 
@@ -97,11 +99,31 @@ controller ACL: ['vms/*']        worker ACL: ['vms/epoch/*']
 
 ```python
 ctl = vars.as_writer("vmscontroller", ["vms/*"])
-wrk = vars.as_writer("vmsworker-1", ["vms/epoch/*"])
+wrk = vars.as_writer("vmsworker", ["vms/epoch/*", "vms/slots/*"])
 wrk.put("vms/cameras/7", {...})      # Forbidden: a worker never writes configuration
 ```
 
 Why it matters is the sentence the whole module rests on: **the controller writes, the platform stores, the worker reads its share.** A worker that could write a camera row is a second owner of configuration; a controller that could write a worker's epoch could fence a worker by accident. The ACL is what turns "should not" into "cannot", and М11's `verify-bench.sh` is where it is proven against real Nomad.
+
+## Step 5a — Identity by claim: who decides how many workers, and what they are called
+
+Nobody in the VMS decides how many workers there are. On one box an operator starts `vmsworker@w-1`, `@w-2`; in М11 Nomad runs `count = N` of one job, and the **Nomad Autoscaler** moves `N` from a number the workers export — *headroom*, cameras they could still take, not CPU. The controller places cameras on the workers it sees. It never asks for one, never starts one, never calls a scheduler.
+
+What that leaves the platform to solve is a small thing with a sharp edge: `count = N` gives you N *interchangeable* processes, and an assignment is written to a *name*. If a replacement process after a crash came up under a new name, its predecessor's cameras would sit in a row nobody reads — and the only thing that could fix it would be the controller noticing a silence, which is the healing it must never do. So a name is a **slot**, and a process *claims* one:
+
+```python
+a = Worker(sub, None, ...); a.claim_slot()          -> "w-1"      first free number
+b = Worker(sub, None, ...); b.claim_slot()          -> "w-2"      count = 2: two names, in order
+wall.advance(46)                                                   A went silent past the slot TTL
+c = Worker(sub, None, ...); c.claim_slot()          -> "w-1"      a lapsed slot before a new number:
+c.assignment().units                                -> ["1","2"]  the replacement inherits, asking nobody
+a.renew_slot()                                      -> False      A, wherever it was, is fenced at the slot
+d.claim_slot(prefer="w-7")                          -> "w-7"      the scheduler's own index wins outright
+```
+
+`vms/slots/w-1` is `{holder, until, released, gen}`; the claim is a CAS, holding is renewed with the lease pass, and losing it fences the whole instance before any epoch is looked at. Nomad hands each allocation a stable `NOMAD_ALLOC_INDEX`, and `__main__` passes it as `prefer`: the replacement of index 3 takes slot `w-3` *even from a holder that has not lapsed* — the scheduler is the authority on which process is current, and the old one finds out on its next renewal (Lesson 4's zombie, one layer earlier). With no index — `systemd`, or a job that does not set one — a lapsed slot is taken before a new number, which is the same inheritance by a different route.
+
+The last column of the row is what tells **scale-in from a crash**. A process stopped by the scheduler — SIGTERM, an orderly `run()` exit — writes `released: true`; a crash writes nothing, and the slot merely lapses. `released_slots()` lists the first kind only, and that list is what a subsystem's controller redistributes (Lesson 5's one unasked move). A lapsed slot is left alone: the scheduler brings the process back, and it claims the same name. `retire(slot)` exists for the operator who knows a process will not return — and it is the operator's word, never the controller's inference from a silence.
 
 ## Step 6 — What a Node is now
 
@@ -127,7 +149,8 @@ Server, Node, Cluster, Domain, Site still mean what they meant. What changes is 
 - The config store has `ModifyIndex` and CAS — as files here, as Nomad Variables in М11 — and CAS is why "one controller" needs no counting.
 - The epoch issuer and the lease are platform pieces; the subsystem chooses the key.
 - The contract is a table and a pair of base classes with no import from `vms/`.
-- One writer per prefix: the controller writes `<name>/*`, a worker writes only its epochs.
+- One writer per prefix: the controller writes `<name>/*`, a worker writes only its epochs and its slot.
+- Identity by claim: a name is a slot taken by CAS; a replacement inherits a lapsed slot and its assignment; `released` tells scale-in from a crash. The scheduler decides `N`, the autoscaler moves it from headroom, and the controller never asks for a worker.
 - A Node is a box running the platform's stores plus subsystems.
 
 ## Exercises
@@ -137,6 +160,7 @@ Server, Node, Cluster, Domain, Site still mean what they meant. What changes is 
 3. Sketch `Subsystem("det")` for detectors: what are its units, what is in its heartbeat's `status`, and what key does its epoch go in?
 4. The heartbeat is an object and the assignment is a Variable. Swap them — assignment as an object, heartbeat as a Variable — and say what goes wrong in each direction, using М11 Lesson 2's three-stores rule.
 5. Write, in one paragraph, what the platform team may change without telling the VMS team, and what it may not.
+6. Make the controller "help" by retiring any slot silent for two minutes. Construct the Nomad reschedule (a node drain, `kill_timeout` 30 s, a two-minute pull of the image on the new node) in which it moves every camera twice and the returning worker fences on a slot it should have kept.
 
 ## Where this is going
 

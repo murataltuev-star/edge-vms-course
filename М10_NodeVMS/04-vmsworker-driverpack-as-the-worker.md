@@ -10,7 +10,7 @@ The AppHost is gone and this is what replaced it. Not a new supervisor beside Dr
 
 What did not change is the loop. `vms/reconciler.py` is М9 Lesson 6's file, copied, and М9's seven tests run against it in this lesson without a change of meaning — because those tests were written against a design, and the design is what a rewrite keeps. What changed is where desired state comes from (an assignment in the platform's store, not a table in the worker's database) and what a start costs (an epoch, by CAS, and a lease).
 
-> **What you can verify without hardware.** All of it: `tests/test_lesson4_worker.py` runs М9's seven, then the worker over an assignment with the fake actuator — the epoch per camera, the edit that restarts, the reassignment that stops, the heartbeat, the restart with the controller object deleted, the zombie fenced, the reassignment that is *not* a zombie, and a lease that ran out. `gstvms/actuator.py` is the real actuator, `driverpacksrc ! h264parse ! watchdog ! tee ! archivesink`, for the bench.
+> **What you can verify without hardware.** All of it: `tests/test_lesson4_worker.py` runs М9's seven, then the worker over an assignment with the fake actuator — the epoch per camera, the edit that restarts, the reassignment that stops, the heartbeat, the restart with the controller object deleted, a nameless replacement inheriting the lapsed slot, the zombie fenced at the slot, the reassignment that is *not* a zombie, and a lease that ran out. `gstvms/actuator.py` is the real actuator, `driverpacksrc ! h264parse ! watchdog ! tee ! archivesink`, for the bench.
 
 ## Prerequisites
 
@@ -41,6 +41,19 @@ test_6_backoff_with_jitter_spreads_200_cameras · test_7_lagging_vs_stalled
 ```
 
 They import `vms.reconciler.Reconciler` and pass. Read `test_5` again: a loop that loaded its *actual* from disk does nothing, reports converged, and records nothing — the cache that lies. Every property in this lesson rests on the worker keeping that rule: **a fresh worker knows nothing and rediscovers everything.**
+
+## Step 1a — A name is a slot
+
+`VmsWorker(name, …)` claims a slot before it does anything else (Lesson 1, Step 5a). With a name — `systemd`'s `%i`, or `w-<NOMAD_ALLOC_INDEX>` in М11 — it takes that slot outright. With `None` it takes the first free one, a lapsed one first:
+
+```
+a = VmsWorker(None, …); b = VmsWorker(None, …)   -> ("w-1", "w-2")     count = 2, nobody named them
+ctl.assign("w-1", ["1","2"]); ctl.assign("w-2", ["3","4"]); wall += 46   A is dead
+c = VmsWorker(None, …)                            -> "w-1"              not w-3
+c.reconcile_once()                                -> [('start', 1), ('start', 2)]   epochs {1: 2, 2: 2}
+```
+
+The replacement recorded the dead worker's cameras from the assignment and asked nobody — Step 5's property, now without a fixed name. The worker also exports `headroom` in its heartbeat (`capacity − assigned`, capacity being М9 Lesson 7's `B + n·I` measured on *its* server, `CAPACITY=` in the unit): the number the autoscaler reads in М11 to move `count`. Not CPU — a worker at forty percent CPU with no cameras left to take is full, and one at ninety percent with headroom is not a reason for another process.
 
 ## Step 2 — Desired state is an assignment
 
@@ -80,12 +93,13 @@ def _actuate(self, verb, cam):
 
 Why per camera and not per worker, as М11 did for the Node: because a **reassignment** is the one legitimate case of two writers on one camera — the controller moves camera 7 from `w-1` to `w-2`, and for a few seconds both may be writing — and the epoch has to separate those too. A restart of a running pipeline (an edit) keeps its epoch: same writer, same segment directory. A *start* takes the next one: `archivesink` opens a new directory, and whatever the previous writer was doing lands in the old one.
 
-The lease is the other half. `may_write(unit)` is a purely local decision on a monotonic clock — TTL 30, margin 5, the numbers М11 Lesson 4 derived — and a start without a live lease is refused before the actuator is asked. `test_lease_expiry_without_renewal_stops_starts` runs the clock 26 seconds forward, shows `may_write` false, and shows the next start taking a *fresh* epoch and a fresh lease rather than reusing the stale one.
+`lease_pass` renews the slot first and the camera leases second; a slot held by another instance fences everything before any epoch is read. The lease is the other half. `may_write(unit)` is a purely local decision on a monotonic clock — TTL 30, margin 5, the numbers М11 Lesson 4 derived — and a start without a live lease is refused before the actuator is asked. `test_lease_expiry_without_renewal_stops_starts` runs the clock 26 seconds forward, shows `may_write` false, and shows the next start taking a *fresh* epoch and a fresh lease rather than reusing the stale one.
 
 ## Step 4 — The heartbeat
 
 ```json
-{"worker": "w-1", "ts": 1757500000.0, "server": "srv-1", "assignment_rev": 2, "fenced": false, "conflicts": 0,
+{"worker": "w-1", "instance": "srv-1:4121:9c0f2a", "ts": 1757500000.0, "server": "srv-1", "assignment_rev": 2,
+ "fenced": false, "conflicts": 0, "capacity": 50, "headroom": 47,
  "status": [{"id": 1, "name": "gate", "enabled": true, "phase": "running", "position": "converged",
              "revision": 2, "observed_revision": 2, "epoch": 1}, ...]}
 ```
@@ -111,12 +125,15 @@ Two instances of `w-1` with the same assignment — a pause, then a replacement:
 
 ```
 A: [('start', 1)]   epochs {1: 1}
-B: [('start', 1)]   epochs {1: 2}                        the replacement takes the next epoch
-A lease pass -> ['1'] lost   recording_allowed False       A wakes, renews, finds epoch 2: it is the zombie
-   w-1: FENCED (camera 1: a newer epoch was issued to another instance of w-1). Stopping every pipeline.
+B: [('start', 1)]   epochs {1: 2}   slot w-1 gen 2         the replacement takes the slot and the next epoch
+A lease pass -> ['1'] lost   recording_allowed False       A wakes, renews its slot, finds another holder: it is the zombie
+   w-1: FENCED (slot w-1 is held by another instance now). Stopping every pipeline.
+A renew_leases -> ['1'], conflicts 1                       and the camera's epoch says the same, one layer down
 A reconcile -> [('failed', 1)]                             it may start nothing
 B lease pass -> []                                         B is fine
 ```
+
+Two layers say the same thing on purpose. The slot fences the *instance* — cheap, one read, before anything else — and it is what Nomad's reschedule of index 3 relies on. The epoch fences the *camera* — and it is the one that still holds when the two writers are not two instances of one name but a reassignment between two names, which is the next case.
 
 Now the same lease loss for a different reason: the controller moved camera 1 to `w-2`. `w-1` renews, finds epoch 2 — and must *not* fence itself, because it is not a zombie; it is a worker whose camera was taken away on purpose. The difference is one read:
 
@@ -133,7 +150,7 @@ def lease_pass(self):
 
 ## Step 7 — One supervisor, and what crash isolation costs
 
-The worker's `run()` is М9's AppHost's task list as one loop: reconcile, pump the buses, renew leases every `(TTL − margin)/3`, heartbeat every ten seconds. There is no controller thread, no second process, no supervisor of the loop. `systemd` restarts the process if it dies.
+The worker's `run()` is М9's AppHost's task list as one loop: reconcile, pump the buses, renew the slot and the leases every `(TTL − margin)/3`, heartbeat every ten seconds — and on an orderly stop, `release_slot()`, which is the one word that tells the controller *scale-in* rather than *crash*. There is no controller thread, no second process, no supervisor of the loop. `systemd` restarts the process if it dies, and a crash releases nothing: the slot lapses, and the restart claims it back.
 
 Which means a vendor SDK that segfaults inside a pipeline takes the loop with it — the thing М9 Lesson 9 separated controller from worker to avoid. It is acceptable here *only because* the state is outside: the store holds the assignment, the resource holds the footage, the epoch and the lease make the restart harmless, and Step 5 is the proof. Keep that dependency explicit: the day someone caches the assignment in the worker "to survive the store being slow", crash isolation is gone and nobody will notice until a restart records nothing. The per-frame rule is the other line: the prototype's `_rebase` in Lesson 2 runs in Python, and the product's does not.
 
@@ -147,6 +164,8 @@ Which means a vendor SDK that segfaults inside a pipeline takes the loop with it
 |---|---|
 | The worker starts nothing and logs nothing | Its assignment is empty — correct. The controller assigns; a worker invents nothing. |
 | Every pass restarts every camera | The rows' `revision` moves on every read. Only the controller writes it, and only on an edit; a worker that writes rows has the wrong ACL. |
+| A replacement comes up as `w-3` while `w-1`'s cameras wait | The slot had not lapsed yet (45 s) and no name was given. Give the name — `%i`, `NOMAD_ALLOC_INDEX` — and the claim is immediate; or accept the wait, which is bounded by the slot TTL. |
+| A worker fences itself on every restart of its neighbour | Two units share a name. `%i` is the slot; two `vmsworker@w-1` on one box is the zombie test, on purpose. |
 | A restart takes epoch 1 again | The epoch key is per camera in the store, not per worker in memory. `take_epoch` must go through `next_epoch` — CAS — never a local counter. |
 | A moved camera fences the whole worker | `lease_pass` did not re-read the assignment before deciding, or the controller moved the camera without removing it from the old assignment. `move()` removes it from every assignment that lists it. |
 | After a reassignment both workers record for a while | Expected, and bounded by the lease numbers: ≤ TTL − margin for the old writer, into its own epoch. |
@@ -155,6 +174,7 @@ Which means a vendor SDK that segfaults inside a pipeline takes the loop with it
 ## Recap
 
 - DriverPack is the worker. One process, N pipelines, its own loop, no host.
+- A name is a slot, claimed by CAS: a replacement inherits a lapsed slot and its assignment; an orderly stop releases it; the heartbeat carries headroom for whoever decides `N`.
 - М9's loop and its seven tests are the contract, unchanged.
 - Desired state is an assignment and its rows, read from the store every pass; the worker writes neither.
 - A start takes a new epoch by CAS and needs a live lease; a restart keeps its epoch.
@@ -169,7 +189,8 @@ Which means a vendor SDK that segfaults inside a pipeline takes the loop with it
 2. Renew leases every second instead of every eight. Count the reads per camera per day at two hundred cameras, and say which store М11 will put them on.
 3. Make a reassignment race: move camera 7 while `w-1` is mid-pass. List the orderings and show that every one ends with exactly one live epoch.
 4. Add `pump_once` to the real actuator's bus handling for the watchdog and reproduce М9 Lesson 8's stall with `driverpacksrc` paused via `kill -STOP` on a helper.
-5. Write the worker's `run()` for Nomad: what changes (the stop signal, the name), and what must not.
+5. Write the worker's `run()` for Nomad: what changes (the stop signal, the name from `NOMAD_ALLOC_INDEX`, `kill_timeout` against the slot release), and what must not.
+6. Export CPU instead of headroom and let an autoscaler act on it. Describe the box with two hundred cameras assigned, idle at night, and what the autoscaler does at 03:00.
 
 ## Where this is going
 

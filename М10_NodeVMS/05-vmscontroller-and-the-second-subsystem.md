@@ -1,7 +1,7 @@
 # Lesson 5 — `vmscontroller`, and the Second Subsystem
 
 **Module:** NodeVMS — the platform's shape on one Node (Module 10)
-**You will build:** the controller — the only writer of `vms/*`, camera CRUD and placement by CAS, stored with a reason, safe at two, never needed to recover — the console over it, the failure arithmetic measured process by process, and a second subsystem through the same platform code.
+**You will build:** the controller — the only writer of `vms/*`, camera CRUD and placement by CAS, stored with a reason, safe at two, never needed to recover, never deciding how many workers there are — the console over it, the failure arithmetic measured process by process, and a second subsystem through the same platform code.
 **Time:** ~150 minutes.
 
 ## Why this lesson exists
@@ -10,7 +10,7 @@ Somebody has to write configuration, and the module's answer is: exactly one thi
 
 It is also the process most likely to be built wrong, because "one controller" invites state. So the lesson spends its second half on the two properties that keep it honest — it holds nothing and is correct by CAS; it is never on the recovery path — and its last step on the proof that the shape is not special: a second subsystem, a controller and a worker that count seconds, dropped onto the same platform with a different prefix.
 
-> **What you can verify without hardware.** All of it: `tests/test_lesson5_controller.py` and `tests/test_second_subsystem.py` — refusals, stored placement, *adding a worker moves nothing*, two controllers racing to place forty cameras, budgeted rebalance, the failure arithmetic with the clock, the console over real HTTP, and the counter subsystem. Every output below came out of them.
+> **What you can verify without hardware.** All of it: `tests/test_lesson5_controller.py` and `tests/test_second_subsystem.py` — refusals, stored placement, *adding a worker moves nothing*, two controllers racing to place forty cameras, budgeted rebalance, scale-in redistributing a released slot and a crash moving nothing, the failure arithmetic with the clock, the console over real HTTP, and the counter subsystem. Every output below came out of them.
 
 ## Prerequisites
 
@@ -26,8 +26,9 @@ It is also the process most likely to be built wrong, because "one controller" i
 2. Refuse what a client may not set, and say why each field is refused.
 3. Place a camera on a worker by capacity, store the decision with a reason, and prove adding a worker moves nothing.
 4. Run two controllers at once and show every camera placed exactly once.
-5. Measure the failure arithmetic: stop each process and say what stopped.
-6. Build a second subsystem through the same platform and diff the two.
+5. Say who decides how many workers run and where — and prove the controller does not: scale-in moves cameras, a crash moves nothing.
+6. Measure the failure arithmetic: stop each process and say what stopped.
+7. Build a second subsystem through the same platform and diff the two.
 
 ---
 
@@ -84,6 +85,24 @@ assert sorted(units) == [1..40]                           # and appears in exact
 
 Two writes make that true. The placement row is written by CAS with a `mutate` that returns `None` if the row already names a worker — the loser reads the winner's decision and adopts it. The assignment is `assign_add`, a read-modify-write that merges into whatever is there rather than overwriting a list read a moment ago. The first version of this controller did the second one wrong and lost cameras under the race; the test is what found it, which is the point of writing it.
 
+## Step 4a — Who decides how many workers, and the one unasked move
+
+Not the controller. It places cameras on the workers it *sees* — the heartbeats — and it has no way to ask for one: no scheduler client, no `count`, no opinion. On one box the operator starts `vmsworker@w-2`; in М11 Nomad runs `count = N` and the Nomad Autoscaler moves `N` from `vms_worker_headroom`, which the console exports per worker straight from the heartbeats and the controller sums in `headroom()`. That keeps three things out of the controller that would otherwise have to be in it: a model of the servers, a client for the scheduler, and a policy about cost.
+
+What the controller *does* own is what happens to cameras when `N` goes down. `test_scale_in_releases_a_slot_and_the_controller_redistributes`:
+
+```
+count = 3, six cameras placed: {w-1: 2, w-2: 2, w-3: 2}     headroom 12
+redistribute()                        -> []                 nothing released, nothing moves
+wall += 46 (w-3 silent: a crash)      -> []   where(3) = w-3  a crash is Nomad's to fix; the cameras wait for w-3
+w-3.release_slot()  (SIGTERM: scale-in)
+redistribute()                        -> [(3, w-3, w-1), (6, w-3, w-2)]     "slot w-3 released; most free capacity (2)"
+headroom()                            -> 2                  2 × 4 − 6: what the autoscaler reads next
+retire("w-1")                         -> released_slots() == ['w-1']        the operator's word, never an inference
+```
+
+`redistribute()` runs beside `ensure_placed()` every five seconds, and it reads exactly one thing: `released_slots()` — slots whose holder *said* it was going (Lesson 1, Step 5a), and that still list cameras. A slot that merely lapsed is not on that list, and so a dead worker's cameras are not moved: its process returns under the same name and records them. That line is the difference between a controller and a healer. Every move goes through `move()`, with a reason that names the slot — so at three in the morning *why is camera 3 on w-1* is still a row.
+
 ## Step 5 — The failure arithmetic, measured
 
 `test_the_failure_arithmetic` stops each process in turn:
@@ -107,10 +126,11 @@ PUT  /cameras/1   {"worker": "w-9"}  -> 400                           refused
 GET  /cameras                        -> rows from heartbeats: phase running, server srv-1, age
 GET  /where/1                        -> {"worker": "w-1"}
 GET  /timeline/7?from&to             -> the manifest, fenced segments marked
-GET  /metrics                        -> vms_epoch_conflicts, vms_workers_live, vms_cameras_recording 1
+GET  /metrics                        -> vms_epoch_conflicts, vms_workers_live, vms_worker_headroom{worker="w-1"} 49,
+                                        vms_headroom, vms_worker_load{worker="w-1"} 0.020, vms_cameras_recording 1   the autoscaler scrapes this
 ```
 
-`python3 -m vms controller` serves it and runs one thing beside it: `ensure_placed()` every five seconds, which places cameras that have no placement onto the workers it sees. Nothing else, ever — not a rebalance (an operator asks for that), not a heal (Nomad restarts workers).
+`python3 -m vms controller` serves it and runs two things beside it, every five seconds: `ensure_placed()`, which places cameras that have no placement onto the workers it sees, and `redistribute()`, which moves the cameras of a *released* slot. Nothing else, ever — not a rebalance (an operator asks for that), not a heal (Nomad restarts workers), not a scale (the autoscaler does that, from `/metrics`).
 
 ## Step 7 — The second subsystem
 
@@ -135,6 +155,8 @@ Diff the two subsystems' `systemd` units and you get a prefix and a name. That i
 | Two controllers place a camera on two workers | The placement `mutate` does not return `None` when a worker is already named — it overwrites. The row is the decision; the assignment follows it. |
 | A camera vanishes from every assignment under the race | `assign()` with a list read before the write. Use `assign_add`/`assign_remove`; they merge inside the CAS loop. |
 | `ensure_placed` places nothing | No worker has heartbeated within `lost_after`. A worker that has never run has never existed, and the controller invents nothing. |
+| A dead worker's cameras are not moved | Correct. Its slot lapsed but was not released; Nomad brings the process back under the same name. If it will not return, `retire(slot)` — an operator's statement. |
+| The autoscaler adds workers at night | It is scaling on CPU. Scale on `vms_headroom`; CPU is a symptom, headroom is the demand. |
 | Rebalance moves the same camera back and forth | No dead band, or budget larger than the imbalance. Ten percent and a small budget. |
 | The console's PUT applies twice | The client made a new `Idempotency-Key` on retry. The key belongs to the intent. |
 | The counter subsystem sees `vms/` rows | Its prefix is wrong or it is listing `/`. A subsystem lists its own prefix and nothing else; the ACL will make that a rule in М11. |
@@ -146,6 +168,7 @@ Diff the two subsystems' `systemd` units and you get a prefix and a name. That i
 - Placement is by capacity, stored with a reason; adding a worker moves nothing; rebalance is explicit and budgeted.
 - Two controllers agree because the row is CAS and the assignment merges — and the test found the version that did not.
 - Stop the controller: nothing running stops. Kill the worker: the edit is waiting in the store when it returns.
+- The controller never decides how many workers there are or where they run: the scheduler runs `N`, the autoscaler moves `N` from headroom, and the controller's one unasked move is to redistribute a *released* slot — never a lapsed one.
 - The console reads heartbeats and writes through the controller; a second subsystem runs through the same platform with a different prefix.
 
 ## Exercises
@@ -155,6 +178,7 @@ Diff the two subsystems' `systemd` units and you get a prefix and a name. That i
 3. Set `capacity` from a heartbeat field the worker reports (М9 Lesson 7's probe run on its own server) instead of a constant, and say what happens on a box with two different workers.
 4. Add a `move` endpoint to the console and defend it against the refusal list: who may call it, and what must it record?
 5. Write `Subsystem("det")` with a `GPU` resource: what does its controller place *on*, and what does the worker's affinity look like in М11's job file?
+6. Give the controller a Nomad client and let it set `count` itself when `headroom()` hits zero. List what it now has to know (servers, costs, the job file, the API's failure modes) and what happens when two controllers do it at once.
 
 ## Where this is going
 

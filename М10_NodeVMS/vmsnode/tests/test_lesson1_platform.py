@@ -103,3 +103,30 @@ def test_controller_and_worker_bases_speak_only_the_contract():
     assert w.take_epoch("1") == 1 and w.may_write("1")
     box.wall.advance(100)
     assert ctl.workers_seen(max_age=45) == {}                  # a silent worker is not a worker
+
+
+def test_identity_by_claim_is_a_platform_piece():
+    """A name is a slot: taken by CAS, renewed, released on purpose or lapsed
+    by silence. Two processes claiming without a preference get two names;
+    a third, after the first lapsed, gets the first's name back — and with
+    it, its assignment. The controller hands nothing out."""
+    box = Box()
+    sub = Subsystem("thing")
+    ctl = Controller(sub, box.vars, box.objects, wall=box.wall)
+    a = Worker(sub, None, box.vars, box.objects, clock=box.clock, wall=box.wall, instance="A")
+    b = Worker(sub, None, box.vars, box.objects, clock=box.clock, wall=box.wall, instance="B")
+    assert a.claim_slot() == "w-1" and b.claim_slot() == "w-2"        # `count = 2`: two names, in order
+    ctl.assign("w-1", ["1", "2"])
+    assert a.renew_slot() and b.renew_slot()
+    box.wall.advance(46)                                               # A went silent for longer than the slot TTL
+    c = Worker(sub, None, box.vars, box.objects, clock=box.clock, wall=box.wall, instance="C")
+    assert c.claim_slot() == "w-1" and c.assignment().units == ["1", "2"]   # the replacement inherits
+    assert not a.renew_slot()                                          # A, if it is still alive, finds out
+    assert ctl.released_slots() == []                                  # a lapse is not a release
+    b.release_slot()                                                   # scale-in: B is told to stop and says so
+    ctl.assign("w-2", ["3"])
+    assert ctl.released_slots() == ["w-2"]                             # what the subsystem redistributes
+    d = Worker(sub, None, box.vars, box.objects, clock=box.clock, wall=box.wall, instance="D")
+    assert d.claim_slot(prefer="w-7") == "w-7"                         # the scheduler's index wins, and creates
+    assert sorted(ctl.slots()) == ["w-1", "w-2", "w-7"] and sub.slot_key("w-1") == "thing/slots/w-1"
+    assert sub.acl_worker() == ["thing/epoch/*", "thing/slots/*"]

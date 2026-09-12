@@ -157,6 +157,29 @@ class VmsController(Controller):
         self.assign_add(to, str(cid))
         return Placement(cid, to, reason, float(new["at"]), int(new["rev"]))
 
+    def redistribute(self, workers: list[str] | None = None) -> list[tuple[int, str, str]]:
+        """The controller's one unasked move: a slot that was RELEASED — the
+        scheduler scaled in, or an operator retired it — still lists cameras.
+        Move them to the workers that are here. A slot that merely lapsed is
+        not touched: that is a crash, and its process returns under the same
+        name with its assignment intact."""
+        moves = []
+        for gone in self.released_slots():
+            live = sorted(w for w in (workers if workers is not None else self.workers_seen()) if w != gone)
+            for unit in sorted(self.assignment(gone).units, key=int):
+                cid = int(unit)
+                best = max(live, key=lambda w: self.capacity - self.load(w), default=None)
+                if best is None or self.load(best) >= self.capacity:
+                    break                                   # the system is full; the camera waits, listed where it was
+                self.move(cid, best, f"slot {gone} released; most free capacity ({self.capacity - self.load(best)})")
+                moves.append((cid, gone, best))
+        return moves
+
+    def headroom(self) -> int:
+        """The cluster's number for the autoscaler: cameras the live workers
+        could still take, from their heartbeats."""
+        return sum(int(hb.extra.get("headroom", 0)) for hb in self.workers_seen().values())
+
     def rebalance(self, budget: int, dead_band: float = 0.10, workers: list[str] | None = None) -> list[tuple[int, str, str]]:
         workers = sorted(workers if workers is not None else self.workers_seen())
         moves = []
