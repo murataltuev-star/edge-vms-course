@@ -1,4 +1,6 @@
-"""The cluster's object store — large, rare, never queried: the restore point.
+"""The cluster's object store — М10's `vmsplatform.objects.ObjectStore`
+contract on MinIO or S3: heartbeats (frequent, never queried by key) and the
+snapshots the domain's read model is built from.
 
 Two adapters with one contract. `HttpObjectStore` PUTs and GETs against any
 endpoint that accepts plain HTTP object semantics (MinIO with a bucket
@@ -18,6 +20,7 @@ from typing import Protocol
 class ObjectStore(Protocol):
     def put(self, key: str, data: bytes) -> None: ...
     def get(self, key: str) -> bytes | None: ...
+    def list(self, prefix: str) -> list[str]: ...
 
 
 class HttpObjectStore:
@@ -41,6 +44,9 @@ class HttpObjectStore:
                 return None
             raise
 
+    def list(self, prefix: str) -> list[str]:
+        raise NotImplementedError("plain HTTP has no listing; use s3+http:// for the heartbeat prefix")
+
 
 class FsObjectStore:
     def __init__(self, root: str):
@@ -60,6 +66,17 @@ class FsObjectStore:
             return None
         with open(p, "rb") as f:
             return f.read()
+
+    def list(self, prefix: str) -> list[str]:
+        out = []
+        for d, _, files in os.walk(self.root):
+            for f in files:
+                if f.endswith(".tmp"):
+                    continue
+                key = os.path.relpath(os.path.join(d, f), self.root)
+                if key.startswith(prefix):
+                    out.append(key)
+        return sorted(out)
 
 
 def open_store(url: str) -> ObjectStore:

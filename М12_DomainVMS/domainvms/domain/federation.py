@@ -17,7 +17,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from cluster.directory import Directory
+from cluster.directory import NodeDirectory as Directory   # the first design's scan of nodes/*; goes with this module's rewrite to 2c
 from cluster.objectstore import ObjectStore
 from cluster.variables import Variables
 

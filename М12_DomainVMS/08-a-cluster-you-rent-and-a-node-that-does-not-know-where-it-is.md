@@ -15,7 +15,7 @@ It is also the lesson where the course closes the arc it opened. М8 rented a cl
 ## Prerequisites
 
 - **М11 Lesson 1** — what a cluster is: servers on one network you would bet recording on.
-- **М11 Lesson 2** — the jobspec, and `render.py`.
+- **М11 Lesson 2** — the worker job, `deploy/vmsworker.nomad.hcl`.
 - **М11 Lesson 3** — the restore point in the cluster's own object store, and `s3+https://` from the S3 adapter.
 - **М9 Lesson 4** — the spool, and why an edge box survives an uplink outage.
 - **М8** — the cloud VMS this lesson rebuilds the customer's way.
@@ -61,7 +61,7 @@ The prices are parameters (`Prices`) and yours to replace; the *shape* of the re
 
 ## Step 4 — Three ways, one artifact
 
-Now the proof. `render_three_ways()` uses М11's `deploy/render.py` — the same template every Node in the course was deployed from — for three placements:
+Now the proof. `render_three_ways()` takes М11's `deploy/vmsworker.nomad.hcl` — the worker job as written — and produces three placements:
 
 | | Datacenter | Object store |
 |---|---|---|
@@ -108,7 +108,7 @@ The course opened by renting a cloud VMS: cameras into Kinesis, playback from HL
 | The rented cluster joins gossip but `where()` says unreachable | The provider's security group allows the gossip port and not the RPC port that forwarding uses. Both. |
 | Restore fails in the rented cluster with a signature error | `AWS_ACCESS_KEY_ID`/`SECRET` for the `s3+https://` store are not in the Node's Variable — the template renders them empty. М11 Lesson 3's adapter signs with what it is given. |
 | A cloud-recorded site shows gaps after every uplink blip | Expected: no spool. Either the camera has local storage and backfill is not wired, or it has none and the sentence in Step 3 was not said. |
-| The diff shows a third line | A placement-specific value crept into the Node's stanza. That is the bug this lesson exists to find; fix `render.py` in М11. |
+| The diff shows a third line | A placement-specific value crept into the Node's stanza. That is the bug this lesson exists to find; fix `vmsworker.nomad.hcl` in М11. |
 | The cloud bill is higher than the estimate | Egress. The arithmetic counts storage; playback out of the cloud is billed too, and a wall showing sixteen streams all day is a number to add. |
 
 ## Recap

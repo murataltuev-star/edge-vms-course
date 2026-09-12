@@ -9,7 +9,7 @@ not, this lesson found a bug in М9 or М11.
 """
 from __future__ import annotations
 
-import importlib.util
+
 import os
 from dataclasses import dataclass
 
@@ -66,30 +66,38 @@ def recommend(cameras: int, mbit_per_camera: float, uplink_mbit: float, retentio
                           f"a datasheet implying otherwise loses money per camera")
 
 
-def _render_module():
+def _worker_jobspec() -> str:
+    """М11's worker job, as written: deploy/vmsworker.nomad.hcl."""
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    for cand in (os.path.join(here, "clustervms", "deploy", "render.py"),
-                 os.path.join(os.path.dirname(os.path.dirname(here)), "М11_ClusterVMS", "clustervms", "deploy", "render.py"),
-                 os.path.join(os.environ.get("CLUSTERVMS_PATH", ""), "deploy", "render.py")):
+    for cand in (os.path.join(here, "clustervms", "deploy", "vmsworker.nomad.hcl"),
+                 os.path.join(os.path.dirname(os.path.dirname(here)), "М11_ClusterVMS", "clustervms", "deploy", "vmsworker.nomad.hcl"),
+                 os.path.join(os.environ.get("CLUSTERVMS_PATH", ""), "deploy", "vmsworker.nomad.hcl")):
         if os.path.exists(cand):
-            spec = importlib.util.spec_from_file_location("clusterrender", cand)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            return mod
-    raise FileNotFoundError("clustervms/deploy/render.py")
+            with open(cand, encoding="utf-8") as f:
+                return f.read()
+    raise FileNotFoundError("clustervms/deploy/vmsworker.nomad.hcl")
 
 
-def render_three_ways(node: str = "node-3") -> dict[str, str]:
-    """The same Node's jobspec for a local rack, a rented instance, and a
-    split site. What differs is the datacenter and the object store's
-    address. What must never differ: everything about the Node."""
-    r = _render_module()
-    common = dict(node=node, vlan="cctv-a", cpu=2000, memory=2048, port=8080, lease_ttl=30, lease_margin=5,
-                  lost_after="45s", stop_after="25s")
+def render_three_ways(node: str = "vmsworker") -> dict[str, str]:
+    """The same worker job for a local rack, a rented instance, and a split
+    site. What differs is the datacenter and the object store's address.
+    What must never differ: everything about the worker."""
+    base = _worker_jobspec()
+
+    def variant(dc: str, objects: str) -> str:
+        out = []
+        for ln in base.splitlines():
+            if ln.strip().startswith("datacenters"):
+                ln = f'  datacenters = ["{dc}"]'
+            elif ln.strip().startswith("OBJECTS"):
+                ln = f'        OBJECTS   = "{objects}"'
+            out.append(ln)
+        return "\n".join(out) + "\n"
+
     return {
-        "local": r.JOB.format(dc="room-a", object_store="http://minio.room-a:9000/cluster-restore", **common),
-        "rented": r.JOB.format(dc="cloud-eu-1", object_store="s3+https://s3.eu-1.example/cluster-restore?region=eu-1", **common),
-        "split": r.JOB.format(dc="room-a", object_store="http://minio.room-a:9000/cluster-restore", **common),
+        "local": variant("room-a", "s3+http://minio.room-a:9000/vms?region=us-east-1"),
+        "rented": variant("cloud-eu-1", "s3+https://s3.eu-1.example/vms?region=eu-1"),
+        "split": variant("room-a", "s3+http://minio.room-a:9000/vms?region=us-east-1"),
     }
 
 
@@ -97,4 +105,4 @@ def node_stanza(jobspec: str) -> str:
     """The part of a jobspec that is the Node: from `group` down, with the
     two placement-specific lines masked."""
     body = jobspec[jobspec.index("group "):]
-    return "\n".join("<placement>" if ("OBJECT_STORE_URL" in ln or "datacenters" in ln) else ln for ln in body.splitlines())
+    return "\n".join("<placement>" if ("OBJECTS" in ln or "datacenters" in ln) else ln for ln in body.splitlines())

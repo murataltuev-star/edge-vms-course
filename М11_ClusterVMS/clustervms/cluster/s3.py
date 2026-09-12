@@ -68,12 +68,12 @@ class S3ObjectStore:
         self.access_key = access_key or os.environ["AWS_ACCESS_KEY_ID"]
         self.secret_key = secret_key or os.environ["AWS_SECRET_ACCESS_KEY"]
 
-    def _request(self, method: str, key: str, payload: bytes = b""):
+    def _request(self, method: str, key: str, payload: bytes = b"", query: str = ""):
         path = f"/{self.bucket}/{key}"
-        headers = sign(method, self.host, path, "", {}, payload, self.access_key, self.secret_key,
+        headers = sign(method, self.host, path, query, {}, payload, self.access_key, self.secret_key,
                        self.region, dt.datetime.now(dt.timezone.utc))
-        req = urllib.request.Request(f"{self.scheme}://{self.host}{path}", data=payload if method == "PUT" else None,
-                                     method=method)
+        req = urllib.request.Request(f"{self.scheme}://{self.host}{path}" + (f"?{query}" if query else ""),
+                                     data=payload if method == "PUT" else None, method=method)
         for k, v in headers.items():
             if k != "host":
                 req.add_header(k, v)
@@ -92,3 +92,13 @@ class S3ObjectStore:
             if e.code == 404:
                 return None
             raise
+
+    def list(self, prefix: str) -> list[str]:
+        """ListObjectsV2, one page (the heartbeat prefix holds one object per
+        worker; a thousand is a page). Keys from the XML by a plain regex —
+        the response has no nesting worth a parser."""
+        import re
+        q = "list-type=2&prefix=" + urllib.parse.quote(prefix, safe="")
+        with self._request("GET", "", b"", q) as r:
+            body = r.read().decode()
+        return sorted(re.findall(r"<Key>([^<]+)</Key>", body))

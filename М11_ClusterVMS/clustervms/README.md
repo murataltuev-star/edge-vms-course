@@ -1,129 +1,56 @@
 # ClusterVMS — the М11 project, whole
 
-What a Node needs to outlive its server, built **on** М9's `nodevms/` rather
-than beside it: `cluster.apphost.ClusterAppHost` subclasses М9's AppHost and
-adds the prologue and three tasks. Everything М9 does — reconcile, pump
-buses, report, retention, the console — is inherited unchanged.
+М10's shape across several servers, built **on** М10's `vmsnode/` rather than beside it: the same `vmsplatform` contract, the same `vms/` controller, worker and archive resource, imported unchanged. What this package adds is exactly what a cluster adds — Nomad's stores, what an allocation knows about itself, placement under constraints, a resource that has to say it exists, and a timeline that spans servers.
 
 ```
 clustervms/
   cluster/
-    variables.py     Nomad Variables over HTTP with the task's own token; and a fake with the promised semantics (ModifyIndex, cas, 409, ACL)
-    objectstore.py   the restore point: a directory, anonymous HTTP PUT/GET, or S3 with SigV4 (s3.py — verified against Amazon's published examples)
-    identity.py      L2 — who am I: the Variable the scheduler delivered, never the allocation index
-    epoch.py         L4 — next_epoch by CAS; Lease on a monotonic clock, renewal = reading my own epoch
-    configio.py      L3 — what travels: the configuration as one blob; dump/restore on М9's PgStore
-    publish.py       L3 — object first, then the Variable; publish on change with a floor; `replicated`
-    rehydrate.py     L3 — the six steps; `unconfigured`; a dangling pointer refused
-    directory.py     L5 — scan nodes/*: where is camera 7
-    placement.py     L5 — capacity measured, constraints as labels, placement STORED in placement/<camera>, budgeted rebalance
-    reindex.py       L4 — files back into rows: a fenced instance's footage keeps its epoch; a returned server's archive is rebuilt
-    metrics.py       L4 — node_failover_seconds{kind="worst"}, node_epoch_conflicts, appended to М9's /metrics
-    console.py       /cluster/node, /cluster/directory, /cluster/where/{id}
-    apphost.py       the ClusterAppHost: prologue → publish / lease / heartbeat tasks; fence()
+    variables.py     L1  Nomad Variables over HTTP with the task's own token (ModifyIndex, cas, 409, 403) — and the fake with the promised semantics
+    objectstore.py   L1  MinIO / S3 (s3.py: SigV4, verified against Amazon's worked examples), HTTP, or a directory — put/get/list
+    worker.py        L2  the worker as an allocation: the slot from NOMAD_ALLOC_INDEX, the server and its labels from the environment, capacity and headroom in the heartbeat
+    controller.py    L5  the controller as a job: placement under label constraints with the server in the reason; `unplaceable`; the snapshot for М12; vms_failover_seconds from the heartbeats
+    directory.py     L5  where is camera 7 — one scan of vms/workers/*
+    resource.py      L3  the archive resource as a system job: its heartbeat, its manifests and footage served, its policy (repair, then retain)
+    timeline.py      L3  one camera across two resources; the unreachable one named; *unavailable*, never *lost*
+    console.py       L5  the cluster console, standard library: /cameras /where /timeline /resources /unplaceable /metrics
+    publish.py, configio.py   the first design's Node-shaped snapshot — kept only because М12's fixture reads it; goes with М12's rewrite
+    __main__.py      python3 -m cluster worker | controller | resource
   deploy/
-    server.hcl, client.hcl       L1 — three servers, ACLs on, data_dir on /data, meta.vlans, the Podman plugin
-    render.py                    L2 — one jobspec per Node (job name = identity), its ACL policy, its bootstrap Variables
-    node-3-policy.hcl            L2 — one writer per key
-    minio.nomad.hcl              L3 — the object store on the cluster's own servers
-    Containerfile                the image the job runs: nodevms + cluster
-    verify-bench.sh              the five checks that need a real cluster, PASS/FAIL — including the ACL open question
-    failover-drill.sh            the power pull, measured: three runs, worst case kept
-  tools/place.py                 L5 — the placement service as a command
-  tests/                         29 tests, no Nomad, no Postgres, milliseconds: python3 tests/run.py
+    server.hcl, client.hcl     L1  three servers, ACLs on, meta.labels and meta.archive, the Podman plugin
+    vmsworker.nomad.hcl        L2  service, count = N, the `scaling` block on avg(vms_worker_load), the disconnect numbers, kill_timeout for the slot release
+    vmscontroller.nomad.hcl    L2  service, count = 1 — safe at two
+    vmsarchive.nomad.hcl       L2  system, on meta.archive — the resource
+    autoscaler.nomad.hcl       L2  the Nomad Autoscaler (MPL-2.0): the fourth job, and the only thing that changes count
+    vmsworker-policy.hcl, vmscontroller-policy.hcl   L2  one writer per key: vms/* for the controller; vms/epoch/* and vms/slots/* for a worker
+    minio.nomad.hcl            L1  the object store on the cluster's own servers
+    verify-bench.sh            the six checks that need a real cluster, PASS/FAIL — including the ACL from inside an allocation and a scale drill
+    failover-drill.sh          L4  the power pull, measured: three runs, worst case kept, the old instance's conflicts counted
+    Containerfile              the image: vmsnode + cluster, three entrypoints
+  tests/                       24 tests, no Nomad, no MinIO, no GStreamer, milliseconds: python3 tests/run.py
 ```
 
-## What happens when the Node starts
+## What a cluster adds, and what it does not
 
-```
-1. migrate                        М9's runner; on a fresh server the database is empty
-2. identity.from_environment      NODE_ID, CONFIG_OBJECT, CONFIG_REVISION, CAMERA_IDS — from the template; the Variable is re-read as authoritative
-3. rehydrate                      empty + seen before → fetch the object, check its revision, restore
-                                  empty + never seen  → `unconfigured`; invent nothing
-                                  not empty           → a restart on the same server; nothing to do
-4. next_epoch by CAS              nodes/<node>/epoch; the loser of the race re-reads and goes again
-5. EPOCH into the archive path    every new segment lands in /data/archive/<cam>/e<epoch>/ — М9's `e1` was for this
-6. Lease(ttl, margin)             may_write while now − last_renewal < ttl − margin, on a monotonic clock
-   then М9's loop, plus:
-   publish()     each second: if the local revision moved and the floor has passed — object, then Variable (cas)
-   lease_task()  every (ttl − margin)/3: read my epoch. Moved → FENCED: stop every pipeline, start nothing, count it
-   heartbeat()   every 10 s: a wall-clock timestamp, as a tiny OBJECT <node>/heartbeat — never a raft write
-   reindex()     at start and every 10 min: segment files with no index row become rows, epoch from the path
-```
+| | М10, one box | М11, a cluster | Where |
+|---|---|---|---|
+| The config store | files with `ModifyIndex` and CAS | Nomad Variables — the same two promises, kept by raft | `variables.py` |
+| The object store | a directory | MinIO, SigV4 | `objectstore.py`, `s3.py` |
+| A worker's name | `systemd`'s `%i` | `w-<NOMAD_ALLOC_INDEX>`, claimed by CAS — the index is the preference, the Variable the proof | `worker.py` |
+| Who decides how many workers | the operator starts units | Nomad runs `count`; the Autoscaler moves it from `vms_worker_load`; **never the controller** | `deploy/vmsworker.nomad.hcl` |
+| Placement | most free capacity | most free capacity **among workers whose server can reach the camera** (`labels`) | `controller.py` |
+| The archive | a directory on the box | the same directory on *each* server, pinned by a `system` job, with a heartbeat and its manifests served | `resource.py` |
+| A timeline | one manifest | merged across the resources that hold the camera; a silent one is named as unreachable | `timeline.py` |
+| What leaves the cluster | nothing | one snapshot object for М12's read model — a copy with an age | `controller.py` |
+| The contract, the controller's logic, the worker's loop, the epoch, the lease, the manifest | | **unchanged**: imported from `vmsnode/` | |
 
-`node_failover_seconds` is recording-resumed minus the old instance's last heartbeat, recorded on the first pass that starts a pipeline after a restore, and kept as `last` and `worst` in `nodes/<node>/failover`. The heartbeat itself lives in the object store, not in Variables: small, frequent and never queried is the one shape raft must not carry (a thousand Nodes at ten seconds would be a hundred replicated commits a second), and an object store does not notice. `node_epoch_conflicts` is the lease's count of finding a foreign epoch in its own Variable; it should be zero forever.
+## The three lines the tests hold
 
-## Bringing up a Node (Lessons 1 and 2)
+**Failover rewrites nothing.** `test_the_power_pull`: Server A dies; 48 s later a fresh allocation with the same index claims `w-1`, reads the assignment the controller wrote before the failure, takes the next epoch for each camera and records on Server B — and the edit made *during* the failover is in the rows it read, because the controller's acknowledgement was the CAS commit into raft (`test_an_edit_during_the_failover_is_simply_there`).
 
-```bash
-# the cluster: deploy/server.hcl on three servers, deploy/client.hcl on every server that runs Nodes
-nomad server members && nomad node status
-nomad acl bootstrap                                        # keep the token somewhere that is not a lesson
+**The controller never decides how many workers, or where.** `test_nomad_job_scale_out_then_in`: a new allocation claims a new slot and the waiting camera lands on it; a stopped one releases its slot and its cameras are redistributed; `test_two_allocations_with_one_index_resolve_at_the_cas`: Nomad's documented duplicate-index bug is harmless because the index is not the identity.
 
-# the object store on the cluster's own disks
-nomad var put cluster/minio user=restore password=$(openssl rand -hex 12)
-nomad job run deploy/minio.nomad.hcl                       # then create the `cluster-restore` bucket with an anonymous rw policy
+**Old footage is unavailable, never lost.** `test_a_timeline_spans_two_resources_and_names_the_unreachable_one`: a camera's manifest lines come from two servers; when one is silent its ranges are listed as unavailable *by name*, and when it returns its manifest came back with its disks — nothing was rebuilt.
 
-# the image (from the course root)
-podman build -f М11_ClusterVMS/clustervms/deploy/Containerfile -t localhost/clustervms-apphost:latest .
+## Verified where
 
-# one Node
-python3 deploy/render.py node-3 --bootstrap | sh          # its Variables and ACL binding
-python3 deploy/render.py node-3 --policy   > node-3-policy.hcl
-python3 deploy/render.py node-3 --vlan cctv-a --memory 2048 > node-3.nomad.hcl
-nomad job validate node-3.nomad.hcl && nomad job run node-3.nomad.hcl
-curl -s http://<its server>:8080/cluster/node
-```
-
-Add cameras through М9's console (`POST /cameras`) or `psql`; within a
-second the Node publishes `node-3/rev-N` to the object store and points its
-Variable at it. `GET /cluster/where/7` answers from the directory.
-
-## The failover (Lessons 3 and 4)
-
-```bash
-nomad node drain -enable -yes <server>        # planned: the Node moves, its open segment finalizes
-# or pull the power on the server running node-3
-nomad job status node-3                       # a new allocation elsewhere
-curl -s http://<new server>:8080/cluster/node # {"restore":"restored","epoch":2,...,"failover":{"last":..,"worst":..}}
-curl -s http://<new server>:8080/metrics | grep ^node_
-```
-
-Bring the old server back. Its old instance renews its lease, finds epoch 2
-in its Variable, logs `FENCED`, stops every pipeline, and
-`node_epoch_conflicts` moves to 1. Its post-partition segments are in
-`e1/`, unindexed; the live archive is in `e2/`.
-
-## What was verified where
-
-- **Run, output real:** `tests/run.py` — 27 tests against the in-memory
-  raft and a directory object store: the CAS issuer raced by four threads;
-  one writer per key; the lease fencing on a foreign epoch and expiring at
-  TTL − margin on an injected clock; publish order (object, then Variable),
-  the floor, `replicated`, the store unreachable never blocking an edit;
-  the six-step restore, the RPO as the unpublished edit, `unconfigured`,
-  the dangling pointer and the revision mismatch refused, a same-server
-  restart restoring nothing; the directory scan with its cache and the
-  two-claimants error; placement stored and read back by a fresh process,
-  the stability rule, the tidy rebalance that fails it, budgeted rebalance
-  with reasons; and the whole `ClusterAppHost` with a fake actuator — the
-  prologue restoring and recording into a new epoch with the failover time
-  recorded, and **the zombie fenced** when the replacement takes the epoch.
-  the reindex sweep — fenced segments back with their epoch, an open segment left alone, a returned archive rebuilt, idempotent.
-  `restore_config`'s SQL ran against PostgreSQL 16.13: revision 812 comes
-  back exactly, and the sequence moves past the restored ids.
-- **Written to the documentation, not executed here:** `NomadVariables`
-  (the HTTP calls, the `?cas=` query, the 409 and 403 mappings),
-  `HttpObjectStore` against MinIO, the rendered jobspec, `minio.nomad.hcl`,
-  the ACL policy binding, and the Containerfile. No Nomad binary was
-  reachable from the authoring sandbox. `nomad job validate` is the first
-  thing to run, and `deploy/render.py node-3 --bootstrap` the second.
-
-## Known gaps, named
-
-- **The ACL scoping of Variable writes per job is the module's open question, and `deploy/verify-bench.sh node-3` answers it on a bench.** Item 4 creates a client token carrying only the Node's policy and tries its own path and another Node's; item 5 does the same from inside the running allocation with the task's own workload-identity token, expecting `own=200 other=403`. Until that prints PASS, one-writer-per-key is a convention.
-- `deploy/failover-drill.sh node-3 10.0.0.11:8080` is Lesson 4's Step 6 as a script: three pulls, `node_failover_seconds` read from `/cluster/node` each time, the worst case printed as the datasheet number, and `node_epoch_conflicts` read after each server returns.
-- The lease numbers are the module's decision (Lesson 4): TTL 30 s, margin 5 s, `stop_on_client_after` 25 s, `lost_after` 45 s. `render.py` ships them as defaults; measure `node_failover_seconds` on the bench before changing them.
-- `reindex()` rebuilds a returned server's index from its segments and re-indexes a fenced instance's footage with its epoch (Lesson 4's decision: re-index, never delete). The console shows a row whose epoch is older than the Node's current one as *recorded by a fenced instance*; the flag is the `epoch` column М9's `timeline` already returns.
-- A camera move decided by `tools/place.py` is recorded in `placement/<camera>`; the Nodes do not yet *act* on it — the wire from a placement row to М9's `cameras` table on the losing and gaining Nodes is the two-writer handover Lesson 5 describes, and it belongs with М12's placement-at-the-level-above.
-- `S3ObjectStore` signs with SigV4 in the standard library and reproduces both of Amazon's published worked examples (`tests/test_s3.py`); it has not been run against a live MinIO from the authoring sandbox. `OBJECT_STORE_URL=s3+http://minio:9000/cluster-restore?region=us-east-1`, credentials from `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` in the task's template.
+The 24 tests ran in the authoring sandbox (Python 3.11) and on the author's machine (3.10), on fakes that implement what Nomad's and S3's documentation promise. `deploy/verify-bench.sh` and `deploy/failover-drill.sh` are what proves the promises against real Nomad: the ACL from inside an allocation, the four jobspecs validating, the scale drill, and the power pull with the worst case kept. `clustervms-go/` is the Go port of the *first* design and stays as its measurement record; its 2c port follows this package.

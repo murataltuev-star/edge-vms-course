@@ -1,0 +1,53 @@
+"""Lesson 1 — the platform's stores become Nomad's. М10's contract against
+the cluster's fakes: the same ModifyIndex and CAS, the same ACL, the same
+base classes — nothing in vms/ notices."""
+import threading
+from cluster.variables import Conflict, FakeVariables, Forbidden
+from vmsplatform.contract import Controller, Subsystem, Worker
+from vmsplatform.epoch import next_epoch
+from tests.conftest import Cluster
+
+
+def test_cas_is_the_same_promise_as_the_files_made():
+    v = FakeVariables()
+    idx = v.put("vms/cameras/1", {"name": "gate"}, cas=0)
+    v.put("vms/cameras/1", {"name": "gate 2"}, cas=idx)
+    try:
+        v.put("vms/cameras/1", {"name": "stale"}, cas=idx); assert False
+    except Conflict:
+        pass
+    items, _ = v.get("vms/cameras/1")
+    assert items == {"name": "gate 2"} and v.list("vms/") == ["vms/cameras/1"]
+
+
+def test_one_writer_per_prefix_is_an_acl_policy():
+    v = FakeVariables()
+    ctl = v.as_writer("vmscontroller", ["vms/*"])
+    wrk = v.as_writer("vmsworker", ["vms/epoch/*", "vms/slots/*"])
+    ctl.put("vms/cameras/7", {"name": "x"})
+    wrk.put("vms/epoch/7", {"epoch": 1})
+    try:
+        wrk.put("vms/cameras/7", {"name": "y"}); assert False
+    except Forbidden:
+        pass
+
+
+def test_the_epoch_issuer_under_four_threads_on_the_raft_fake():
+    v = FakeVariables(); got = []
+    def take():
+        for _ in range(50):
+            got.append(next_epoch(v, "vms/epoch/7")[0])
+    ts = [threading.Thread(target=take) for _ in range(4)]
+    [t.start() for t in ts]; [t.join() for t in ts]
+    assert sorted(got) == list(range(1, 201))
+
+
+def test_m10s_base_classes_run_on_the_cluster_stores_unchanged():
+    c = Cluster(); sub = Subsystem("thing")
+    ctl = Controller(sub, c.vars, c.objects, wall=c.wall)
+    w = Worker(sub, None, c.vars, c.objects, clock=c.clock, wall=c.wall, instance="A")
+    assert w.claim_slot() == "w-1"
+    w.heartbeat([{"id": 1, "phase": "running"}], server="srv-a")
+    assert list(ctl.workers_seen()) == ["w-1"] and ctl.workers_seen()["w-1"].extra["server"] == "srv-a"
+    ctl.assign("w-1", ["1"]); assert w.assignment().units == ["1"]
+    assert w.take_epoch("1") == 1 and w.may_write("1")

@@ -1,46 +1,123 @@
-"""Lesson 5 — the cluster's questions, on the same console as М9's.
+"""The cluster console, standard library. М10's console with three more reads
+and no more writes:
 
-    GET /cluster/node               who am I, which epoch, lease, replicated, failover
-    GET /cluster/directory          every Node's holdings, one scan
-    GET /cluster/where/{camera_id}  where is camera 7
-    GET /metrics                    М9's, plus node_failover_seconds and node_epoch_conflicts
+    GET /cameras           the read model from every worker's heartbeat, with server and age
+    GET /where/<id>        the stored placement (why), and the directory's answer (where, one scan)
+    GET /timeline/<id>     merged across the resources that hold the camera; unreachable ones named
+    GET /resources         which archive resources exist, their usage, which are silent
+    GET /unplaceable       cameras nothing live can reach, with the labels that say why
+    GET /metrics           vms_workers_live, vms_worker_headroom, vms_worker_load, vms_epoch_conflicts,
+                           vms_failover_seconds{kind="worst"}, vms_resources_live, vms_cameras_recording
+    POST /cameras, PUT /cameras/<id>     through the controller; Idempotency-Key
 """
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import PlainTextResponse
+import json
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 
-from . import metrics as cluster_metrics
+from vms.controller import Refused
+from vmsplatform.epoch import current_epoch
+
+from .controller import ClusterController, heartbeats
+from .directory import Directory
+from .resource import resources_seen
+from .timeline import ManifestReader, merged_timeline
 
 
-def add_cluster_routes(app: FastAPI, host) -> None:
-    # Replace М9's /metrics with one that appends the cluster's two numbers.
-    base_metrics = None
-    for r in list(app.routes):
-        if getattr(r, "path", None) == "/metrics":
-            base_metrics = r.endpoint
-            app.routes.remove(r)
+def metrics_text(ctl: ClusterController, worst_failover: float) -> str:
+    hbs = heartbeats(ctl.objects)
+    now = ctl.wall()
+    live = {w: hb for w, hb in hbs.items() if now - hb.ts <= 45}
+    res = resources_seen(ctl.objects)
+    lines = ["# TYPE vms_workers_live gauge", f"vms_workers_live {len(live)}",
+             "# TYPE vms_worker_headroom gauge",
+             *[f'vms_worker_headroom{{worker="{w}",server="{hb.extra.get("server", "?")}"}} {hb.extra.get("headroom", 0)}' for w, hb in live.items()],
+             f"vms_headroom {sum(int(hb.extra.get('headroom', 0)) for hb in live.values())}",
+             "# TYPE vms_worker_load gauge",
+             *[f'vms_worker_load{{worker="{w}"}} {1 - int(hb.extra.get("headroom", 0)) / max(1, int(hb.extra.get("capacity", 1))):.3f}' for w, hb in live.items()],
+             "# TYPE vms_epoch_conflicts counter",
+             *[f'vms_epoch_conflicts{{worker="{w}"}} {hb.extra.get("conflicts", 0)}' for w, hb in hbs.items()],
+             "# TYPE vms_failover_seconds gauge", f'vms_failover_seconds{{kind="worst"}} {worst_failover}',
+             "# TYPE vms_resources_live gauge",
+             f"vms_resources_live {sum(1 for hb in res.values() if now - float(hb['ts']) <= 45)}",
+             "# TYPE vms_cameras_recording gauge",
+             f"vms_cameras_recording {sum(1 for hb in live.values() for s in hb.status if s['phase'] == 'running')}"]
+    return "\n".join(lines) + "\n"
 
-    @app.get("/metrics", response_class=PlainTextResponse)
-    async def metrics():
-        base = await base_metrics() if base_metrics else ""
-        return base + cluster_metrics.render(host)
 
-    @app.get("/cluster/node")
-    async def node():
-        return {"node": host.identity.node, "epoch": host.settings.epoch,
-                "restore": host.restore.state if host.restore else None,
-                "lease_seconds_left": host.lease.seconds_left() if host.lease else None,
-                "fenced": host.lease.fenced if host.lease else None,
-                "replicated": host.replicated_now, "failover": host.failover}
+def make_handler(ctl: ClusterController, reader=None, worst_failover: float = 0.0):
+    reader = reader or ManifestReader()
+    directory = Directory(ctl.vars, ttl=5.0)
+    seen: dict[str, tuple[int, dict]] = {}
 
-    @app.get("/cluster/directory")
-    async def directory():
-        return host.directory.scan()
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
 
-    @app.get("/cluster/where/{camera_id}")
-    async def where(camera_id: int):
-        node = host.directory.where(camera_id)
-        if node is None:
-            raise HTTPException(404, f"camera {camera_id} is on no Node this cluster knows")
-        return {"camera": camera_id, "node": node, "here": node == host.identity.node}
+        def _send(self, status, body, raw=False):
+            data = body.encode() if raw else json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "text/plain" if raw else "application/json")
+            self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+
+        def _body(self):
+            n = int(self.headers.get("Content-Length", 0))
+            return json.loads(self.rfile.read(n) or b"{}")
+
+        def do_GET(self):
+            u = urlsplit(self.path); q = {k: v[0] for k, v in parse_qs(u.query).items()}
+            if u.path == "/cameras":
+                return self._send(200, {"rows": ctl.read_model(), "configured": ctl.cameras()})
+            if u.path.startswith("/where/"):
+                cid = int(u.path.rsplit("/", 1)[1]); pl = ctl.placement(cid)
+                return self._send(200 if pl else 404, {"worker": pl.worker if pl else None, "reason": pl.reason if pl else None,
+                                                       "directory": directory.where(cid), "scans": directory.scans})
+            if u.path.startswith("/timeline/"):
+                cid = int(u.path.rsplit("/", 1)[1])
+                cur = current_epoch(ctl.vars, ctl.sub.epoch_key(str(cid))) or None
+                return self._send(200, merged_timeline(resources_seen(ctl.objects), reader, cid,
+                                                       float(q.get("from", 0)), float(q.get("to", 1e12)), cur, ctl.wall()))
+            if u.path == "/resources":
+                now = ctl.wall()
+                return self._send(200, {s: {**hb, "state": "live" if now - float(hb["ts"]) <= 45 else "silent"}
+                                        for s, hb in resources_seen(ctl.objects).items()})
+            if u.path == "/unplaceable":
+                return self._send(200, ctl.unplaceable())
+            if u.path == "/metrics":
+                return self._send(200, metrics_text(ctl, worst_failover), raw=True)
+            self._send(404, {"error": "no such path"})
+
+        def do_POST(self):
+            if self.path != "/cameras":
+                return self._send(404, {})
+            key = self.headers.get("Idempotency-Key")
+            if not key:
+                return self._send(400, {"error": "Idempotency-Key required"})
+            if key in seen:
+                return self._send(*seen[key])
+            try:
+                r = ctl.create_camera(self._body()); pl = ctl.place(r["id"])
+                seen[key] = (201, {**r, "worker": pl.worker if pl else None})
+            except Refused as e:
+                seen[key] = (400, {"error": str(e)})
+            self._send(*seen[key])
+
+        def do_PUT(self):
+            if not self.path.startswith("/cameras/"):
+                return self._send(404, {})
+            try:
+                self._send(200, ctl.update_camera(int(self.path.rsplit("/", 1)[1]), self._body()))
+            except Refused as e:
+                self._send(400, {"error": str(e)})
+            except KeyError:
+                self._send(404, {"error": "no such camera"})
+
+    return H
+
+
+def serve(ctl, host="127.0.0.1", port=8080, reader=None, worst_failover=0.0) -> ThreadingHTTPServer:
+    srv = ThreadingHTTPServer((host, port), make_handler(ctl, reader, worst_failover))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv

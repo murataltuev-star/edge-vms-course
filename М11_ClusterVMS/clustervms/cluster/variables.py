@@ -1,4 +1,5 @@
-"""Nomad Variables — the cluster's small, consistent store.
+"""Nomad Variables — the cluster's small, consistent store: М10's
+`vmsplatform.variables.Variables` contract, implemented by raft.
 
 `NomadVariables` speaks the HTTP API with the task's own workload-identity
 token (NOMAD_TOKEN). `FakeVariables` is the same contract in memory, with
@@ -29,6 +30,7 @@ class Variables(Protocol):
     def get(self, path: str) -> tuple[dict | None, int]: ...
     def put(self, path: str, items: dict, cas: int | None = None) -> int: ...
     def list(self, prefix: str) -> list[str]: ...
+    def delete(self, path: str, cas: int | None = None) -> None: ...
 
 
 class NomadVariables:
@@ -72,6 +74,10 @@ class NomadVariables:
         status, body = self._req("GET", f"{self.addr}/v1/vars?prefix={prefix}&namespace={self.namespace}")
         return [v["Path"] for v in (body or [])]
 
+    def delete(self, path: str, cas: int | None = None) -> None:
+        q = f"namespace={self.namespace}" + (f"&cas={cas}" if cas is not None else "")
+        self._req("DELETE", f"{self.addr}/v1/var/{path}?{q}")
+
 
 class FakeVariables:
     """One raft log for the whole cluster, in memory. Optional ACL: a writer
@@ -84,10 +90,20 @@ class FakeVariables:
         self.acl: dict[str, list[str]] = {}        # writer -> allowed prefixes
         self.writer: str | None = None            # "who am I" for the ACL check
 
-    def as_writer(self, writer: str) -> "FakeVariables":
+    def as_writer(self, writer: str, allowed: list[str] | None = None) -> "FakeVariables":
+        """The same raft seen through one identity — what a task's workload
+        identity token is under a Nomad ACL policy."""
         v = FakeVariables.__new__(FakeVariables)
         v.__dict__ = self.__dict__.copy(); v.writer = writer
+        if allowed is not None:
+            self.acl[writer] = list(allowed)
         return v
+
+    def _acl(self, path):
+        if self.writer is not None and self.acl:
+            allowed = self.acl.get(self.writer, [])
+            if not any(path == p or (p.endswith("*") and path.startswith(p[:-1])) for p in allowed):
+                raise Forbidden(f"{self.writer} may not write {path}")
 
     def get(self, path):
         with self._lock:
@@ -97,10 +113,7 @@ class FakeVariables:
             return dict(items), idx
 
     def put(self, path, items, cas=None):
-        if self.writer is not None and self.acl:
-            allowed = self.acl.get(self.writer, [])
-            if not any(path == p or (p.endswith("*") and path.startswith(p[:-1])) for p in allowed):
-                raise Forbidden(f"{self.writer} may not write {path}")
+        self._acl(path)
         with self._lock:
             _, current = self._items.get(path, (None, 0))
             if cas is not None and cas != current:
@@ -112,3 +125,12 @@ class FakeVariables:
     def list(self, prefix):
         with self._lock:
             return sorted(p for p in self._items if p.startswith(prefix))
+
+    def delete(self, path, cas=None):
+        self._acl(path)
+        with self._lock:
+            _, current = self._items.get(path, (None, 0))
+            if cas is not None and cas != current:
+                raise Conflict(f"cas={cas} but ModifyIndex={current}")
+            self._items.pop(path, None)
+            self._raft_index += 1

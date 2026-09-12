@@ -1,69 +1,60 @@
 #!/usr/bin/env bash
 # М11 Lesson 4, Step 6 — the power pull, measured. Three runs, worst case kept.
 #
-#   deploy/failover-drill.sh node-3 <console host:port of any server> [runs]
+#   deploy/failover-drill.sh w-1 <console host:port> [runs]
 #
-# For each run: find the server running the Node, pull it (a drain with a
+# For each run: find the server running the worker, pull it (a drain with a
 # zero deadline stands in for the power cut; use М9's bench/outage.sh
-# power-cut for the real thing), wait for the Node to answer elsewhere, read
-# node_failover_seconds from /cluster/node, then return the server.
+# power-cut for the real thing), wait for the worker to heartbeat from
+# another server, read vms_failover_seconds from the console, return the
+# server, and read vms_epoch_conflicts after its old instance has woken.
 set -u
-NODE="${1:?node id}"; ANY="${2:?console host:port of any server, e.g. 10.0.0.11:8080}"; RUNS="${3:-3}"
+WORKER="${1:?worker slot, e.g. w-1}"; CONSOLE="${2:?console host:port, e.g. 10.0.0.11:8080}"; RUNS="${3:-3}"
+INDEX="${WORKER#w-}"
 
-# helpers: JSON in on stdin, one value out. Kept as functions so the loop
-# below has no nested quoting for the shell to trip on.
-running_node_id() {           # $1 = a NodeID to exclude, or ""
-  EXCLUDE="$1" python3 -c '
+alloc_node() {                # $1 = alloc index; $2 = a NodeID to exclude, or ""
+  IDX="$1" EXCLUDE="$2" python3 -c '
 import sys, json, os
-a = [x for x in json.load(sys.stdin) if x["ClientStatus"] == "running" and x["NodeID"] != os.environ["EXCLUDE"]]
+a = [x for x in json.load(sys.stdin) if x["ClientStatus"] == "running" and str(x["Index"]) == os.environ["IDX"]
+     and x["NodeID"] != os.environ["EXCLUDE"]]
 print(a[0]["NodeID"] if a else "")'
 }
-json_field() {                # $1 = dotted path, e.g. failover.last
-  KEY="$1" python3 -c '
+row_server() {                # the worker's server from /cameras rows, "" until it heartbeats again
+  W="$1" python3 -c '
 import sys, json, os
 try:
-    v = json.load(sys.stdin)
-except ValueError:          # curl failed or the Node is not up yet
-    v = {}
-for k in os.environ["KEY"].split("."):
-    v = v.get(k, 0) if isinstance(v, dict) else 0
-print(v)'
+    rows = json.load(sys.stdin)["rows"]
+except ValueError:
+    rows = []
+r = [x for x in rows if x["worker"] == os.environ["W"] and x["worker_state"] == "live"]
+print(r[0]["server"] if r else "")'
 }
-node_host() { python3 -c 'import sys, json; print(json.load(sys.stdin)["HTTPAddr"].split(":")[0])'; }
 
 worst=0
 for i in $(seq 1 "$RUNS"); do
-  old="$(nomad job allocs -json "$NODE" | running_node_id "")"
-  [ -n "$old" ] || { echo "no running allocation of $NODE"; exit 1; }
+  old="$(nomad job allocs -json vmsworker | alloc_node "$INDEX" "")"
+  [ -n "$old" ] || { echo "no running allocation with index $INDEX"; exit 1; }
+  before="$(curl -s "http://$CONSOLE/cameras" | row_server "$WORKER")"
   t0=$(date +%s)
-  echo "run $i: pulling $old at $(date -u +%H:%M:%S)"
+  echo "run $i: $WORKER on $before ($old); pulling at $(date -u +%H:%M:%S)"
   nomad node drain -enable -deadline 0s -yes "$old" >/dev/null
 
-  new=""
-  for _ in $(seq 1 120); do
-    new="$(nomad job allocs -json "$NODE" | running_node_id "$old")"
-    [ -n "$new" ] && break
+  after=""
+  for _ in $(seq 1 180); do
+    after="$(curl -s "http://$CONSOLE/cameras" | row_server "$WORKER")"
+    [ -n "$after" ] && [ "$after" != "$before" ] && break
     sleep 1
   done
-  [ -n "$new" ] || { echo "run $i: no replacement within 120 s"; exit 1; }
-  host="$(nomad node status -json "$new" | node_host)"
-
-  j=""
-  for _ in $(seq 1 120); do
-    j="$(curl -s "http://$host:8080/cluster/node" || true)"
-    [ "$(printf '%s' "$j" | json_field restore)" = "restored" ] && break
-    sleep 1
-  done
-  secs="$(printf '%s' "$j" | json_field failover.last)"
-  epoch="$(printf '%s' "$j" | json_field epoch)"
-  t1=$(date +%s); wall=$((t1 - t0))
-  echo "run $i: recording resumed on $new after ${secs}s (wall clock ${wall}s); epoch $epoch"
-  worst="$(python3 -c "print(max($worst, $secs))")"
+  [ -n "$after" ] || { echo "run $i: $WORKER did not come back within 180 s"; exit 1; }
+  t1=$(date +%s)
+  secs="$(curl -s "http://$CONSOLE/metrics" | awk -v w="$WORKER" '$0 ~ "vms_failover_seconds" {print $2; exit}')"
+  echo "run $i: $WORKER recording on $after after wall-clock $((t1 - t0))s; vms_failover_seconds ${secs:-?}"
+  worst="$(python3 -c "print(max($worst, $((t1 - t0))))")"
 
   nomad node drain -disable -yes "$old" >/dev/null
-  sleep 20
-  conflicts="$(curl -s "http://$ANY/metrics" | awk '/^node_epoch_conflicts/ {print $2; exit}')"
-  echo "run $i: $old returned; node_epoch_conflicts: ${conflicts:-?}"
+  sleep 30
+  conflicts="$(curl -s "http://$CONSOLE/metrics" | awk -v w="$WORKER" '$0 ~ "vms_epoch_conflicts\\{worker=\"" w "\"" {print $2; exit}')"
+  echo "run $i: $old returned; vms_epoch_conflicts{$WORKER}: ${conflicts:-?}   (the old instance fenced, its footage kept under its epoch)"
 done
 echo
-echo "node_failover_seconds worst case over $RUNS runs: ${worst}s   <- the datasheet number"
+echo "failover worst case over $RUNS runs: ${worst}s   <- the datasheet number; the console's vms_failover_seconds is the worker's own measurement"

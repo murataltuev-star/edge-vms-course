@@ -1,8 +1,8 @@
-# deploy/minio.nomad.hcl — the cluster's object store: the restore point.
-# One instance per server, host volume on /data/restore, so the object a
-# Node published is on the same room's disks. Lesson 3 needs it reachable
-# to FAIL OVER, never to run. Anonymous PUT/GET on the `cluster-restore`
-# bucket is what HttpObjectStore expects; scope it to the cluster network.
+# deploy/minio.nomad.hcl — the cluster's object store: heartbeats and the
+# snapshot for the domain. One instance per server on /data/objects; the
+# `vms` bucket, credentials in the Variable vms/objects (the jobs read it
+# through a template). Nothing here is footage: the archive is a resource
+# on each server's own disks and never enters this store.
 job "minio" {
   datacenters = ["room-a"]
   type        = "system"
@@ -18,7 +18,7 @@ job "minio" {
         image        = "quay.io/minio/minio:latest"
         network_mode = "host"
         args         = ["server", "/data", "--address", ":9000"]
-        volumes      = ["/data/restore:/data:z"]
+        volumes      = ["/data/objects:/data:z"]
       }
       template {
         data        = <<-EOT

@@ -69,7 +69,8 @@ class VmsController(Controller):
         cid = self._next_id()
         r = {"id": cid, "name": fields.get("name", f"cam{cid}"), "source": fields["source"],
              "enabled": bool(fields.get("enabled", True)), "retention_days": int(fields.get("retention_days", 30)),
-             "priority": int(fields.get("priority", 100)), "revision": 1}
+             "priority": int(fields.get("priority", 100)), "revision": 1,
+             "labels": list(fields.get("labels", []))}
         self.vars.put(VMS.config("cameras", str(cid)), items(r), cas=0)
         return r
 

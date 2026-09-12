@@ -8,10 +8,8 @@ client {
   enabled = true
   servers = ["10.0.0.11:4647", "10.0.0.12:4647", "10.0.0.13:4647"]
   meta {
-    vlans = "cctv-a,cctv-b"             # what this server's NICs can reach; Lesson 2's constraint
-  }
-  host_volume "nodes" {
-    path = "/data/nodes"
+    labels  = "vlan:cctv-a,vlan:cctv-b"  # what this server's NICs can reach; the worker reports it, the controller places by it
+    archive = "/data/archive"            # this server carries an archive resource (vmsarchive is a system job on meta.archive)
   }
 }
 

@@ -116,15 +116,15 @@ The module that rebuilds the Node on the decision М11 arrived at last — **wor
 - **No sharding on one Node**, and the open question of where configuration lives answered: the controller writes it, the platform stores it, the worker reads its share
 - **KVS retired; the archive is ours**: segments on the spool, closed segments promoted to the archive resource, the epoch in the path, a manifest instead of an index
 
-### М11 — ClusterVMS: workers that outlive their server · 5 lessons · [written](./М11_ClusterVMS/README.md) · [design rewritten to 2c](./М11_ClusterVMS/module-design.md)
+### М11 — ClusterVMS: workers that outlive their server · 5 lessons · [written](./М11_ClusterVMS/README.md) · [design](./М11_ClusterVMS/module-design.md) · [code](./М11_ClusterVMS/clustervms/README.md)
 
-The only module where getting it wrong corrupts customer data rather than merely stopping a service. М9's loop works on one box; this is one cluster — servers on one network you would bet recording on — and a Node that survives any of them dying.
+The only module where getting it wrong corrupts customer data rather than merely stopping a service. М10's shape works on one box; this is one cluster — servers on one network you would bet recording on — and a worker that survives any of them dying.
 
-- **A Node owns its configuration and never crosses a cluster.** Failover moves the Node within the cluster and its cameras go with it; nothing rewrites ownership. Chosen for archive locality, and it puts the fencing epoch at exactly the scope Nomad's per-cluster raft provides
-- **Leases, epochs and the zombie writer.** Dead, partitioned and paused are indistinguishable, and the design must be correct without resolving that. Fencing happens **at the archive, not the controller** — the epoch is in the segment path, so a stale writer produces orphaned files rather than corruption
-- **The restore point is the cluster's**, in its own object store — a backup, not a directory. Both of failover's dependencies live on the servers it fails over between, so a cluster is a complete product on its own
-- **The cluster directory, which was already built.** Each Node's Variable holds its camera ids; scanning them answers *where is camera 7*, in one raft, strongly consistent. Placement onto Nodes by measured capacity, the stability rule, and why consistent hashing is the reflexive wrong answer
-- **The whole module exists twice** — `clustervms/` in Python and `clustervms-go/` in Go, passing the same tests, restoring from each other's publications, and measured side by side: the language argument from М9 confirmed on a module rather than a file
+- **Workers move, resources stay, the controller is not consulted.** A worker is an allocation that claims its name by CAS from `NOMAD_ALLOC_INDEX`; its cameras are assigned to that name in the cluster's raft, so failover rewrites nothing. The archive is a `system` job pinned to its server's disks, unavailable while the server is down and never lost. Configuration never left raft, so an edit made during the failover is simply there
+- **Nomad decides how many workers and where.** The worker job carries a `scaling` policy on the workers' own load; the Nomad Autoscaler (MPL-2.0) moves `count`; the controller has no Nomad client. Scale-in releases a slot and the controller redistributes; a crash releases nothing and the controller waits
+- **Leases, epochs and the zombie writer.** Dead, partitioned and paused are indistinguishable, and the design must be correct without resolving that. Fencing happens **at the resource, not the controller** — the epoch per camera is in every path — and one layer earlier at the slot, which is what makes Nomad's duplicate-index bug harmless
+- **The cluster directory is the assignment.** One scan of `vms/workers/*` answers *where is camera 7*, in one raft, strongly consistent. Placement under label constraints by the workers' own capacity, the stability rule, the server in the reason, and why consistent hashing is the reflexive wrong answer
+- **`clustervms/` is built on М10's `vmsnode/`**, importing the contract, the controller, the worker and the archive unchanged; `clustervms-go/` remains the first design's Go port and measurement
 
 ### М12 — DomainVMS: several clusters, and the top of the product · 8 lessons · [written](./М12_DomainVMS/README.md) · [design](./М12_DomainVMS/module-design.md) · [code](./М12_DomainVMS/domainvms/README.md)
 
@@ -149,7 +149,7 @@ What is left once a cluster works alone: **everything that stops being knowable 
 | М9 L3 | the health check's four-row ladder | it decides **rollback**, on the box, offline |
 | М9 L4 | `spool_oldest_seconds`, `spool_bytes_used` | alarm on age, not count — one threshold works at any camera count |
 | М9 L9 | `camera_lag` (a distribution), `camera_silent_seconds` | the second: the only one describing the product |
-| М11 L4 | `node_failover_seconds` (RTO, worst case), `node_epoch_conflicts` | a counter that should be zero forever |
+| М11 L4 | `vms_failover_seconds{kind="worst"}` (RTO, from the workers' heartbeats), `vms_epoch_conflicts` | a counter that should be zero forever |
 | М12 L1 | `node_replica_lag_seconds` | the worst Node, never the mean |
 
 What is left for this module is what is genuinely *cross-cutting*:
@@ -208,7 +208,7 @@ The order is dependency-driven, not layer-numbered:
 ## Deliberately out of scope
 
 - **Analytics and inference at depth.** М11 attaches detectors; it does not teach computer vision
-- **High availability of a single-box site.** One box, replaced not clustered — a second server is sold for capacity or for failover, never bolted on to make one box redundant. Failover *between* servers in a cluster is very much in scope: М11 Lesson 2 reschedules a Node off a dead server, its cameras go with it because ownership never changed, and the module says plainly what does not fail over — the footage already on that server's disks
+- **High availability of a single-box site.** One box, replaced not clustered — a second server is sold for capacity or for failover, never bolted on to make one box redundant. Failover *between* servers in a cluster is very much in scope: М11 Lesson 4 reschedules a worker off a dead server, its cameras go with it because they are assigned to its name, and the module says plainly what does not fail over — the resource, and the footage on that server's disks
 - **Multi-tenancy.** One operator organisation per deployment
 - **The cloud side.** М8 covers KVS; nothing here builds a SaaS control plane
 

@@ -12,7 +12,7 @@ The module names are not decoration. They mark one idea getting harder three tim
 | ---------------------- | ------------------------------- | --------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
 | **М9 · EdgeVMS**       | what it *is*                    | in the image that booted                | nothing — a box is whatever was flashed onto it | replacing the OS underneath a running product without destroying the recordings    |
 | **М9 · NodeVMS** | what it *should be* | in a database on the box | desired state and actual state, inside one process | closing the gap — and never persisting the half that must be re-derived |
-| **М11 · ClusterVMS** | what it should be, *on whichever server survived* | in each Node, unchanged when a server dies | **two instances of the same Node** | surviving a server's death without two writers reaching one archive |
+| **М11 · ClusterVMS** | what it should be, *in the cluster's raft, written by one controller* | in each worker's heartbeat, from whichever server it runs on | **two instances of the same worker** | surviving a server's death without two writers reaching one archive |
 | **М12 · DomainVMS** | what it should be, *and which cluster holds it* | in each Node, with a directory across clusters | Nodes, with the directory | a layer that must stay useful while it is allowed to be down — and honest when a whole cluster is unreachable |
 | **М14 · VendorVMS** | *— not a scope of the product —* | nowhere the product depends on | the customer, with the vendor | **working with the vendor unreachable, or gone** |
 
@@ -30,11 +30,11 @@ That rule was chosen for archive locality, and it turns out to put the fencing e
 
 | | What it is | Who decides |
 |---|---|---|
-| **Node** | a VMS instance — its own database, its own cameras, its own archive index. From М11 it is a scheduler allocation with stable identity, and it **moves between servers** | an operator, when capacity is bought |
+| **Node** | a box running the platform's stores plus one or more subsystems — a controller and its workers — and the resources on its disks (М10). In М11 the *worker* is the scheduler allocation that **moves between servers**, claiming its name by CAS; the resource stays | an operator, when capacity is bought |
 | **Server** | a box with CPUs and disks. Runs whichever Nodes the scheduler puts on it | the scheduler, continuously |
 | **Site** | where cameras physically are. The only one of the three an operator names | the customer's building |
 
-**A Node is not a server**, and М9 builds exactly one Node without ever needing the distinction. It matters from М11 onward, where a server dying moves the Node rather than reassigning its cameras — which is why failover rewrites nothing.
+**A Node is not a server**, and М9 builds exactly one without ever needing the distinction. It matters from М11 onward, where a server dying moves a *worker* — whose cameras are assigned to its name in the cluster's raft — rather than reassigning cameras, which is why failover rewrites nothing; what stays on the server is a *resource*.
 
 [**М8**](./М8_KVS_VMS) comes before the progression starts: it builds the product itself with no local truth at all, because Kinesis holds the configuration and the archive both. Everything after it is the consequence of the box having to hold its own.
 
@@ -42,7 +42,7 @@ That rule was chosen for archive locality, and it turns out to put the fencing e
 
 **NodeVMS introduces the wish.** A row saying a camera should be recording is not a camera recording, and something has to close the gap — five lessons in which the student writes that reconciler by hand, at a scale where both ends fit in one terminal. The rule it turns on runs through everything above: *desired state is persisted, actual state is derived.* Persist the second and you have built a cache that lies.
 
-**ClusterVMS is where the second box appears, and it teaches one idea twice on purpose.** First a production reconciler — a Nomad cluster, the VMS as a job on it, a node pulled off the wall — because a jobspec *is* desired state and a scheduler *is* the loop. Then the pivot: **Nomad's allocations belong to whoever placed them, and nothing argues.** A camera is *owned*, two instances of the same Node can claim it, and a paused process is indistinguishable from a dead one. That is why М11 is the only module where a mistake corrupts customer footage instead of stopping a service.
+**ClusterVMS is where the second box appears, and it teaches one idea twice on purpose.** First a production reconciler — a Nomad cluster, М10's controller, workers and resource as jobs on it, a server pulled off the wall — because a jobspec *is* desired state and a scheduler *is* the loop, and Nomad, not the controller, decides how many workers run and where. Then the pivot: **Nomad's allocations belong to whoever placed them, and nothing argues.** A camera is *owned*, two instances of the same worker can claim it, and a paused process is indistinguishable from a dead one. That is why М11 is the only module where a mistake corrupts customer footage instead of stopping a service.
 
 **DomainVMS is what is left once a cluster works alone — and it is less than expected.** A cluster fails over, restores from its own object store, and answers *where is camera 7* from one raft, strongly consistent, asking nothing above it. What only a domain can know is what stops being knowable with a second cluster: which cluster holds a camera, which cluster should get a new one, and **whether an answer is complete** — because across clusters there is no raft, only aggregation that is partial and bounded-stale. The domain is a directory *of directories* that cannot be consistent, and its honesty about that is the module.
 
@@ -65,7 +65,7 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 8 lessons |
 | [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback<br>3 · Postgres — the Node's own state<br>4 · AppHost — the loop that acts on it | **Written** · 9 lessons |
 | [**М10** — NodeVMS](./М10_NodeVMS) | The platform's shape on one Node: `driverpacksrc`, `archivesink`, a controller and a worker — the subsystem contract, prototyped without a scheduler | **Written** · 5 lessons |
-| [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — workers that outlive their server, resources that stay, one controller<br>4 · The cluster's own directory | **Written** · 5 lessons · design rewritten to *2c*, lessons to follow |
+| [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — workers that outlive their server, resources that stay, one controller<br>4 · The cluster's own directory | **Written** · 5 lessons · rewritten to *2c* with `clustervms/` on М10's `vmsnode/`, 24 tests |
 | [**М12** — DomainVMS](./М12_DomainVMS) | 4 · Several clusters, one directory of directories<br>5 · The domain as its own root: enrollment, lifetimes, identity<br>7 · Its own update server, and clusters it rents for itself | **Written** · 8 lessons |
 | [**М13** — Observability](./М13_Observability) | 6 · Prometheus + logs — collecting what М9–М12 emit, from the domain cluster | **Designed** · 4 lessons |
 | [**М14** — VendorVMS](./М14_VendorVMS) | *Not a layer.* MASA, the licence system, publishing, the hosting business — and what the vendor must never be able to do | **Designed** · 5 lessons |
@@ -127,23 +127,21 @@ The Node rebuilt on the shape М11 arrived at — **workers, resources, one cont
 
 ## М11 — ClusterVMS
 
-*Design record rewritten 12 September 2026 to workers, resources and one controller (*2c*); the five lessons below were written for the Node model and are being rewritten to it.*
-
-Five lessons, built on one decision taken up front: **a Node owns its own configuration.** A Node is not a server — it is a scheduler allocation with stable identity, so when a server dies the Node moves and its cameras go with it. Failover rewrites nothing, because ownership never changed.
+Five lessons, built on the decision М10 arrived at: **workers, resources, one controller.** A worker is a scheduler allocation that claims its name by CAS, so when a server dies Nomad reschedules the worker, it claims the same name and its cameras — assigned to that name in the cluster's raft — come with it. A resource stays with its disks. The controller wrote the configuration before the failure and is not consulted during it. Failover rewrites nothing, because nothing was on the server that needed to travel; and nobody in the VMS decides how many workers run or where — Nomad places them and its Autoscaler moves `count` from the workers' own load.
 
 The module states that decision rather than arriving at it, then spends five lessons earning it — because the deciding fact is not obvious: **two writers to one video stream cannot be merged.** Nothing above can arbitrate after the fact, which is why this is the only module in the course where a mistake corrupts customer footage rather than stopping a service.
 
-**It is a complete product on its own**, which is the clearest evidence the split was real: one cluster, failing over, restoring from its own object store, asking nothing above it for permission. A single-building customer needs nothing else.
+**It is a complete product on its own**, which is the clearest evidence the split was real: one cluster, failing over from its own raft, asking nothing above it for permission. A single-building customer needs nothing else.
 
-It is built backwards from one demo. Four Nodes, two hundred cameras; pull the power on a server and watch Node 3 reappear elsewhere in the same cluster with its configuration intact. Then bring the dead server back and let its old instance of Node 3 try to keep writing. **The archive is intact, and the student can prove it.**
+It is built backwards from one demo. Three servers, two workers, two hundred cameras; pull the power on a server and watch `w-1` reappear elsewhere in the same cluster reading the same assignment — with the edit made during the failover already there. Then bring the dead server back and let its old instance of `w-1` try to keep writing. **It is fenced at its slot and at every epoch, and the archive is intact — the student can prove it.**
 
 The answer is that fencing belongs at the archive rather than at a coordinator: the epoch is part of the segment path, so the stale instance cannot name the files it would otherwise corrupt. You cannot stop a zombie from writing — you can only make its writes harmless.
 
 - [Lesson index](./М11_ClusterVMS/README.md) — start here
 - [Module design](./М11_ClusterVMS/module-design.md) — the cluster, what must outlive a server, the zombie writer, and fencing at the archive
-- [`reference/`](./М11_ClusterVMS/reference/README.md) — the zombie with two real processes, the CAS issuer, the lease arithmetic, the restore and its RPO, placement with property tests; the jobspec and agent configs
-- [`clustervms/`](./М11_ClusterVMS/clustervms/README.md) — the module's code, whole, built on М9's `nodevms/`: identity from a Variable, the epoch by CAS, publish-then-point, the restore, the lease that fences the zombie, the directory, placement; jobspec renderer, agent configs, MinIO job, tests
-- [`clustervms-go/`](./М11_ClusterVMS/clustervms-go/README.md) — the whole module ported to Go with the 29 tests ported alongside and a cross-language restore; the Node measured at idle in both languages and its six operations timed
+- [`clustervms/`](./М11_ClusterVMS/clustervms/README.md) — the module's code, whole, built on М10's `vmsnode/`: Nomad Variables and MinIO as the platform's stores, the worker as an allocation claiming its slot from `NOMAD_ALLOC_INDEX`, the controller placing under label constraints, the archive resource as a system job with its manifests served, a timeline across servers; four jobs with the `scaling` policy and the Autoscaler, two ACL policies, the bench check and the failover drill; 24 tests
+- [`reference/`](./М11_ClusterVMS/reference/README.md) — the first design's scripts, kept: the zombie with two real processes, the CAS issuer, the lease arithmetic
+- [`clustervms-go/`](./М11_ClusterVMS/clustervms-go/README.md) — the first design ported to Go with its 29 tests and measured against Python; its port to *2c* follows
 - [Kubernetes vs Nomad](./М11_ClusterVMS/kubernetes-vs-nomad.md) — why the orchestrator is Nomad, what it cost, and why neither belongs on one box
 
 ## М12 — DomainVMS
