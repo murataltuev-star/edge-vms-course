@@ -7,7 +7,7 @@ job "vmscontroller" {
 
   group "vmscontroller" {
     count = 1
-    constraint {                                     # the console writes operator marks into THIS server's resource
+    constraint {                                     # the console writes operator marks into THIS server's resource (job resource)
       attribute = "${meta.archive}"
       operator  = "is_set"
     }

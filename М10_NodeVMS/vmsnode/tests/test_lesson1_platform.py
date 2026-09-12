@@ -130,3 +130,43 @@ def test_identity_by_claim_is_a_platform_piece():
     assert d.claim_slot(prefer="w-7") == "w-7"                         # the scheduler's index wins, and creates
     assert sorted(ctl.slots()) == ["w-1", "w-2", "w-7"] and sub.slot_key("w-1") == "thing/slots/w-1"
     assert sub.acl_worker() == ["thing/epoch/*", "thing/slots/*"]
+
+
+def test_the_resource_is_a_platform_job_that_mirrors_any_subsystems_buckets():
+    """Two resources on one box (two roots), one raft. The knob is one Variable;
+    each resource copies its CLOSED buckets — whatever subsystem wrote them — to
+    the next live resource after it; a resource back with an empty disk pulls
+    its own buckets home. Nothing here knows what a bucket is about."""
+    import os, shutil, tempfile
+    from vmsplatform.events import EventLog, buckets_under
+    from vmsplatform.resource import MIRROR_KEY, Resource, mirrored_buckets, peers_of, resources_seen
+    box = Box(); t = box.wall() - 7200
+    roots = {s: tempfile.mkdtemp(prefix=f"res-{s}-") for s in ("srv-a", "srv-b", "srv-c")}
+
+    class Local:                                     # PeerClient's three calls, against directories
+        def mirrored(self, url, server): return mirrored_buckets(roots[url], server)
+        def put(self, url, server, path, data):
+            p = os.path.join(roots[url], ".mirror", server, path); os.makedirs(os.path.dirname(p), exist_ok=True)
+            open(p, "wb").write(data)
+        def get(self, url, server, path): return open(os.path.join(roots[url], ".mirror", server, path), "rb").read()
+
+    res = {s: Resource(r, s, s, box.vars, box.objects, wall=box.wall, peers=Local()) for s, r in roots.items()}
+    EventLog(roots["srv-a"], "thing", "x", 1).append(t + 5, "tick", n=1)         # some subsystem's bucket, closed
+    EventLog(roots["srv-a"], "other", "y", 2).append(t + 9, "seen")               # another's
+    EventLog(roots["srv-a"], "thing", "x", 1).append(t + 7000, "tick", n=2)      # the open one
+    for r in res.values(): r.heartbeat()
+    assert resources_seen(box.objects)["srv-a"]["units"] == {"other": ["y"], "thing": ["x"]}
+    assert peers_of("srv-a", list(res), 1) == ["srv-b"] and peers_of("srv-c", list(res), 1) == ["srv-a"]
+    assert res["srv-a"].pass_()["enabled"] is False                              # knob off: nothing leaves
+    box.vars.put(MIRROR_KEY, {"enabled": "true", "copies": "1"})
+    r = res["srv-a"].pass_(); assert (r["mirrored"], r["peers"]) == (2, ["srv-b"])
+    assert res["srv-a"].pass_()["mirrored"] == 0                                  # once
+    res["srv-b"].heartbeat()
+    assert resources_seen(box.objects)["srv-b"]["mirrors"] == {"srv-a": 2}
+    assert ".mirror" not in res["srv-b"].units()                                  # a copy is not srv-b's data
+    shutil.rmtree(roots["srv-a"]); os.makedirs(roots["srv-a"])                    # srv-a back with a replaced disk
+    assert res["srv-a"].restore()["pulled"] == 2
+    assert [b.events for b in buckets_under(roots["srv-a"], "thing", "x", 600)] == [1]   # the closed one is home; the open one was the RPO
+    box.vars.put("other/retention", {"days": 1})
+    box.wall.advance(3 * 86400)
+    assert res["srv-a"].retain() == 1 and buckets_under(roots["srv-a"], "other", "y", 600) == []   # each subsystem's days, from its own row

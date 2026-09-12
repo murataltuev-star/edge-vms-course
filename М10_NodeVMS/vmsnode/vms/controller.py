@@ -73,7 +73,16 @@ class VmsController(Controller):
              "priority": int(fields.get("priority", 100)), "revision": 1,
              "labels": list(fields.get("labels", []))}
         self.vars.put(VMS.config("cameras", str(cid)), items(r), cas=0)
+        self._retention(cid, r["events_retention_days"])
         return r
+
+    def _retention(self, cid: int, days: int | None) -> None:
+        """The platform retains buckets by <sub>/retention/<unit>; the VMS's
+        policy for a camera's events is one more row it writes."""
+        if days is None:
+            self.write(VMS.config("retention", str(cid)), lambda it: {"days": 0} if it else None)
+        else:
+            self.write(VMS.config("retention", str(cid)), lambda it: None if it.get("days") == str(days) else {"days": days})
 
     def update_camera(self, cid: int, fields: dict) -> dict:
         self._refuse(fields)
@@ -85,10 +94,14 @@ class VmsController(Controller):
                 r[k] = v
             r["revision"] += 1                       # the trigger from М9 Lesson 5, in the controller
             return items(r)
-        return row(self.write(VMS.config("cameras", str(cid)), mutate))
+        r = row(self.write(VMS.config("cameras", str(cid)), mutate))
+        if "events_retention_days" in fields:
+            self._retention(cid, r["events_retention_days"])
+        return r
 
     def delete_camera(self, cid: int) -> None:
         self.write(VMS.config("cameras", str(cid)), lambda it: {**it, "deleted": "true"} if it else None)
+        self._retention(cid, None)                   # a deleted camera's buckets go at the next pass
         pl = self.placement(cid)
         if pl:
             self.assign_remove(pl.worker, str(cid))

@@ -9,7 +9,7 @@ client {
   servers = ["10.0.0.11:4647", "10.0.0.12:4647", "10.0.0.13:4647"]
   meta {
     labels  = "vlan:cctv-a,vlan:cctv-b"  # what this server's NICs can reach; the worker reports it, the controller places by it
-    archive = "/data/archive"            # this server carries an archive resource (vmsarchive is a system job on meta.archive)
+    archive = "/data/archive"            # this server carries a resource with disks (the platform's `resource` system job pins to meta.archive)
   }
 }
 

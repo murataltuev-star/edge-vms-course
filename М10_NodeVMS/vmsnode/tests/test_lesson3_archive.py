@@ -119,8 +119,12 @@ def test_events_are_buckets_on_the_resource_recording_or_not():
     log4 = event_log(box.archive, 7, 4); p4 = log4.append(t0 + 650.0, "motion"); os.utime(p4, (t0 + 1900, t0 + 1900)); res.close_buckets(now=t0 + 2000)
     tl = Manifest(box.archive, 7).timeline(t0 + 600, t0 + 1200, current_epoch=4)
     assert [(x["media"] is not None, x["epoch"], x["events"], x["fenced"]) for x in tl] == [(False, 3, 1, True), (True, 4, 1, False)]
-    # repair rebuilds both kinds from the files; retention keeps events longer than media
+    # repair rebuilds both kinds from the files; media retention is the VMS's, bucket retention the platform's
+    from vmsplatform.resource import Resource
     os.remove(Manifest(box.archive, 7).path)
     assert res.repair() == {"added": 4, "dropped": 0}
-    assert res.retain(7, days=1, now=t0 + 3 * 86400, events_days=30) == 1 and len(Manifest(box.archive, 7).buckets()) == 3
-    assert res.retain(7, days=1, now=t0 + 40 * 86400, events_days=30) == 3 and not os.path.exists(p)
+    assert res.retain(7, days=1, now=t0 + 3 * 86400) == 1 and len(Manifest(box.archive, 7).buckets()) == 3
+    box.vars.put("vms/retention/7", {"days": 30})                               # what the controller writes for a camera's events
+    platform = Resource(box.archive, "box", "http://box", box.vars, box.objects, wall=lambda: t0 + 40 * 86400)
+    assert platform.retain() == 3 and not os.path.exists(p)                     # files, by the platform...
+    assert res.repair() == {"added": 0, "dropped": 3}                           # ...lines, by the VMS's own pass

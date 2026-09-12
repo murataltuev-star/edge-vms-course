@@ -35,7 +35,7 @@ The other thing this lesson settles is a question М10 left open and answered la
 | Program | Under `systemd` (М10) | Under Nomad | Why that shape |
 |---|---|---|---|
 | **`vmsworker`** | `vmsworker@w-N`, started by hand | `service`, `count = N`, `scaling {}`, `disconnect {}`, `kill_timeout = 20s` | movable; placed by constraint; N is the scheduler's |
-| **`vmsarchive`** (the resource) | the directory, a timer for the policy | **`system`**, `constraint meta.archive is_set` | one per eligible server, pinned; it never moves because it cannot |
+| **`resource`** — the platform's, with the VMS registered on it | the directory, a timer for the policy | **`system`**, `constraint meta.archive is_set` | one per eligible server, pinned; it never moves because it cannot; every subsystem's buckets, the mirror, the retention passes — and the VMS's manifests and footage as *its* part |
 | **`vmscontroller`** | `vmscontroller.service` | `service`, `count = 1` | one is a preference; CAS is the correctness; safe at two during a reschedule |
 | **the Nomad Autoscaler** | the operator's hand | `service`, `count = 1`, reads Prometheus, talks to Nomad | the only thing that changes `count`; MPL-2.0; not ours |
 

@@ -123,7 +123,7 @@ The Node rebuilt on the shape М11 arrived at — **workers, resources, one cont
 
 - [Lesson index](./М10_NodeVMS/README.md) — start here
 - [Module design](./М10_NodeVMS/module-design.md) — the three elements, the two processes, where configuration lives, and the contract every subsystem gives the platform
-- [`vmsnode/`](./М10_NodeVMS/vmsnode/README.md) — the module's code, whole: the platform's two stores with CAS, the epoch issuer and the lease, `driverpacksrc` and `archivesink`, `vmsworker`, `vmscontroller`, the console, the systemd units, identity by claim, events beside the segment, and a second subsystem that counts seconds; 41 tests
+- [`vmsnode/`](./М10_NodeVMS/vmsnode/README.md) — the module's code, whole: the platform's two stores with CAS, the epoch issuer and the lease, `driverpacksrc` and `archivesink`, `vmsworker`, `vmscontroller`, the console, the systemd units, identity by claim, events beside the segment, the resource as a platform job, and a second subsystem that counts seconds; 42 tests
 
 ## М11 — ClusterVMS
 
@@ -139,7 +139,7 @@ The answer is that fencing belongs at the archive rather than at a coordinator: 
 
 - [Lesson index](./М11_ClusterVMS/README.md) — start here
 - [Module design](./М11_ClusterVMS/module-design.md) — the cluster, what must outlive a server, the zombie writer, and fencing at the archive
-- [`clustervms/`](./М11_ClusterVMS/clustervms/README.md) — the module's code, whole, built on М10's `vmsnode/`: Nomad Variables and MinIO as the platform's stores, the worker as an allocation claiming its slot from `NOMAD_ALLOC_INDEX`, the controller placing under label constraints, the archive resource as a system job with its manifests served, a timeline across servers, the event index that is a cache over every subsystem's buckets, the events mirror as a copy to the next resource; four jobs with the `scaling` policy and the Autoscaler, two ACL policies, the bench check and the failover drill; 29 tests
+- [`clustervms/`](./М11_ClusterVMS/clustervms/README.md) — the module's code, whole, built on М10's `vmsnode/`: Nomad Variables and MinIO as the platform's stores, the worker as an allocation claiming its slot from `NOMAD_ALLOC_INDEX`, the controller placing under label constraints, the archive resource as a system job with its manifests served, a timeline across servers, the event index that is a cache over every subsystem's buckets, the resource and the event index as platform jobs, the events mirror as a copy to the next resource; four jobs with the `scaling` policy and the Autoscaler, two ACL policies, the bench check and the failover drill; 29 tests
 - [`reference/`](./М11_ClusterVMS/reference/README.md) — the first design's scripts, kept: the zombie with two real processes, the CAS issuer, the lease arithmetic
 - [`clustervms-go/`](./М11_ClusterVMS/clustervms-go/README.md) — the first design ported to Go with its 29 tests and measured against Python; its port to *2c* follows
 - [Kubernetes vs Nomad](./М11_ClusterVMS/kubernetes-vs-nomad.md) — why the orchestrator is Nomad, what it cost, and why neither belongs on one box

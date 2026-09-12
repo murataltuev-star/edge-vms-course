@@ -29,7 +29,7 @@ from vmsplatform.events import EventLog
 
 from .controller import ClusterController, heartbeats
 from .directory import Directory
-from .resource import resources_seen
+from vmsplatform.resource import resources_seen
 from .timeline import ManifestReader, merged_timeline
 
 

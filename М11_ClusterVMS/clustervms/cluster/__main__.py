@@ -1,4 +1,4 @@
-"""python3 -m cluster worker | controller | resource | eventindex — the jobs.
+"""python3 -m cluster worker | controller | resource — the jobs (the eventindex runs beside the controller's console).
 
     NOMAD_ADDR, NOMAD_TOKEN            the task's own workload identity (Variables)
     OBJECTS=variables://objects        the object store — heartbeats and the snapshot — as Variables (the default);
@@ -49,8 +49,8 @@ def worker() -> None:
 def controller() -> None:
     from cluster.console import serve
     from cluster.controller import ClusterController
-    from cluster.eventindex import EventIndex, ResourceReader
-    from cluster.resource import resources_seen
+    from vmsplatform.eventindex import EventIndex, ResourceReader
+    from vmsplatform.resource import resources_seen
     ctl = ClusterController(NomadVariables(), objects, capacity=int(os.environ.get("CAPACITY", "50")),
                             cluster=os.environ.get("CLUSTER", "cluster-a"))
     index = EventIndex(ResourceReader(), os.environ.get("EVENTINDEX_DB", ":memory:"))     # a cache: rebuilt on every start
@@ -68,20 +68,22 @@ def controller() -> None:
 
 
 def resource() -> None:
+    """The platform's resource job with the VMS registered on it."""
     from vms.archive import ArchiveResource
-    from cluster.resource import ResourceHeartbeat, ResourcePolicy, serve
-    res = ArchiveResource(spool, archive)
+    from cluster.resource import cluster_resource, vms_routes
+    from vmsplatform.resource import serve
+    arch = ArchiveResource(spool, archive)
     server = os.environ.get("NOMAD_NODE_NAME") or os.uname().nodename
     url = os.environ.get("RESOURCE_URL", f"http://{server}:8090")
-    srv = serve(res, "0.0.0.0", int(os.environ.get("RESOURCE_PORT", "8090")))
-    hb, policy = ResourceHeartbeat(res, objects, server, url), ResourcePolicy(res, NomadVariables(), objects=objects, server=server)
-    hb.once(); logging.info("restore: %s", policy.restore())    # back with an empty disk? pull my buckets from my peer first
+    res = cluster_resource(arch, server, url, NomadVariables(), objects)
+    srv = serve(res, "0.0.0.0", int(os.environ.get("RESOURCE_PORT", "8090")), extra=vms_routes(arch))
+    res.heartbeat(); logging.info("restore: %s", res.restore())    # back with an empty disk? pull my buckets from my peers first
     last_policy = 0.0
     while not stop.is_set():
         try:
-            hb.once()
+            res.heartbeat()
             if time.time() - last_policy >= 600:
-                logging.info("policy: %s", policy.once()); last_policy = time.time()
+                logging.info("policy: %s", res.pass_()); last_policy = time.time()
         except Exception:                         # noqa: BLE001
             logging.exception("resource pass failed")
         stop.wait(10)

@@ -10,8 +10,8 @@ clustervms/
     worker.py        L2  the worker as an allocation: the slot from NOMAD_ALLOC_INDEX, the server and its labels from the environment, capacity and headroom in the heartbeat
     controller.py    L5  the controller as a job: placement under label constraints with the server in the reason; `unplaceable`; the snapshot for М12; vms_failover_seconds from the heartbeats
     directory.py     L5  where is camera 7 — one scan of vms/workers/*
-    resource.py      L3  the archive resource as a system job: its heartbeat, its manifests, footage and event files served, its policy (repair, close, retain — and mirror to the next resource, with the knob on; restore, on return)
-    eventindex.py    L3  the cluster's event "database", which is a cache: SQLite over every subsystem's buckets on every resource, rebuildable, honest about a silent server, reads a silent server's buckets from the peer that holds copies; joins subsystems on a `cam` field
+    resource.py      L3  the VMS's part of the platform's resource job: ArchivePolicy (repair, close, media retention) registered as the `vms` hook; /manifest and /segment plugged in
+    eventindex.py    L3  a name for vmsplatform.eventindex — the platform's index over every subsystem's buckets on every resource
     timeline.py      L3  one camera across two resources; the unreachable one named; *unavailable*, never *lost*
     console.py       L5  the cluster console, standard library: /cameras /where /timeline /resources /unplaceable /events /metrics; /marks into the console's own bucket
     publish.py, configio.py   the first design's Node-shaped snapshot — kept only because М12's fixture reads it; goes with М12's rewrite
@@ -20,9 +20,9 @@ clustervms/
     server.hcl, client.hcl     L1  three servers, ACLs on, meta.labels and meta.archive, the Podman plugin
     vmsworker.nomad.hcl        L2  service, count = N, the `scaling` block on avg(vms_worker_load), the disconnect numbers, kill_timeout for the slot release
     vmscontroller.nomad.hcl    L2  service, count = 1 — safe at two
-    vmsarchive.nomad.hcl       L2  system, on meta.archive — the resource
+    resource.nomad.hcl         L2  system, on meta.archive — the PLATFORM's resource job, with the VMS registered on it
     autoscaler.nomad.hcl       L2  the Nomad Autoscaler (MPL-2.0): the fourth job, and the only thing that changes count
-    vmsworker-policy.hcl, vmscontroller-policy.hcl, vmsarchive-policy.hcl   L2  one writer per key: vms/* for the controller; vms/epoch/*, vms/slots/* and its heartbeat for a worker; its heartbeat for a resource
+    vmsworker-policy.hcl, vmscontroller-policy.hcl, resource-policy.hcl   L2  one writer per key: vms/* for the controller; vms/epoch/*, vms/slots/* and its heartbeat for a worker; platform/resources/* for a resource
     verify-bench.sh            the six checks that need a real cluster, PASS/FAIL — including the ACL from inside an allocation and a scale drill
     failover-drill.sh          L4  the power pull, measured: three runs, worst case kept, the old instance's conflicts counted
     Containerfile              the image: vmsnode + cluster, three entrypoints
@@ -38,10 +38,10 @@ clustervms/
 | A worker's name | `systemd`'s `%i` | `w-<NOMAD_ALLOC_INDEX>`, claimed by CAS — the index is the preference, the Variable the proof | `worker.py` |
 | Who decides how many workers | the operator starts units | Nomad runs `count`; the Autoscaler moves it from `vms_worker_load`; **never the controller** | `deploy/vmsworker.nomad.hcl` |
 | Placement | most free capacity | most free capacity **among workers whose server can reach the camera** (`labels`) | `controller.py` |
-| The archive | a directory on the box | the same directory on *each* server, pinned by a `system` job, with a heartbeat and its manifests served | `resource.py` |
+| The resource | a directory on the box | the platform's `resource` job on *each* server: every subsystem's buckets served and mirrored, retention by each subsystem's row; the VMS registers its manifests and media on it | `vmsplatform/resource.py`, `resource.py` |
 | A timeline | one manifest | merged across the resources that hold the camera; a silent one is named as unreachable | `timeline.py` |
 | What leaves the cluster | nothing | one snapshot object for М12's read model — a copy with an age | `controller.py` |
-| Events | buckets per unit on the resource, written by the worker holding the epoch, any subsystem | the same, on each server's resource; indexed across the cluster by `eventindex`, a cache | `eventindex.py` |
+| Events | buckets per unit on the resource, written by the worker holding the epoch, any subsystem | the same, on each server's resource; indexed across the cluster by the platform's `eventindex`, a cache; mirrored to the next resource with `platform/mirror` on | `vmsplatform/eventindex.py`, `vmsplatform/resource.py` |
 | The contract, the controller's logic, the worker's loop, the epoch, the lease, the manifest | | **unchanged**: imported from `vmsnode/` | |
 
 ## The three lines the tests hold

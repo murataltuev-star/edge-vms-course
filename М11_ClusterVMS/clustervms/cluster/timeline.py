@@ -33,7 +33,7 @@ def merged_timeline(resources: dict[str, dict], reader, cam: int, t0: float, t1:
     now = time.time() if now is None else now
     segs, unreachable = [], []
     for server, hb in sorted(resources.items()):
-        if cam not in hb.get("cameras", []):
+        if str(cam) not in hb.get("units", {}).get("vms", []):     # the platform's heartbeat: units per subsystem
             continue
         if now - float(hb["ts"]) > lost_after:
             unreachable.append(server)

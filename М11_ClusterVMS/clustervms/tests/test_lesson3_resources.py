@@ -5,7 +5,7 @@ one that is unreachable."""
 import json
 import os
 from cluster.controller import ClusterController
-from cluster.resource import ResourceHeartbeat, ResourcePolicy, resources_seen
+from cluster.resource import cluster_resource, resources_seen
 from cluster.timeline import merged_timeline
 from datetime import datetime, timezone
 from vms.archive import Manifest, Segment, segment_path
@@ -47,20 +47,20 @@ def test_a_timeline_spans_two_resources_and_names_the_unreachable_one():
     t = c.wall()
     _segment(c.servers["srv-a"], 7, 3, t - 1200); _segment(c.servers["srv-a"], 7, 3, t - 600)   # before the failure, on A
     _segment(c.servers["srv-b"], 7, 4, t - 300)                                                # after, on B, next epoch
-    hbs = {s: ResourceHeartbeat(srv.resource, c.objects, s, f"http://{s}", wall=c.wall) for s, srv in c.servers.items()}
-    for hb in hbs.values(): hb.once()
+    hbs = {s: cluster_resource(srv.resource, s, f"http://{s}", c.vars, c.objects, wall=c.wall) for s, srv in c.servers.items()}
+    for hb in hbs.values(): hb.heartbeat()
     seen = resources_seen(c.objects)
-    assert seen["srv-a"]["cameras"] == [7] and seen["srv-c"]["cameras"] == [] and seen["srv-a"]["usage"] == 2000
+    assert seen["srv-a"]["units"] == {"vms": ["7"]} and seen["srv-c"]["units"] == {} and seen["srv-a"]["usage"] > 2000   # media + the manifest
     tl = merged_timeline(seen, DirReader(c), 7, t - 2000, t, current_epoch=4, now=c.wall())
     assert [(s["server"], s["epoch"], s["fenced"]) for s in tl["segments"]] == [("srv-a", 3, True), ("srv-a", 3, True), ("srv-b", 4, False)]
     assert tl["unreachable"] == []
     # srv-a dies: its heartbeat goes stale; its ranges are unavailable, and the answer says so by name
-    c.wall.advance(60); hbs["srv-b"].once(); hbs["srv-c"].once()
+    c.wall.advance(60); hbs["srv-b"].heartbeat(); hbs["srv-c"].heartbeat()
     tl = merged_timeline(resources_seen(c.objects), DirReader(c), 7, t - 2000, t, current_epoch=4, now=c.wall())
     assert [s["server"] for s in tl["segments"]] == ["srv-b"] and tl["unreachable"] == ["srv-a"]
     assert "unavailable until the server returns" in tl["note"] and "lost" in tl["note"] and "not lost" in tl["note"]
     # srv-a returns: its manifest came back with its disks — nothing was rebuilt
-    hbs["srv-a"].once()
+    hbs["srv-a"].heartbeat()
     tl = merged_timeline(resources_seen(c.objects), DirReader(c), 7, t - 2000, t, current_epoch=4, now=c.wall())
     assert len(tl["segments"]) == 3 and tl["unreachable"] == []
 
@@ -71,8 +71,9 @@ def test_the_resource_policy_needs_neither_worker_nor_controller():
     srv = c.servers["srv-a"]; t = c.wall()
     _segment(srv, 1, 1, t - 3 * 86400); _segment(srv, 1, 1, t - 3600)
     os.remove(os.path.join(srv.archive, Manifest(srv.archive, 1).read()[1].path))   # a file gone behind the manifest's back
-    rep = ResourcePolicy(srv.resource, c.vars, wall=c.wall).once()
-    assert rep == {"added": 0, "dropped": 1, "closed": 0, "removed": 1, "enabled": False, "mirrored": 0, "peers": []} and Manifest(srv.archive, 1).read() == []
+    rep = cluster_resource(srv.resource, "srv-a", "http://srv-a", c.vars, c.objects, wall=c.wall).pass_()
+    assert rep == {"vms.added": 0, "vms.dropped": 1, "vms.closed": 0, "vms.media_removed": 1, "removed": 0, "enabled": False, "mirrored": 0, "peers": []}
+    assert Manifest(srv.archive, 1).read() == []
 
 
 def test_a_worker_with_no_assignment_invents_nothing():

@@ -103,7 +103,7 @@ def heartbeats(objects, prefix: str = "vms/") -> dict[str, Heartbeat]:
     """Every worker's last heartbeat, whatever its age — the console's read model."""
     out = {}
     for key in objects.list(prefix):
-        if key.endswith("/heartbeat") and not key.startswith(prefix + "resources/"):
+        if key.endswith("/heartbeat"):
             raw = objects.get(key)
             if raw:
                 hb = Heartbeat.from_bytes(raw)

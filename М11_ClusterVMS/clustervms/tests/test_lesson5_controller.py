@@ -104,10 +104,10 @@ def test_the_console_over_http():
     # an operator's mark: the console's own bucket on srv-a's resource, found by the index on its `cam` field
     st, out = call("POST", "/marks", {"cam": 1, "note": "check the gate"}, {"Idempotency-Key": "m1", "X-User": "murat"})
     m = json.loads(out); assert st == 201 and m["bucket"].startswith(f"console/{m['unit']}/e1/")
-    from cluster.resource import ResourceHeartbeat, resources_seen
-    from cluster.eventindex import EventIndex
+    from cluster.resource import cluster_resource, resources_seen
+    from vmsplatform.eventindex import EventIndex
     from tests.test_lesson3_events import DirReader
-    ResourceHeartbeat(c.servers["srv-a"].resource, c.objects, "srv-a", "http://srv-a", wall=c.wall).once()
+    cluster_resource(c.servers["srv-a"].resource, "srv-a", "http://srv-a", c.vars, c.objects, wall=c.wall).heartbeat()
     idx = EventIndex(DirReader(c), wall=c.wall); idx.rebuild(resources_seen(c.objects))
     ev = idx.query(0, 1e12, cam=1)["events"]
     assert [(e["subsystem"], e["kind"], e["user"]) for e in ev] == [("console", "mark", "murat")]

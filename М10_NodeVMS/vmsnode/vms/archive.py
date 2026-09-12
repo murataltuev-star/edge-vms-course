@@ -22,15 +22,17 @@ resource, one flushed line at a time, and gets its manifest line when it
 closes (its span is over and nothing has touched it for a grace period).
 The manifest is append-only and rebuildable from the files.
 
-Retention is a policy ON the resource, per kind: media after
-`retention_days`, events after `events_retention_days` — events are small
-and often kept a year where footage is kept a month. Files first, then
-lines, so a crash leaves a line that names nothing rather than a file
-nothing names — `repair()` fixes either.
+Retention is a policy, per kind. Media is the VMS's: `retain()` after
+`retention_days`, files first then lines. Buckets are the PLATFORM's
+(vmsplatform.resource): the controller writes `vms/retention/<cam>
+{days: events_retention_days}` and the resource job deletes the files —
+events are small and often kept a year where footage is kept a month —
+and `repair()` drops the lines whose files are gone.
 
-The layout is `<subsystem>/<unit>/...` so that other subsystems' buckets
-(det/d-12/..., counter/a/...) sit on the same resource under their own
-prefix, written by their own workers under their own epochs.
+The layout is `<subsystem>/<unit>/...` — the platform resource's tree — so
+that other subsystems' buckets sit on the same server under their own
+prefix. `ArchivePolicy` is what the VMS registers with the platform's
+resource job: its own pass over its own part of the tree.
 """
 from __future__ import annotations
 
@@ -245,12 +247,13 @@ class ArchiveResource:
             man.rewrite(list(lines.values()), list(on_disk.values()))
         return {"added": added, "dropped": dropped}
 
-    def retain(self, cam: int, days: float, now: float, events_days: float | None = None) -> int:
-        """Delete media older than `days` and event buckets older than
-        `events_days` (default: the same): the file first, then the line."""
-        cutoff, ev_cutoff = now - days * 86400, now - (days if events_days is None else events_days) * 86400
+    def retain(self, cam: int, days: float, now: float) -> int:
+        """Delete media older than `days`: the file first, then the line. The
+        buckets are the platform's to retain (vms/retention/<cam>, written by the
+        controller); their lines go when repair() finds the files gone."""
+        cutoff = now - days * 86400
         man = Manifest(self.root, cam)
-        keep, keep_b, removed = [], [], 0
+        keep, removed = [], 0
         for s in man.read():
             if s.end < cutoff:
                 try:
@@ -260,17 +263,8 @@ class ArchiveResource:
                 removed += 1
             else:
                 keep.append(s)
-        for b in man.buckets():
-            if b.end < ev_cutoff:
-                try:
-                    os.remove(os.path.join(self.root, b.path))
-                except FileNotFoundError:
-                    pass
-                removed += 1
-            else:
-                keep_b.append(b)
         if removed:
-            man.rewrite(keep, keep_b)
+            man.rewrite(keep)
         return removed
 
     def usage(self) -> int:
@@ -281,3 +275,22 @@ class ArchiveResource:
                 if parse(p, self.root):
                     total += os.path.getsize(p)
         return total
+
+
+class ArchivePolicy:
+    """What the VMS registers with the platform's resource job: repair the
+    manifests, close the buckets into them, retain media per camera from the
+    camera rows. Runs on the resource's timer beside the platform's own pass."""
+
+    def __init__(self, resource: ArchiveResource, vars_):
+        self.res, self.vars = resource, vars_
+
+    def pass_(self, now: float) -> dict:
+        rep = self.res.repair()
+        closed = len(self.res.close_buckets(now, bucket_seconds=self.res.bucket_seconds))
+        removed = 0
+        for cam in self.res.cameras():
+            items, _ = self.vars.get(f"{SUB}/cameras/{cam}")
+            days = int(items.get("retention_days", 30)) if items else 30
+            removed += self.res.retain(cam, days, now)
+        return {**rep, "closed": closed, "media_removed": removed}

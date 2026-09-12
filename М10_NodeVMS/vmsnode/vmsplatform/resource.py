@@ -1,0 +1,271 @@
+"""The resource — a platform job, one per server, pinned there for as long
+as the server exists. It knows the shape of what every subsystem leaves on
+a server's disks and nothing about what it means:
+
+    <root>/<subsystem>/<unit>/e<epoch>/...          each subsystem's tree: its buckets, and whatever else it
+                                                    keeps beside them (the VMS: media and a manifest — its own)
+    <root>/.mirror/<server>/<subsystem>/<unit>/...  copies of another server's closed buckets (the knob)
+
+    platform/resources/<server>/heartbeat   {server, ts, url, usage, units: {sub: [unit]}, mirrors: {server: n}}
+    platform/mirror                         the knob: {enabled, copies}
+    <sub>/retention, <sub>/retention/<unit> {days}: each subsystem's policy for its buckets, written by ITS controller
+
+    GET  <url>/buckets/<sub>/<unit>    closed buckets, from the files
+    GET  <url>/events/<path>           one bucket (also .mirror/<server>/<path>)
+    GET  <url>/mirrored/<server>       which of <server>'s buckets this server holds copies of
+    PUT  <url>/mirror/<server>/<path>  another resource leaves a copy of one of ITS closed buckets here
+
+The policy pass runs on a timer: retain each subsystem's buckets by its
+policy; mirror closed buckets to the next live resource(s) after this one
+in sorted order — nobody assigns peers, the rule is the assignment; and any
+subsystem-specific pass a subsystem registered (the VMS registers its
+media repair and retention). `restore` is the reverse of mirror, run by
+the owner at start: a server back with an empty disk pulls its buckets
+home. No controller is involved in any of it.
+"""
+from __future__ import annotations
+
+import json
+import os
+import threading
+import time
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from .events import Bucket, buckets_under, parse_bucket, subsystems_under
+
+MIRROR_DIR = ".mirror"
+MIRROR_KEY = "platform/mirror"
+RESOURCES = "platform/resources"
+
+
+def bucket_from_line(line: str) -> Bucket:
+    d = json.loads(line)
+    return Bucket(d["subsystem"], str(d["unit"]), int(d["epoch"]), float(d["start"]), float(d["end"]), d["path"], int(d["events"]))
+
+
+def mirror_settings(vars_) -> dict:
+    items, _ = vars_.get(MIRROR_KEY)
+    return {"enabled": bool(items) and items.get("enabled") == "true", "copies": int((items or {}).get("copies", 1))}
+
+
+def retention_days(vars_, subsystem: str, unit: str, default: float = 365.0) -> float:
+    """The unit's days if its subsystem set them, else the subsystem's, else a year."""
+    for path in (f"{subsystem}/retention/{unit}", f"{subsystem}/retention"):
+        items, _ = vars_.get(path)
+        if items and "days" in items:
+            return float(items["days"])
+    return default
+
+
+def peers_of(server: str, live: list[str], copies: int) -> list[str]:
+    """The rule that replaces a map: the next `copies` live resources after mine, in sorted order."""
+    others = sorted(s for s in live if s != server)
+    if not others:
+        return []
+    after = [s for s in others if s > server] + [s for s in others if s < server]
+    return after[:copies]
+
+
+def resources_seen(objects) -> dict[str, dict]:
+    out = {}
+    for key in objects.list(RESOURCES + "/"):
+        if key.endswith("/heartbeat"):
+            raw = objects.get(key)
+            if raw:
+                hb = json.loads(raw)
+                out[hb["server"]] = hb
+    return out
+
+
+def mirrored_servers(root: str) -> list[str]:
+    try:
+        return sorted(d for d in os.listdir(os.path.join(root, MIRROR_DIR)) if os.path.isdir(os.path.join(root, MIRROR_DIR, d)))
+    except FileNotFoundError:
+        return []
+
+
+def mirrored_buckets(root: str, server: str, bucket_seconds: int = 600) -> list[Bucket]:
+    """Copies this resource holds of <server>'s buckets; `path` is the ORIGINAL path on <server>."""
+    base = os.path.join(root, MIRROR_DIR, server)
+    out = []
+    for d, _, files in os.walk(base):
+        for f in files:
+            p = os.path.join(d, f)
+            parsed = parse_bucket(p, base)
+            if parsed:
+                sub, unit, epoch, start = parsed
+                with open(p) as fh:
+                    n = sum(1 for l in fh if l.strip())
+                out.append(Bucket(sub, unit, epoch, start, start + bucket_seconds, os.path.relpath(p, base), n))
+    return sorted(out, key=lambda b: (b.start, b.epoch))
+
+
+class PeerClient:
+    """How one resource talks to another: HTTP; tests substitute an in-process client."""
+    def __init__(self, timeout: float = 5.0): self.timeout = timeout
+
+    def mirrored(self, url: str, server: str) -> list[Bucket]:
+        with urllib.request.urlopen(f"{url}/mirrored/{server}", timeout=self.timeout) as r:
+            return [bucket_from_line(l) for l in r.read().decode().splitlines() if l.strip()]
+
+    def put(self, url: str, server: str, path: str, data: bytes) -> None:
+        req = urllib.request.Request(f"{url}/mirror/{server}/{path}", data=data, method="PUT")
+        with urllib.request.urlopen(req, timeout=self.timeout) as r:
+            if r.status not in (200, 201, 204):
+                raise IOError(f"PUT mirror {path}: {r.status}")
+
+    def get(self, url: str, server: str, path: str) -> bytes:
+        with urllib.request.urlopen(f"{url}/events/{MIRROR_DIR}/{server}/{path}", timeout=self.timeout) as r:
+            return r.read()
+
+
+class Resource:
+    """One server's resource: its tree, its heartbeat, its policy pass."""
+
+    def __init__(self, root: str, server: str, url: str, vars_, objects, bucket_seconds: int = 600,
+                 wall=time.time, peers: PeerClient | None = None, lost_after: float = 45.0):
+        self.root, self.server, self.url, self.vars, self.objects = root, server, url, vars_, objects
+        self.bucket_seconds, self.wall, self.peers, self.lost_after = bucket_seconds, wall, peers or PeerClient(), lost_after
+        self.hooks: dict[str, object] = {}         # subsystem -> object with .pass_(now) -> dict: its own policy on ITS part of the tree
+        os.makedirs(root, exist_ok=True)
+
+    def register(self, subsystem: str, hook) -> None:
+        self.hooks[subsystem] = hook
+
+    # -- what is here -------------------------------------------------------------------
+    def units(self) -> dict[str, list[str]]:
+        return subsystems_under(self.root)
+
+    def closed_buckets(self) -> list[Bucket]:
+        out = []
+        for sub, units in self.units().items():
+            for unit in units:
+                out += [b for b in buckets_under(self.root, sub, unit, self.bucket_seconds) if b.end <= self.wall()]
+        return out
+
+    def usage(self) -> int:
+        total = 0
+        for d, _, files in os.walk(self.root):
+            for f in files:
+                total += os.path.getsize(os.path.join(d, f))
+        return total
+
+    def heartbeat(self) -> dict:
+        hb = {"server": self.server, "ts": self.wall(), "url": self.url, "usage": self.usage(), "units": self.units(),
+              "mirrors": {s: len(mirrored_buckets(self.root, s, self.bucket_seconds)) for s in mirrored_servers(self.root)}}
+        self.objects.put(f"{RESOURCES}/{self.server}/heartbeat", json.dumps(hb).encode())
+        return hb
+
+    def live_resources(self) -> dict[str, dict]:
+        now = self.wall()
+        return {s: hb for s, hb in resources_seen(self.objects).items() if now - float(hb["ts"]) <= self.lost_after}
+
+    # -- the policy pass ------------------------------------------------------------------
+    def retain(self) -> int:
+        """Each subsystem's buckets by its own days. Files only: a subsystem that
+        indexes its buckets (the VMS's manifest) drops the lines in its own pass."""
+        removed = 0
+        for sub, units in self.units().items():
+            for unit in units:
+                days = retention_days(self.vars, sub, unit)
+                for b in buckets_under(self.root, sub, unit, self.bucket_seconds):
+                    if b.end < self.wall() - days * 86400:
+                        os.remove(os.path.join(self.root, b.path)); removed += 1
+        return removed
+
+    def mirror(self) -> dict:
+        """The knob. Every CLOSED bucket on this server — any subsystem — is
+        copied to the next live resource(s) after it, exactly once each (the
+        peer says what it already holds), by the server that owns it."""
+        knob = mirror_settings(self.vars)
+        if not knob["enabled"]:
+            return {"enabled": False, "mirrored": 0, "peers": []}
+        live = self.live_resources()
+        peers = peers_of(self.server, list(live), knob["copies"])
+        n = 0
+        for peer in peers:
+            have = {b.path for b in self.peers.mirrored(live[peer]["url"], self.server)}
+            for b in self.closed_buckets():
+                if b.path in have:
+                    continue
+                with open(os.path.join(self.root, b.path), "rb") as f:
+                    self.peers.put(live[peer]["url"], self.server, b.path, f.read())
+                n += 1
+        return {"enabled": True, "mirrored": n, "peers": peers}
+
+    def restore(self) -> dict:
+        """The reverse, run by the owner: pull my buckets from whoever holds
+        copies, then let each subsystem's hook re-index what came back."""
+        pulled = 0
+        for peer, hb in self.live_resources().items():
+            if peer == self.server or self.server not in hb.get("mirrors", {}):
+                continue
+            for path in sorted(b.path for b in self.peers.mirrored(hb["url"], self.server)):
+                dest = os.path.join(self.root, path)
+                if os.path.exists(dest):
+                    continue
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest + ".tmp", "wb") as f:
+                    f.write(self.peers.get(hb["url"], self.server, path))
+                os.replace(dest + ".tmp", dest); pulled += 1
+        hooks = {sub: h.pass_(self.wall()) for sub, h in self.hooks.items()} if pulled else {}
+        return {"pulled": pulled, **{f"{s}.{k}": v for s, r in hooks.items() for k, v in r.items()}}
+
+    def pass_(self) -> dict:
+        out = {}
+        for sub, h in self.hooks.items():                    # a subsystem's own pass first: it may index or drop lines
+            out.update({f"{sub}.{k}": v for k, v in h.pass_(self.wall()).items()})
+        out["removed"] = self.retain()
+        out.update(self.mirror())
+        return out
+
+
+def serve(resource: Resource, host: str = "0.0.0.0", port: int = 8090, extra=None) -> ThreadingHTTPServer:
+    """The resource over HTTP. `extra(path) -> (status, bytes) | None` lets a
+    subsystem add its own reads (the VMS: manifests and footage)."""
+    root = resource.root
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+
+        def _raw(self, status, body, headers=()):
+            self.send_response(status); self.send_header("Content-Length", str(len(body)))
+            for k, v in headers: self.send_header(k, v)
+            self.end_headers(); self.wfile.write(body)
+
+        def do_GET(self):
+            if self.path.startswith("/buckets/"):
+                _, _, sub, unit = self.path.split("/", 3)
+                return self._raw(200, "".join(b.line() + "\n" for b in buckets_under(root, sub, unit, resource.bucket_seconds)).encode())
+            if self.path.startswith("/mirrored/"):
+                return self._raw(200, "".join(b.line() + "\n" for b in mirrored_buckets(root, self.path[len("/mirrored/"):], resource.bucket_seconds)).encode())
+            if self.path.startswith("/events/"):
+                rel = self.path[len("/events/"):]; p = os.path.join(root, rel)
+                if ".." in rel or not rel.endswith(".events.jsonl") or not os.path.isfile(p):
+                    return self._raw(404, b"")
+                with open(p, "rb") as f: return self._raw(200, f.read())
+            if extra is not None:
+                r = extra(self.path, self.headers)
+                if r is not None:
+                    return self._raw(*r)
+            self._raw(404, b"")
+
+        def do_PUT(self):
+            if not self.path.startswith("/mirror/"):
+                return self._raw(404, b"")
+            rel = self.path[len("/mirror/"):]
+            server, _, path = rel.partition("/")
+            if ".." in rel or not server or not path.endswith(".events.jsonl"):
+                return self._raw(400, b"")
+            dest = os.path.join(root, MIRROR_DIR, server, path)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            n = int(self.headers.get("Content-Length", 0))
+            with open(dest + ".tmp", "wb") as f:
+                f.write(self.rfile.read(n))
+            os.replace(dest + ".tmp", dest)                     # a copy appears whole or not at all
+            self._raw(204, b"")
+
+    srv = ThreadingHTTPServer((host, port), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv

@@ -1,9 +1,10 @@
-# deploy/vmsarchive.nomad.hcl — the archive resource: a system job, one
+# deploy/resource.nomad.hcl — the resource: a PLATFORM system job, one
 # allocation on every server that declares meta.archive, pinned there for
-# as long as the server exists. It has no controller: a heartbeat so the
-# console knows it exists, its manifests served so a timeline can span
-# servers, and a policy (repair, then retention) every ten minutes.
-job "vmsarchive" {
+# as long as the server exists. It serves every subsystem's buckets, takes
+# mirrors from its peers, retains buckets by each subsystem's own policy,
+# and runs the passes subsystems register on it (the VMS: manifests, media
+# retention). No controller. Its heartbeat is platform/resources/<server>.
+job "resource" {
   datacenters = ["room-a"]
   type        = "system"
 
@@ -12,12 +13,12 @@ job "vmsarchive" {
     operator  = "is_set"
   }
 
-  group "vmsarchive" {
+  group "resource" {
     network {
       mode = "host"
       port "manifests" { static = 8090 }
     }
-    task "vmsarchive" {
+    task "resource" {
       driver = "podman"
       identity { env = true }
       config {
@@ -29,9 +30,10 @@ job "vmsarchive" {
       env {
         OBJECTS      = "variables://objects"       # its heartbeat as a Variable; no MinIO on this cluster
         RESOURCE_URL = "http://${attr.unique.network.ip-address}:8090"   # where peers PUT mirrors and the index reads buckets
+        NOMAD_NODE_NAME = "${node.unique.name}"
       }
       service {                                    # peers find each other here; verify-bench uses it
-        name = "vmsarchive"
+        name = "resource"
         port = "manifests"
       }
       resources { cpu = 200  memory = 256 }

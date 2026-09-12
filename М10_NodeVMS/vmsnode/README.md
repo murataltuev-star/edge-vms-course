@@ -10,11 +10,13 @@ vmsnode/
     epoch.py                   Lesson 1  the fencing-token issuer and the lease — generic
     contract.py                Lesson 1  Subsystem, Assignment, Heartbeat, Slot; the Controller and Worker bases; identity by claim
     events.py                  Lesson 3  the event log: buckets per unit per epoch on the resource, for any subsystem — generic
+    resource.py                Lesson 3  the resource as a platform job: heartbeat, buckets over HTTP, retention by each subsystem's row, the mirror to a peer, restore
+    eventindex.py              Lesson 3  the index over every subsystem's buckets on every resource — a cache
   vms/                         the VMS — the first subsystem
     reconciler.py              Lesson 4  М9 Lesson 6's loop, copied unchanged: the contract
-    archive.py                 Lesson 3  the archive resource under vms/<cam>/: spool → promote → manifest; the camera's event buckets; repair; retention per kind
+    archive.py                 Lesson 3  the VMS's part of the resource under vms/<cam>/: spool → promote → manifest; the camera's event buckets; ArchivePolicy (repair, close, media retention) registered on the platform's resource
     worker.py                  Lesson 4  vmsworker: N pipelines against an assignment; an epoch per camera; a lease; the heartbeat
-    controller.py              Lesson 5  vmscontroller: cameras and placement by CAS; what it refuses; rebalance on request
+    controller.py              Lesson 5  vmscontroller: cameras and placement by CAS; what it refuses; rebalance on request; vms/retention/<cam> for the platform
     console.py                 Lesson 5  the one-box console, standard library: the read model from heartbeats; writes to the controller; operator marks into its own bucket
     config.py                  the schema, as items in the config store
     __main__.py                python3 -m vms worker | controller
@@ -24,11 +26,11 @@ vmsnode/
     archivesink.py             Lesson 3  splitmuxsink into the spool; on fragment-closed, promote
     actuator.py                Lesson 4  driverpacksrc ! h264parse ! watchdog ! tee ! archivesink, per camera; the bus drained into (dead, posted)
   deploy/                      systemd: vmscontroller.service, vmsworker@.service, the archive policy on a timer
-  tests/                       41 tests, milliseconds, no GStreamer
+  tests/                       42 tests, milliseconds, no GStreamer
 ```
 
 ```bash
-python3 tests/run.py                                   # 41 tests
+python3 tests/run.py                                   # 42 tests
 PLATFORM_DIR=/data/platform python3 -m vms controller  # the console on :8080
 WORKER_NAME=w-1 python3 -m vms worker                  # with GStreamer: records; without: the fake actuator
 python3 -m vms worker                                  # no name: claims the first free slot — a lapsed one first
@@ -54,4 +56,4 @@ python3 -m vms worker                                  # no name: claims the fir
 
 ## Verified where
 
-The 41 tests ran in the authoring sandbox (Python 3.11) and on the author's machine (3.10). `gstvms/` — the two elements and the actuator — is written to GStreamer's Python binding and not exercised here; the logic it calls (`vms.archive.ArchiveResource.promote`, the URI resolution) is. The hour-long PTS run, `kill -9` mid-segment on real files, and the zombie with two real worker processes are the box's.
+The 42 tests ran in the authoring sandbox (Python 3.11) and on the author's machine (3.10). `gstvms/` — the two elements and the actuator — is written to GStreamer's Python binding and not exercised here; the logic it calls (`vms.archive.ArchiveResource.promote`, the URI resolution) is. The hour-long PTS run, `kill -9` mid-segment on real files, and the zombie with two real worker processes are the box's.
