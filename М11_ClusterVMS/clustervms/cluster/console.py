@@ -6,6 +6,7 @@ and no more writes:
     GET /timeline/<id>     merged across the resources that hold the camera; unreachable ones named
     GET /resources         which archive resources exist, their usage, which are silent
     GET /unplaceable       cameras nothing live can reach, with the labels that say why
+    GET /events?from&to&cam&kind   from the eventindex — a cache over the resources; its state says if it is catching up
     GET /metrics           vms_workers_live, vms_worker_headroom, vms_worker_load, vms_epoch_conflicts,
                            vms_failover_seconds{kind="worst"}, vms_resources_live, vms_cameras_recording
     POST /cameras, PUT /cameras/<id>     through the controller; Idempotency-Key
@@ -48,7 +49,7 @@ def metrics_text(ctl: ClusterController, worst_failover: float) -> str:
     return "\n".join(lines) + "\n"
 
 
-def make_handler(ctl: ClusterController, reader=None, worst_failover: float = 0.0):
+def make_handler(ctl: ClusterController, reader=None, worst_failover: float = 0.0, index=None):
     reader = reader or ManifestReader()
     directory = Directory(ctl.vars, ttl=5.0)
     seen: dict[str, tuple[int, dict]] = {}
@@ -85,6 +86,12 @@ def make_handler(ctl: ClusterController, reader=None, worst_failover: float = 0.
                                         for s, hb in resources_seen(ctl.objects).items()})
             if u.path == "/unplaceable":
                 return self._send(200, ctl.unplaceable())
+            if u.path == "/events":
+                if index is None:
+                    return self._send(503, {"error": "no eventindex in this cluster"})
+                cur = {int(p.rsplit("/", 1)[1]): current_epoch(ctl.vars, p) for p in ctl.vars.list(ctl.sub.name + "/epoch/")}
+                return self._send(200, index.query(float(q.get("from", 0)), float(q.get("to", 1e12)),
+                                                   int(q["cam"]) if "cam" in q else None, q.get("kind"), cur))
             if u.path == "/metrics":
                 return self._send(200, metrics_text(ctl, worst_failover), raw=True)
             self._send(404, {"error": "no such path"})
@@ -117,7 +124,7 @@ def make_handler(ctl: ClusterController, reader=None, worst_failover: float = 0.
     return H
 
 
-def serve(ctl, host="127.0.0.1", port=8080, reader=None, worst_failover=0.0) -> ThreadingHTTPServer:
-    srv = ThreadingHTTPServer((host, port), make_handler(ctl, reader, worst_failover))
+def serve(ctl, host="127.0.0.1", port=8080, reader=None, worst_failover=0.0, index=None) -> ThreadingHTTPServer:
+    srv = ThreadingHTTPServer((host, port), make_handler(ctl, reader, worst_failover, index))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv

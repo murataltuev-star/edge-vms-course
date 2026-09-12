@@ -27,6 +27,7 @@ That is what makes the archive a **resource**: server-bound, with no controller,
 4. Mark a fenced epoch on a timeline and merge two resources' manifests.
 5. Apply retention as a policy on the resource, in the order that survives a crash.
 6. Say what a resource is, and why it has no controller.
+7. Say what an event is, where it lives, and who writes it.
 
 ---
 
@@ -106,6 +107,19 @@ Nothing was deleted and nothing was corrupted: two writers, two epochs, two dire
 merged: e3, e3, e4  (resource A)  +  e5  (resource B)
 ```
 
+## Step 5a — Events ride with the segment
+
+Where do events go, now that there is no database on the Node? Ask what an event *is*: an observation — a detector fired, the camera went silent, an operator marked a moment — made by the worker while it was writing a segment, keyed by camera and time, never updated, useless without the footage it points into. That is the manifest's shape, not a table's. So an event is a line in a sibling file:
+
+```
+<cam>/e<epoch>/<start>Z.mp4             the segment
+<cam>/e<epoch>/<start>Z.events.jsonl    what the worker observed while writing it: {"t", "kind", ...}
+```
+
+`archivesink` knows which segment is open, so `worker.observe(cid, "person", score=0.91)` becomes `append_event(current_segment, …)` — written by the observer, under the epoch it holds, beside what it describes. Then everything the segment already has, the events get for free: `promote()` moves the events file *first* (a segment without its events is incomplete; events without their segment are harmless) and counts them into the manifest line; the timeline says `events: 2` without opening the file; the epoch in the path fences a zombie's events exactly as it fences its footage; `repair()` recounts them from the files; `retain()` deletes both. `test_events_ride_with_the_segment` is that list as assertions, and its last one is the point: no controller wrote an event, and nothing went to the store.
+
+Cross-camera search — *every person last night in building B* — needs an index. М11 builds it as a job that is a **cache**: it reads the resources' manifests and event files into SQLite, answers queries, and proves it is a cache by being deleted and rebuilt to the same answer. The rule to write down now, while it is small: **events are observations, written by the observer under its epoch, beside what they describe; an index over them is a cache; a controller writes none of them.**
+
 ## Step 6 — Retention is a policy on the resource
 
 There is no controller for the archive, and there should not be: the only decisions about it are a policy — keep N days per camera — and a repair. `retain(cam, days, now)` deletes the file first and rewrites the manifest second, so a crash between the two leaves a line that names nothing (which `repair()` drops) rather than a file nothing names (which would be footage the timeline cannot find):
@@ -139,6 +153,7 @@ three segments on 1, 10 and 19 October; retain(days=8, now=20 October) -> 2 remo
 - The manifest is the index, beside the footage: it returns with the disks and is rebuildable from them.
 - The epoch is in every path; the timeline marks fenced footage and never deletes it; two resources merge.
 - Retention deletes the file first and the line second, on a timer, from the operator's per-camera policy.
+- Events are lines beside the segment, written by the observer under its epoch; promoted, counted, fenced and retained with it; indexed by a cache, never by a controller.
 
 ## Exercises
 

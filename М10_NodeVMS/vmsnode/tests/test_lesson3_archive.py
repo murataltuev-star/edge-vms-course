@@ -89,3 +89,25 @@ def test_retention_is_a_policy_on_the_resource():
     left = Manifest(box.archive, 7).read()
     assert len(left) == 1 and not os.path.exists(os.path.join(box.archive, "7", "e3", "20261001T100000Z.mp4"))
     assert res.usage() == 1000
+
+
+def test_events_ride_with_the_segment():
+    """An event is an observation, written by the observer under its epoch,
+    beside what it describes. It is promoted with the segment, counted in the
+    manifest line, shown on the timeline, fenced by the same path, and
+    deleted by the same retention. No controller wrote it; no database holds it."""
+    from vms.archive import append_event, events_path, read_events
+    box = Box(); res = ArchiveResource(box.spool, box.archive)
+    t0 = utc("2026-09-12T10:00:00").timestamp()
+    p = write_segment(box.spool, 7, 3, "2026-09-12T10:00:00", mtime=t0 + 600)
+    append_event(p, t0 + 12.5, "motion", zone="gate")                          # the worker, while the segment is open
+    append_event(p, t0 + 40.0, "person", score=0.91)
+    seg = res.promote(p)
+    assert seg.events == 2 and not os.path.exists(events_path(p))              # promoted with it: gone from the spool
+    assert read_events(box.archive, seg) == [{"t": t0 + 12.5, "kind": "motion", "zone": "gate"},
+                                             {"t": t0 + 40.0, "kind": "person", "score": 0.91}]
+    assert Manifest(box.archive, 7).timeline(t0, t0 + 600)[0]["events"] == 2  # the timeline says how many without opening it
+    os.remove(os.path.join(box.archive, "7", "manifest.jsonl"))
+    assert res.repair() == {"added": 1, "dropped": 0} and Manifest(box.archive, 7).read()[0].events == 2   # rebuilt from the files
+    assert res.retain(7, days=1, now=t0 + 3 * 86400) == 1
+    assert not os.path.exists(events_path(os.path.join(box.archive, seg.path)))   # retention takes both

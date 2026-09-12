@@ -12,6 +12,7 @@ is the only reader path there is: nothing copies footage between servers.
     vms/resources/<server>/heartbeat   {server, ts, url, usage, cameras: [ids with footage here]}
     GET <url>/manifest/<cam>           the manifest's lines
     GET <url>/segment/<path>           the bytes, Range honoured
+    GET <url>/events/<path>            the segment's events file (М10: <start>Z.events.jsonl beside the .mp4)
 """
 from __future__ import annotations
 
@@ -82,6 +83,14 @@ def serve(resource: ArchiveResource, host: str = "0.0.0.0", port: int = 8090) ->
                 body = "".join(s.line() + "\n" for s in Manifest(root, cam).read()).encode()
                 self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers()
                 self.wfile.write(body); return
+            if self.path.startswith("/events/"):
+                rel = self.path[len("/events/"):]
+                p = os.path.join(root, rel)
+                if ".." in rel or not rel.endswith(".events.jsonl") or not os.path.isfile(p):
+                    self.send_response(404); self.end_headers(); return
+                with open(p, "rb") as f: data = f.read()
+                self.send_response(200); self.send_header("Content-Length", str(len(data))); self.end_headers()
+                self.wfile.write(data); return
             if self.path.startswith("/segment/"):
                 rel = self.path[len("/segment/"):]
                 p = os.path.join(root, rel)

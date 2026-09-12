@@ -36,6 +36,7 @@ class FakeActuator:
         self.calls: list[tuple[str, int]] = []
         self.running: set[int] = set()
         self.epochs: dict[int, int] = {}
+        self.events: list = []
 
     def __call__(self, verb: str, cam: dict) -> bool:
         cid = cam["id"]
@@ -53,6 +54,11 @@ class FakeActuator:
 
     def pump(self) -> list[int]:
         return []
+
+    def event(self, cid: int, t: float, kind: str, **fields) -> bool:
+        if cid not in self.running:
+            return False
+        self.events.append((cid, t, kind, fields)); return True
 
     def stop_all(self) -> None:
         self.running.clear()
@@ -153,6 +159,11 @@ class VmsWorker(Worker):
         self.recording_allowed, self.fenced_reason = False, why
         self.actuator.stop_all()
         self.reconciler.clear()
+
+    def observe(self, cid: int, kind: str, **fields) -> bool:
+        """An event: written by this worker, now, beside the segment it is
+        recording for `cid`, under the epoch it holds. Nothing else is told."""
+        return self.actuator.event(cid, self.wall(), kind, **fields)
 
     def pump_once(self) -> None:
         for cid in self.actuator.pump():

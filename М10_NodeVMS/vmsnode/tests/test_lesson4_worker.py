@@ -160,6 +160,16 @@ def test_the_zombie_is_fenced_at_the_slot_first():
     assert b.lease_pass() == []
 
 
+def test_the_worker_observes_beside_what_it_records():
+    box, ctl = _box_with_cameras(1)
+    ctl.assign("w-1", ["1"])
+    act = FakeActuator(); w = VmsWorker("w-1", box.vars, box.objects, act, clock=box.clock, wall=box.wall)
+    assert not w.observe(1, "motion")                              # nothing recording yet: nothing to be an event of
+    w.reconcile_once()
+    assert w.observe(1, "motion", zone="gate") and act.events == [(1, box.wall(), "motion", {"zone": "gate"})]
+    assert ctl.workers_seen() == {} and box.vars.list("vms/events") == []   # nobody was told; nothing went to the store
+
+
 def test_a_reassignment_is_not_a_zombie():
     """The same lease loss, but the camera is no longer mine: let it go quietly."""
     box, ctl = _box_with_cameras(1)

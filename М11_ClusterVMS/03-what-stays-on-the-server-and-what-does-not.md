@@ -10,7 +10,7 @@ The first ClusterVMS design spent a whole lesson on making a Node's state outliv
 
 What *was* on the server is footage, and this lesson is honest about it. Footage stays on the resource, the resource stays with its disks, and while the server is down that footage is **unavailable** — a state with a server's name in it — and not lost. The manifest beside it returns when the disks do, and nothing is rebuilt.
 
-> **What you can verify without hardware.** `tests/test_lesson3_resources.py`: the edit during the failover, the timeline across two resources with one silent, the resource's policy running with neither worker nor controller, and a worker with no assignment inventing nothing. The power pull itself is Lesson 4's and needs the bench.
+> **What you can verify without hardware.** `tests/test_lesson3_resources.py`: the edit during the failover, the timeline across two resources with one silent, the resource's policy running with neither worker nor controller, and a worker with no assignment inventing nothing; `tests/test_lesson3_events.py`: events indexed across resources, the index rebuilt to the same answer, a silent resource named. The power pull itself is Lesson 4's and needs the bench.
 
 ## Prerequisites
 
@@ -27,6 +27,7 @@ What *was* on the server is footage, and this lesson is honest about it. Footage
 4. State the storage knob and its arithmetic.
 5. Give a resource a heartbeat and serve its manifests; merge a timeline across two resources and name the unreachable one.
 6. Say what the acknowledgement problem became, and where the RPO went.
+7. Say where events live, what the event index is, and why an event controller over a two-server database is the wrong shape.
 
 ---
 
@@ -99,6 +100,25 @@ note: ranges on srv-a are unavailable until the server returns — not lost
 
 And when A heartbeats again, three segments, nobody rebuilt anything: the manifest was on the disks that came back. `test_a_timeline_spans_two_resources_and_names_the_unreachable_one` is those three states in order. Note what the console does *not* do while A is down: it does not guess at A's ranges from the epoch, and it does not print *gap*. It prints a server's name, because the operator's next action — go and look at srv-a — depends on it.
 
+## Step 5a — Events: the database that is a cache
+
+There is no database per Node any more, and the question *where do events go* has an answer that follows from everything above rather than adding to it. An event is an observation — written by the worker that made it, under its epoch, beside the segment it describes (М10 Lesson 3, Step 5a). On a cluster that means events live on the **resource** with the footage: promoted, retained, fenced and served with it (`GET <resource>/events/<path>`), unavailable when the server is and never lost.
+
+What a cluster adds is search across cameras, and `cluster/eventindex.py` is that: one job, `count = 1`, a SQLite table it fills by reading every resource's manifests and event files, and that it can throw away. Its two properties are the controller's, in the form that matters for a cache:
+
+```
+rebuild(resources)  -> {added: 4, unreachable: [], segments: 3}        state: live
+query(t0, t1, cam=7, current_epochs={7: 4})
+  -> (motion, srv-a, e3, fenced) (person, srv-a, e3, fenced) (person, srv-b, e4)     across the failover, fenced marked
+a second EventIndex, rebuilt from the resources alone -> the same answer          it is a cache, and it proves it
+srv-a silent: rebuild -> {added: 1, unreachable: ['srv-a']}   state: "live; srv-a unreachable"
+srv-a back:   tail    -> its events indexed — not rebuilt; they were on its disks
+```
+
+`test_events_are_indexed_across_resources_and_the_index_is_a_cache` and `test_a_dead_resource_makes_the_answer_incomplete_by_name_not_wrong`. The second test's last line is the rule: `vars.list("vms/events") == []` — no controller wrote an event, nothing went to raft, nothing went to the object store. An index that fails over rebuilds in seconds for a day of events and says *catching up* meanwhile, rather than answering short.
+
+**Why not one eventcontroller writing a replicated database on two servers** — the obvious design, and the module's own rules say no twice. A single writer of all events is a serialization point on the hot path and a process on the recovery path of something that happens continuously; controllers write desired state, and observations are written by whoever observed them. And a database replicated across *two* servers with automatic promotion is the zombie writer one layer down: two is the number that cannot have a quorum, and a promotion is a decision made on a silence. If a customer needs event search to survive a dead server without waiting for it, the storage knob has an events row: mirror the event files — a few kilobytes per camera per minute, nothing like footage's 800 Mbit/s — to MinIO in erasure-coded mode across the three servers, asynchronously; the index reads MinIO and is complete while srv-a is down, at an RPO of the mirror lag on observations. When there are *consumers* — a SIEM, a rules engine, a cloud uplink — events become a stream and NATS JetStream (Apache-2.0, R=3) is the on-prem transport with the index as one more consumer; nothing here prevents adding it.
+
 ## Step 6 — Where the acknowledgement problem went
 
 The first design had to explain what the operator is told when they save a camera, because the Node acknowledged on local commit and published later. Under 2c the controller acknowledges **after the CAS commit into raft**, which is replicated before it returns. The problem does not exist inside the cluster.
@@ -133,6 +153,7 @@ It survives one level up. М12's read model is built from the snapshot the contr
 - Per-server unreplicated by default; an EC pool by choice, with 800 Mbit/s and a quorum that stops every camera.
 - A resource heartbeats and serves its manifests; a timeline merges across resources and names the unreachable one.
 - The acknowledgement problem dissolved; what remains is the domain's display age.
+- Events are observations on the resource beside the segment; `eventindex` is a cache over them, rebuildable and honest about a silent server; a controller writes none of them, and two servers cannot hold a quorum for anything.
 
 ## Exercises
 

@@ -17,7 +17,7 @@ log = logging.getLogger("gstvms")
 Gst.init(None)
 
 DESC = ("driverpacksrc uri={uri} name=src ! h264parse ! watchdog timeout={watchdog} ! tee name=t "
-        "t. ! queue ! archivesink camera={cam} epoch={epoch} spool={spool} archive={archive} segment-seconds={seg} "
+        "t. ! queue ! archivesink name=sink camera={cam} epoch={epoch} spool={spool} archive={archive} segment-seconds={seg} "
         "t. ! queue leaky=downstream max-size-buffers=30 ! fakesink sync=false")
 
 
@@ -49,6 +49,12 @@ class GstActuator:
             return False
         self.pipelines[cid] = p
         return True
+
+    def event(self, cid: int, t: float, kind: str, **fields) -> bool:
+        """Record an observation beside the segment being written for `cid`."""
+        p = self.pipelines.get(cid)
+        sink = p.get_by_name("sink") if p else None
+        return bool(sink and sink.event(t, kind, **fields))
 
     def pump(self) -> list[int]:
         dead, self.dead = self.dead, []

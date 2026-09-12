@@ -1,4 +1,4 @@
-"""python3 -m cluster worker | controller | resource — the three jobs.
+"""python3 -m cluster worker | controller | resource | eventindex — the jobs.
 
     NOMAD_ADDR, NOMAD_TOKEN            the task's own workload identity (Variables)
     OBJECTS=s3+http://minio:9000/vms   the object store (heartbeats, snapshots); file:///path on a bench
@@ -48,12 +48,17 @@ def worker() -> None:
 def controller() -> None:
     from cluster.console import serve
     from cluster.controller import ClusterController
+    from cluster.eventindex import EventIndex, ResourceReader
+    from cluster.resource import resources_seen
     ctl = ClusterController(NomadVariables(), objects, capacity=int(os.environ.get("CAPACITY", "50")),
                             cluster=os.environ.get("CLUSTER", "cluster-a"))
-    srv = serve(ctl, os.environ.get("CONSOLE_HOST", "0.0.0.0"), int(os.environ.get("CONSOLE_PORT", "8080")))
+    index = EventIndex(ResourceReader(), os.environ.get("EVENTINDEX_DB", ":memory:"))    # a cache: rebuilt on every start
+    index.rebuild(resources_seen(objects))
+    srv = serve(ctl, os.environ.get("CONSOLE_HOST", "0.0.0.0"), int(os.environ.get("CONSOLE_PORT", "8080")), index=index)
     while not stop.is_set():
         try:
             ctl.ensure_placed(); ctl.redistribute(); ctl.publish_snapshot()
+            index.tail(resources_seen(objects))
         except Exception:                         # noqa: BLE001
             logging.exception("placement pass failed")
         stop.wait(5)

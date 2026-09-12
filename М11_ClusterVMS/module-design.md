@@ -57,6 +57,8 @@ Three servers, two workers, two hundred cameras. Then:
 | Minimum version | **Nomad ≥ 1.8.0; target 1.10.x LTS or 2.0.x** | The `disconnect` block arrived in 1.8.0 and its predecessors were removed in 1.10.0. |
 | Failover scope | **Within a cluster. A worker never crosses one** | Its resources are on the cluster's servers and its epoch comes from the cluster's raft — two independent reasons landing on one boundary. |
 | Language | **Designed in Python, shipped in Go and C++** | The platform pieces and the controller port to Go as [`clustervms-go/`](clustervms-go/README.md) already showed (7.1 MB vs 28.5 MB at idle); the worker is DriverPack's C++. The contract is what both keep. |
+| Events | **On the resource, beside the segment, written by the observer under its epoch (М10); indexed across the cluster by `eventindex`, a `count = 1` job holding a SQLite table it rebuilds from the resources' manifests and event files — a cache, never a writer of record** *(12 September 2026)* | The obvious design — one event controller writing a database replicated on two servers — fails the module's own rules twice: a single writer of observations is on the hot path and the recovery path, and a two-server replicated database with automatic promotion is the zombie writer one layer down (two cannot hold a quorum; a promotion is a decision made on a silence). A cache that fails over rebuilds in seconds and says *catching up*; a silent resource makes its answer incomplete by name, not wrong. |
+| Events, replicated | **Off by default; the storage knob's events row: mirror the event files to MinIO (erasure-coded, three servers) asynchronously, so the index is complete while a server is down** | Events are kilobytes per camera per minute — footage's 800 Mbit/s argument does not apply — and an RPO of the mirror lag on *observations* is acceptable where an RPO on configuration was not. When there are consumers (SIEM, rules, cloud), NATS JetStream (Apache-2.0, R=3) is the on-prem stream and the index is one more consumer. |
 | Single-server deployments | **М10's shape with `systemd` instead of Nomad** | One box has nothing to schedule; the same controller, worker and resource run as units. Lesson 1 makes students argue it. |
 
 The layer above — which cluster a camera goes to, the directory of directories, who may call the API — is [М12's](../М12_DomainVMS/module-design.md), and nothing here is allowed to contradict it.
@@ -82,7 +84,7 @@ Worker `w-3` runs on Server A. Server A dies. Nomad places `w-3` on Server B. Wh
 | **Footage** | on the dead disk; stays; the replacement records the future | **on the dead resource; stays; unavailable until the server returns** — the console says *unavailable*, never *lost*. `w-3` records into Server B's resource from its first segment |
 | **The index** | in the dead Postgres; rebuilt by scanning segments when the server returns | **the manifest, on the resource beside its footage** — it returns with the server; nothing to rebuild. A camera's timeline spans two resources and the console merges two manifests |
 | **The open segment** | in the spool; lost up to one segment length | in the spool; lost up to one segment length — unchanged, and the number is the segment length (М9 Lesson 4) |
-| **Events** | in the dead Postgres | on the event stream (М13), or expendable |
+| **Events** | in the dead Postgres | **on the dead resource beside their segments** — unavailable with the footage, not lost; the cluster's `eventindex` says which server is silent, and re-indexes when it returns |
 | **Identity and the epoch** | in Variables | in Variables — unchanged |
 
 So the answer to *what must travel* is **nothing**, and the answer to *what is lost* is **the open segment and access to old footage until the server returns.** That second thing is the honest cost of unreplicated resources, and it is a knob:
@@ -158,7 +160,7 @@ Which generalises into the rule the module stores things by, now with the third 
 |---|---|---|---|
 | **Nomad Variables** | worker identity and assignment, camera rows, the epoch per camera, placement | small, rare, **must be consistent** — one raft | memory-resident and replicated to every server, so it must stay small; a thousand camera rows are a few hundred kilobytes and fit |
 | **The object store**, per cluster | worker heartbeats with their status snapshot; configuration snapshots for the domain's read model | frequent or large, **never queried by key** | it is a blob nobody but its author parses |
-| **The archive resource**, per server | footage and its manifest | large, constantly written, read as a range | it does not move, and that is the point |
+| **The archive resource**, per server | footage, its manifest, and the events observed while writing each segment | large, constantly written, read as a range; events small and beside what they describe | it does not move, and that is the point; an index over the events is a cache the cluster can lose |
 
 > **Small and consistent goes in the scheduler's store. Large and opaque goes in an object store. Bulk that is read as a range stays on the server that wrote it.** The database that held all three in М9 held them because it was the only store.
 
@@ -238,6 +240,7 @@ group "vmsworker" {
 - **The storage knob**: per-server by default, an EC pool by choice; the 800 Mbit/s arithmetic and the quorum that stops every camera
 - **The acknowledgement problem, dissolved**: the controller acknowledges after the CAS commit; the RPO inside the cluster is zero; what remains is the domain's read model and its display age
 - A camera's timeline across two resources: merging manifests, and what the console shows while one resource is unreachable
+- **Events: the database that is a cache.** On the resource beside the segment; `eventindex` rebuilt from the resources; why not an event controller over a two-server database; the storage knob's events row
 - A worker with no assignment invents nothing
 
 **Deliverable:** kill the server under `w-3`; show it recording on another server into another resource within the measured time, with the edit made *during* the failover present when it returns; show old footage as *unavailable* with the server named; bring the server back and play across the boundary.

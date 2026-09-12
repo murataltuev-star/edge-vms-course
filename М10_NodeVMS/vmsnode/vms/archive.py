@@ -3,6 +3,13 @@
     <spool>/<cam>/e<epoch>/<start>Z.mp4       the open segment, and closed ones not yet promoted
     <archive>/<cam>/e<epoch>/<start>Z.mp4     promoted: the resource
     <archive>/<cam>/manifest.jsonl            one line per promoted segment: the index that lives beside the footage
+    <spool|archive>/<cam>/e<epoch>/<start>Z.events.jsonl
+                                              the segment's EVENTS — observations the worker made while writing it
+                                              (detections, silence, operator marks): one line each, {t, kind, ...};
+                                              promoted, indexed, retained and fenced WITH the segment. An event is
+                                              written by whoever observed it, under the epoch it observed under,
+                                              beside what it describes. No controller writes events; an index over
+                                              them (М11's eventindex) is a cache.
 
 The acknowledgement order is М9 Lesson 4's: a closed segment is PROMOTED
 (renamed into the archive, then a manifest line appended), and the spool
@@ -30,6 +37,25 @@ def segment_path(root: str, cam: int, epoch: int, start: datetime) -> str:
     return os.path.join(root, str(cam), f"e{epoch}", start.strftime("%Y%m%dT%H%M%SZ") + ".mp4")
 
 
+def events_path(segment_path_: str) -> str:
+    return segment_path_[:-4] + ".events.jsonl"
+
+
+def append_event(segment_path_: str, t: float, kind: str, **fields) -> None:
+    """The worker's call while a segment is open: one line, flushed. The
+    file appears beside the segment and follows it through promotion."""
+    with open(events_path(segment_path_), "a") as f:
+        f.write(json.dumps({"t": t, "kind": kind, **fields}) + "\n"); f.flush()
+
+
+def read_events(root: str, seg: "Segment") -> list[dict]:
+    try:
+        with open(events_path(os.path.join(root, seg.path))) as f:
+            return [json.loads(l) for l in f if l.strip()]
+    except FileNotFoundError:
+        return []
+
+
 def parse(path: str, root: str) -> tuple[int, int, datetime] | None:
     rel = os.path.relpath(path, root).split(os.sep)
     if len(rel) != 3 or not rel[0].isdigit() or not EPOCH_DIR.match(rel[1]):
@@ -48,15 +74,17 @@ class Segment:
     end: float
     path: str             # relative to the archive root
     bytes: int
+    events: int = 0       # lines in the sibling .events.jsonl, so the timeline can say "12 events" without opening it
 
     def line(self) -> str:
         return json.dumps({"cam": self.cam, "epoch": self.epoch, "start": self.start, "end": self.end,
-                           "path": self.path, "bytes": self.bytes})
+                           "path": self.path, "bytes": self.bytes, "events": self.events})
 
     @classmethod
     def from_line(cls, line: str) -> "Segment":
         d = json.loads(line)
-        return cls(int(d["cam"]), int(d["epoch"]), float(d["start"]), float(d["end"]), d["path"], int(d["bytes"]))
+        return cls(int(d["cam"]), int(d["epoch"]), float(d["start"]), float(d["end"]), d["path"], int(d["bytes"]),
+                   int(d.get("events", 0)))
 
 
 class Manifest:
@@ -89,7 +117,7 @@ class Manifest:
         out = []
         for s in self.read():
             if s.end > t0 and s.start < t1:
-                out.append({"start": s.start, "end": s.end, "path": s.path, "epoch": s.epoch,
+                out.append({"start": s.start, "end": s.end, "path": s.path, "epoch": s.epoch, "events": s.events,
                             "fenced": current_epoch is not None and s.epoch < current_epoch})
         return sorted(out, key=lambda d: (d["start"], d["epoch"]))
 
@@ -113,15 +141,25 @@ class ArchiveResource:
         rel = os.path.relpath(spool_path, self.spool)
         dest = os.path.join(self.root, rel)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
-        try:
-            os.rename(spool_path, dest)                 # 1. into the archive, atomically (same filesystem)
-        except OSError:
-            shutil.copy2(spool_path, dest + ".tmp")     # different filesystem: copy, then appear whole
-            os.replace(dest + ".tmp", dest)
-            os.remove(spool_path)                       # 3. the spool copy, last
-        seg = Segment(cam, epoch, start.timestamp(), end, rel, st.st_size)
+        n_events = 0
+        ev = events_path(spool_path)
+        if os.path.exists(ev):                          # 0. the events first: a segment without its events is
+            with open(ev) as f:                         #    incomplete; events without their segment are harmless
+                n_events = sum(1 for l in f if l.strip())
+            self._move(ev, events_path(dest))
+        self._move(spool_path, dest)                    # 1. into the archive, atomically (same filesystem)
+        seg = Segment(cam, epoch, start.timestamp(), end, rel, st.st_size, n_events)
         Manifest(self.root, cam).append(seg)            # 2. then the line
         return seg
+
+    @staticmethod
+    def _move(src: str, dest: str) -> None:
+        try:
+            os.rename(src, dest)
+        except OSError:
+            shutil.copy2(src, dest + ".tmp")            # different filesystem: copy, then appear whole
+            os.replace(dest + ".tmp", dest)
+            os.remove(src)                              # 3. the spool copy, last
 
     def closed_in_spool(self, grace_seconds: float, now: float) -> list[str]:
         """Segments in the spool older than the grace: closed, not yet promoted
@@ -153,7 +191,8 @@ class ArchiveResource:
             for rel, (c, epoch, start) in present.items():
                 if rel not in lines:
                     st = os.stat(os.path.join(self.root, rel))
-                    lines[rel] = Segment(c, epoch, start.timestamp(), st.st_mtime, rel, st.st_size)
+                    seg = Segment(c, epoch, start.timestamp(), st.st_mtime, rel, st.st_size)
+                    lines[rel] = Segment(c, epoch, start.timestamp(), st.st_mtime, rel, st.st_size, len(read_events(self.root, seg)))
                     added += 1
             for rel in list(lines):
                 if rel not in present:
@@ -169,10 +208,11 @@ class ArchiveResource:
         keep, removed = [], 0
         for s in man.read():
             if s.end < cutoff:
-                try:
-                    os.remove(os.path.join(self.root, s.path))
-                except FileNotFoundError:
-                    pass
+                for p in (os.path.join(self.root, s.path), events_path(os.path.join(self.root, s.path))):
+                    try:
+                        os.remove(p)                    # the segment and its events go together
+                    except FileNotFoundError:
+                        pass
                 removed += 1
             else:
                 keep.append(s)
