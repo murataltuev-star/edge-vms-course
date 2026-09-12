@@ -123,7 +123,7 @@ The Node rebuilt on the shape М11 arrived at — **workers, resources, one cont
 
 - [Lesson index](./М10_NodeVMS/README.md) — start here
 - [Module design](./М10_NodeVMS/module-design.md) — the three elements, the two processes, where configuration lives, and the contract every subsystem gives the platform
-- [`vmsnode/`](./М10_NodeVMS/vmsnode/README.md) — the module's code, whole: the platform's two stores with CAS, the epoch issuer and the lease, `driverpacksrc` and `archivesink`, `vmsworker`, `vmscontroller`, the console, the systemd units, identity by claim, and a second subsystem that counts seconds; 38 tests
+- [`vmsnode/`](./М10_NodeVMS/vmsnode/README.md) — the module's code, whole: the platform's two stores with CAS, the epoch issuer and the lease, `driverpacksrc` and `archivesink`, `vmsworker`, `vmscontroller`, the console, the systemd units, identity by claim, and a second subsystem that counts seconds; 39 tests
 
 ## М11 — ClusterVMS
 

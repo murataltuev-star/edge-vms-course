@@ -41,6 +41,25 @@ def test_placement_is_stored_with_a_reason_and_adding_a_worker_moves_nothing():
     assert ctl.placement(7).rev == 1 and ctl.placement(7).at == box.wall()
 
 
+def test_capacity_is_the_workers_word_not_the_controllers():
+    """Two workers on different hardware say different numbers in their
+    heartbeats; the controller places by what they said and its own constant
+    is only the fallback for a worker that said nothing."""
+    box = Box(); ctl = VmsController(box.vars, box.objects, capacity=50, wall=box.wall)
+    small = VmsWorker("w-1", box.vars, box.objects, FakeActuator(), clock=box.clock, wall=box.wall, capacity=2)
+    big = VmsWorker("w-2", box.vars, box.objects, FakeActuator(), clock=box.clock, wall=box.wall, capacity=6)
+    small.heartbeat_once(); big.heartbeat_once()
+    assert (ctl.capacity_of("w-1"), ctl.capacity_of("w-2"), ctl.capacity_of("w-9")) == (2, 6, 50)
+    for i in range(9):
+        ctl.create_camera({"source": f"driverpack://file/{i}.mp4"})
+    placed = ctl.ensure_placed()
+    assert len(placed) == 8 and ctl.load("w-1") == 2 and ctl.load("w-2") == 6    # the ninth waits: the system is full
+    assert ctl.place(9) is None and ctl.headroom() == 8                            # headroom is stale until they heartbeat again
+    small.reconcile_once(); big.reconcile_once(); small.heartbeat_once(); big.heartbeat_once()
+    assert ctl.headroom() == 0
+    assert "(6)" in ctl.placement(1).reason or "(6)" in ctl.placement(2).reason    # the reason says whose number it was
+
+
 def test_two_controllers_agree_by_cas():
     box = Box()
     a = VmsController(box.vars, box.objects, capacity=100, wall=box.wall)

@@ -39,7 +39,14 @@ class Placement:
 class VmsController(Controller):
     def __init__(self, vars_: Variables, objects: ObjectStore, capacity: int = 50, wall=time.time):
         super().__init__(VMS, vars_, objects, wall)
-        self.capacity = capacity          # cameras per worker, from М9 Lesson 7's B + n·I on this hardware
+        self.capacity = capacity          # the FALLBACK for a worker whose heartbeat carries no capacity;
+                                          # the number itself is the worker's: B + n·I measured on ITS server
+
+    def capacity_of(self, worker: str) -> int:
+        """What the worker said it can carry, from its last heartbeat. The
+        controller does not know the servers; it reads what the workers report."""
+        hb = self.workers_seen(max_age=1e12).get(worker)
+        return int(hb.extra["capacity"]) if hb and "capacity" in hb.extra else self.capacity
 
     # -- cameras ----------------------------------------------------------------
     def _refuse(self, fields: dict) -> None:
@@ -117,7 +124,7 @@ class VmsController(Controller):
         workers = sorted(workers if workers is not None else self.workers_seen())
         best, free = None, 0
         for w in workers:
-            f = self.capacity - self.load(w)
+            f = self.capacity_of(w) - self.load(w)
             if f > free:
                 best, free = w, f
         if best is None:
@@ -168,16 +175,17 @@ class VmsController(Controller):
             live = sorted(w for w in (workers if workers is not None else self.workers_seen()) if w != gone)
             for unit in sorted(self.assignment(gone).units, key=int):
                 cid = int(unit)
-                best = max(live, key=lambda w: self.capacity - self.load(w), default=None)
-                if best is None or self.load(best) >= self.capacity:
+                best = max(live, key=lambda w: self.capacity_of(w) - self.load(w), default=None)
+                if best is None or self.load(best) >= self.capacity_of(best):
                     break                                   # the system is full; the camera waits, listed where it was
-                self.move(cid, best, f"slot {gone} released; most free capacity ({self.capacity - self.load(best)})")
+                self.move(cid, best, f"slot {gone} released; most free capacity ({self.capacity_of(best) - self.load(best)})")
                 moves.append((cid, gone, best))
         return moves
 
     def headroom(self) -> int:
         """The cluster's number for the autoscaler: cameras the live workers
-        could still take, from their heartbeats."""
+        could still take, from their heartbeats. The controller has no number
+        of its own to add: capacity is measured where the pipelines run."""
         return sum(int(hb.extra.get("headroom", 0)) for hb in self.workers_seen().values())
 
     def rebalance(self, budget: int, dead_band: float = 0.10, workers: list[str] | None = None) -> list[tuple[int, str, str]]:
@@ -186,12 +194,12 @@ class VmsController(Controller):
         for _ in range(budget):
             if len(workers) < 2:
                 break
-            loads = {w: self.load(w) / self.capacity for w in workers}
+            loads = {w: self.load(w) / self.capacity_of(w) for w in workers}
             hi, lo = max(workers, key=loads.get), min(workers, key=loads.get)
             if loads[hi] - loads[lo] < dead_band:
                 break
             cands = sorted(int(u) for u in self.assignment(hi).units)
-            if not cands or self.load(lo) + 1 > self.capacity:
+            if not cands or self.load(lo) + 1 > self.capacity_of(lo):
                 break
             cid = cands[0]
             self.move(cid, lo, f"rebalance from {hi} (spread {(loads[hi] - loads[lo]) * 100:.0f}%)")

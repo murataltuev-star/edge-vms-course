@@ -10,7 +10,7 @@ Somebody has to write configuration, and the module's answer is: exactly one thi
 
 It is also the process most likely to be built wrong, because "one controller" invites state. So the lesson spends its second half on the two properties that keep it honest — it holds nothing and is correct by CAS; it is never on the recovery path — and its last step on the proof that the shape is not special: a second subsystem, a controller and a worker that count seconds, dropped onto the same platform with a different prefix.
 
-> **What you can verify without hardware.** All of it: `tests/test_lesson5_controller.py` and `tests/test_second_subsystem.py` — refusals, stored placement, *adding a worker moves nothing*, two controllers racing to place forty cameras, budgeted rebalance, scale-in redistributing a released slot and a crash moving nothing, the failure arithmetic with the clock, the console over real HTTP, and the counter subsystem. Every output below came out of them.
+> **What you can verify without hardware.** All of it: `tests/test_lesson5_controller.py` and `tests/test_second_subsystem.py` — refusals, stored placement, *adding a worker moves nothing*, two controllers racing to place forty cameras, capacity read from the workers' heartbeats, budgeted rebalance, scale-in redistributing a released slot and a crash moving nothing, the failure arithmetic with the clock, the console over real HTTP, and the counter subsystem. Every output below came out of them.
 
 ## Prerequisites
 
@@ -55,7 +55,16 @@ Five fields are refused on any write: `worker` and `placement` (the controller d
 
 ## Step 3 — Placement, stored with a reason
 
-`place(cid)` puts one camera on the worker with the most free capacity among those it sees heartbeating — `capacity` is cameras per worker, from М9 Lesson 7's `B + n·I` on this hardware — and stores the decision:
+`place(cid)` puts one camera on the worker with the most free capacity among those it sees heartbeating, and stores the decision. **Whose number is capacity?** The worker's. `B + n·I` is measured on the server the pipelines run on (М9 Lesson 7), so each worker carries its own `capacity` in every heartbeat, and `capacity_of(w)` is the controller *reading* it — its constructor's `capacity=50` is only the fallback for a heartbeat that says nothing. The controller does not know the servers; it knows what the workers said:
+
+```
+w-1 says capacity 2, w-2 says 6, nine cameras:  load {w-1: 2, w-2: 6}, the ninth waits — "the system is full"
+capacity_of("w-9") -> 50                        a worker that said nothing gets the fallback
+```
+
+Nothing has to *tell* DriverPack to start a camera, either. The controller writes the id into `vms/workers/w-2` and that is the whole act; the worker reads its own row at the top of every pass and starts what it is not yet running. A row and a poll — no RPC, no push — which is exactly what lets a worker restart with the controller dead (Lesson 4, Step 5).
+
+The placement, stored:
 
 ```
 cam 1 -> w-1 | most free capacity (3) among 2 worker(s) | rev 1
@@ -165,7 +174,7 @@ Diff the two subsystems' `systemd` units and you get a prefix and a name. That i
 
 - The controller is the only writer of `vms/*`; every write is read-modify-write by CAS with a retry.
 - It refuses `worker`, `placement`, `revision`, `epoch`, `phase`: what a thing is told and what it observes are different columns.
-- Placement is by capacity, stored with a reason; adding a worker moves nothing; rebalance is explicit and budgeted.
+- Placement is by capacity — the worker's number, read from its heartbeat, never the controller's — stored with a reason; adding a worker moves nothing; rebalance is explicit and budgeted.
 - Two controllers agree because the row is CAS and the assignment merges — and the test found the version that did not.
 - Stop the controller: nothing running stops. Kill the worker: the edit is waiting in the store when it returns.
 - The controller never decides how many workers there are or where they run: the scheduler runs `N`, the autoscaler moves `N` from headroom, and the controller's one unasked move is to redistribute a *released* slot — never a lapsed one.
@@ -175,7 +184,7 @@ Diff the two subsystems' `systemd` units and you get a prefix and a name. That i
 
 1. Cache `workers_seen()` in the controller for sixty seconds "to save reads". Run the two-controller test and the failure test, then say which property broke.
 2. Give the console a direct `vars.put` for the "quick fix" of a camera name. Write the sequence in which the controller and the console overwrite each other.
-3. Set `capacity` from a heartbeat field the worker reports (М9 Lesson 7's probe run on its own server) instead of a constant, and say what happens on a box with two different workers.
+3. `capacity_of` reads the *last* heartbeat, however old. Make it read only live ones and construct the reschedule in which the fallback constant places forty cameras on a worker that can carry ten.
 4. Add a `move` endpoint to the console and defend it against the refusal list: who may call it, and what must it record?
 5. Write `Subsystem("det")` with a `GPU` resource: what does its controller place *on*, and what does the worker's affinity look like in М11's job file?
 6. Give the controller a Nomad client and let it set `count` itself when `headroom()` hits zero. List what it now has to know (servers, costs, the job file, the API's failure modes) and what happens when two controllers do it at once.
