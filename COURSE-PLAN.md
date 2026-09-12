@@ -106,7 +106,7 @@ The cloud VMS spec forbade a database outright. The appliance needs one, and und
 - The reconcile loop, built against a fake actuator first: desired persisted, actual derived, `observed_revision >= revision` as the only test of applied
 - Fifty GStreamer pipelines in one Python process — the GIL boundary demonstrated, `watchdog` for stall detection, and where Python stops being the right answer
 
-### М10 — NodeVMS: the platform's shape on one Node · 5 lessons · [designed](./М10_NodeVMS/module-design.md)
+### М10 — NodeVMS: the platform's shape on one Node · 5 lessons · [written](./М10_NodeVMS/README.md) · [design](./М10_NodeVMS/module-design.md) · [code](./М10_NodeVMS/vmsnode/README.md)
 
 The module that rebuilds the Node on the decision М11 arrived at last — **workers, resources, one controller** — and does it on a single box first, so the shape can be prototyped without a scheduler, without KVS and without a database. Three things are built from the GStreamer end: `driverpacksrc`, a source element that plays files whose names stand in for RTSP addresses; `archivesink`, a local archive on the spool's discipline; and the two processes every subsystem will give the platform — a **controller** that is the only writer of configuration in the cluster and a **worker** that runs pipelines and nothing else.
 

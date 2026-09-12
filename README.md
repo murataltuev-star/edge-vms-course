@@ -64,7 +64,7 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 |---|---|---|
 | [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 8 lessons |
 | [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback<br>3 · Postgres — the Node's own state<br>4 · AppHost — the loop that acts on it | **Written** · 9 lessons |
-| [**М10** — NodeVMS](./М10_NodeVMS) | The platform's shape on one Node: `driverpacksrc`, `archivesink`, a controller and a worker — the subsystem contract, prototyped without a scheduler | **Designed** · 5 lessons |
+| [**М10** — NodeVMS](./М10_NodeVMS) | The platform's shape on one Node: `driverpacksrc`, `archivesink`, a controller and a worker — the subsystem contract, prototyped without a scheduler | **Written** · 5 lessons |
 | [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — workers that outlive their server, resources that stay, one controller<br>4 · The cluster's own directory | **Written** · 5 lessons · design rewritten to *2c*, lessons to follow |
 | [**М12** — DomainVMS](./М12_DomainVMS) | 4 · Several clusters, one directory of directories<br>5 · The domain as its own root: enrollment, lifetimes, identity<br>7 · Its own update server, and clusters it rents for itself | **Written** · 8 lessons |
 | [**М13** — Observability](./М13_Observability) | 6 · Prometheus + logs — collecting what М9–М12 emit, from the domain cluster | **Designed** · 4 lessons |
@@ -121,7 +121,9 @@ Its organising rule is that **desired state is persisted and actual state is der
 
 The Node rebuilt on the shape М11 arrived at — **workers, resources, one controller** — and prototyped on a single box first, without a scheduler, without KVS and without a database. From the GStreamer end: `driverpacksrc`, a source that plays files whose names stand in for RTSP addresses; `archivesink`, a local archive on the spool's discipline with the epoch in the path; then `vmscontroller`, the only writer of configuration in the cluster, and `vmsworker`, DriverPack itself as the worker. The result is the **subsystem contract** — a controller, a worker, a config prefix and a heartbeat — that detectors and the gateway will implement the same way, and that the platform knows without knowing what a camera is.
 
+- [Lesson index](./М10_NodeVMS/README.md) — start here
 - [Module design](./М10_NodeVMS/module-design.md) — the three elements, the two processes, where configuration lives, and the contract every subsystem gives the platform
+- [`vmsnode/`](./М10_NodeVMS/vmsnode/README.md) — the module's code, whole: the platform's two stores with CAS, the epoch issuer and the lease, `driverpacksrc` and `archivesink`, `vmsworker`, `vmscontroller`, the console, the systemd units, and a second subsystem that counts seconds; 34 tests
 
 ## М11 — ClusterVMS
 

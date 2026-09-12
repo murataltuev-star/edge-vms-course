@@ -107,7 +107,7 @@ What that means concretely:
 
 ## Lessons
 
-*Five lessons. Each builds one artifact, and the last builds the second subsystem to prove the first one is not special.*
+*Five lessons, written — [the index](README.md); the code is [`vmsnode/`](vmsnode/README.md). Each builds one artifact, and the last builds the second subsystem to prove the first one is not special.*
 
 ### Lesson 1 — The subsystem contract
 

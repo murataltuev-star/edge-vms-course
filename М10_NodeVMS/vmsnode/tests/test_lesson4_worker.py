@@ -1,0 +1,150 @@
+"""Lesson 4 — vmsworker: М9's loop over an assignment; the epoch and the
+lease; the restart with the controller stopped; the zombie on one box."""
+from vms.controller import VmsController
+from vms.reconciler import CONVERGED, LAGGING, STALLED, Reconciler
+from vms.worker import FakeActuator, VmsWorker
+from tests.conftest import Box, FakeStore, cam
+
+
+# -- М9 Lesson 6's seven, unchanged in meaning ------------------------------------------
+
+def test_1_converge_then_idle():
+    store, act = FakeStore([cam(1), cam(2)]), FakeActuator()
+    r = Reconciler(store, act)
+    assert r.reconcile() == [("start", 1), ("start", 2)] and r.reconcile() == [] and r.reconcile() == []
+
+
+def test_2_revision_bump_restarts():
+    store, act = FakeStore([cam(1)]), FakeActuator()
+    r = Reconciler(store, act); r.reconcile()
+    store.rows[0]["revision"] = 2
+    assert r.reconcile() == [("restart", 1)] and r.reconcile() == [] and r.actual[1]["revision"] == 2
+
+
+def test_3_disable_and_delete():
+    store, act = FakeStore([cam(1), cam(2)]), FakeActuator()
+    r = Reconciler(store, act); r.reconcile()
+    store.rows[0]["enabled"] = False
+    assert r.reconcile() == [("stop", 1)]
+    del store.rows[1]
+    assert r.reconcile() == [("stop", 2)] and r.actual == {}
+
+
+def test_4_restart_re_derives_actual():
+    store = FakeStore([cam(1)])
+    Reconciler(store, FakeActuator()).reconcile()
+    r2 = Reconciler(store, FakeActuator())
+    assert r2.actual == {} and r2.reconcile() == [("start", 1)]
+
+
+def test_5_persisted_actual_is_a_cache_that_lies():
+    class Persisted(Reconciler):
+        def __init__(self, *a, saved=None, **k):
+            super().__init__(*a, **k); self.actual = saved or {}
+    store, act = FakeStore([cam(1, revision=2)]), FakeActuator()
+    liar = Persisted(store, act, saved={1: {"revision": 2}})
+    assert liar.reconcile() == [] and liar.status()[1][0] == CONVERGED and act.running == set()
+
+
+def test_6_backoff_with_jitter_spreads_200_cameras():
+    r = Reconciler(FakeStore([cam(i) for i in range(200)]), FakeActuator(failing=lambda cid: True))
+    r.reconcile(now=0)
+    retries = sorted(f["retry_at"] for f in r.failures.values())
+    assert 1.0 <= retries[0] and retries[-1] <= 2.0 and retries[-1] - retries[0] > 0.5
+    assert r.reconcile(now=0.5) == [] and len(r.reconcile(now=2.0)) == 200
+
+
+def test_7_lagging_vs_stalled():
+    store = FakeStore([cam(1), cam(2)])
+    r = Reconciler(store, FakeActuator(failing={2}), stall_failures=3)
+    r.reconcile(now=0)
+    assert r.status()[1] == (CONVERGED, 0) and r.status()[2] == (LAGGING, 1)
+    now = 0.0
+    for _ in range(3):
+        now = r.failures[2]["retry_at"] + 0.01; r.reconcile(now=now)
+    assert r.status()[2] == (STALLED, 1)
+    r.lost(1, now); assert 1 not in r.actual and r.status()[1][0] == LAGGING
+
+
+# -- the worker over an assignment ---------------------------------------------------------
+
+def _box_with_cameras(n=2):
+    box = Box()
+    ctl = VmsController(box.vars, box.objects, capacity=50, wall=box.wall)
+    for i in range(1, n + 1):
+        ctl.create_camera({"name": f"cam{i}", "source": f"driverpack://file/cam{i}.mp4"})
+    return box, ctl
+
+
+def test_worker_runs_its_assignment_and_takes_an_epoch_per_camera():
+    box, ctl = _box_with_cameras(2)
+    act = FakeActuator()
+    w = VmsWorker("w-1", box.vars, box.objects, act, clock=box.clock, wall=box.wall, server="srv-1")
+    assert w.reconcile_once() == []                          # unassigned: it invents nothing
+    ctl.assign("w-1", ["1", "2"])
+    assert w.reconcile_once() == [("start", 1), ("start", 2)]
+    assert act.epochs == {1: 1, 2: 1} and w.may_write("1") and w.may_write("2")
+    assert box.vars.get("vms/epoch/1")[0] == {"epoch": "1"}
+    ctl.update_camera(1, {"name": "gate"})                   # an edit: revision 2
+    assert w.reconcile_once() == [("restart", 1)] and act.epochs[1] == 1     # a restart keeps its epoch
+    ctl.assign("w-1", ["2"])                                  # camera 1 reassigned away
+    assert w.reconcile_once() == [("stop", 1)] and "1" not in w.epochs
+    w.heartbeat_once()
+    hb = ctl.workers_seen()["w-1"]
+    assert [s["id"] for s in hb.status] == [2] and hb.status[0]["phase"] == "running" and hb.extra["server"] == "srv-1"
+
+
+def test_restart_with_the_controller_stopped():
+    """The controller is never on the recovery path: a fresh worker reads
+    its assignment and records; nothing is asked of anyone."""
+    box, ctl = _box_with_cameras(3)
+    ctl.assign("w-1", ["1", "2", "3"])
+    w1 = VmsWorker("w-1", box.vars, box.objects, FakeActuator(), clock=box.clock, wall=box.wall)
+    w1.reconcile_once()
+    del ctl                                                   # the controller is gone
+    act2 = FakeActuator()
+    w2 = VmsWorker("w-1", box.vars, box.objects, act2, clock=box.clock, wall=box.wall)   # kill -9, restart
+    assert w2.reconciler.actual == {}                         # a fresh process knows nothing
+    assert w2.reconcile_once() == [("start", 1), ("start", 2), ("start", 3)]
+    assert act2.epochs == {1: 2, 2: 2, 3: 2}                  # the next epoch for each: the old instance is fenced by construction
+
+
+def test_the_zombie_on_one_box():
+    """Two instances of w-1 given the same assignment (a pause, then a
+    replacement): the second takes the next epochs; the first fences itself
+    on renewal and stops everything."""
+    box, ctl = _box_with_cameras(1)
+    ctl.assign("w-1", ["1"])
+    a_act, b_act = FakeActuator(), FakeActuator()
+    a = VmsWorker("w-1", box.vars, box.objects, a_act, clock=box.clock, wall=box.wall)
+    a.reconcile_once(); assert a_act.running == {1} and a_act.epochs[1] == 1
+    b = VmsWorker("w-1", box.vars, box.objects, b_act, clock=box.clock, wall=box.wall)     # the replacement
+    b.reconcile_once(); assert b_act.running == {1} and b_act.epochs[1] == 2
+    assert a.lease_pass() == ["1"] and not a.recording_allowed and a_act.running == set()   # A wakes, renews, fences
+    assert "newer epoch" in a.fenced_reason and a.conflicts() == 1
+    assert a.reconcile_once() == [("failed", 1)]              # it may start nothing
+    assert b.lease_pass() == [] and b_act.running == {1}      # B is fine
+
+
+def test_a_reassignment_is_not_a_zombie():
+    """The same lease loss, but the camera is no longer mine: let it go quietly."""
+    box, ctl = _box_with_cameras(1)
+    ctl.assign("w-1", ["1"])
+    w1 = VmsWorker("w-1", box.vars, box.objects, FakeActuator(), clock=box.clock, wall=box.wall); w1.reconcile_once()
+    ctl.move(1, "w-2", "operator asked")
+    w2 = VmsWorker("w-2", box.vars, box.objects, FakeActuator(), clock=box.clock, wall=box.wall); w2.reconcile_once()
+    assert w1.lease_pass() == ["1"] and w1.recording_allowed and w1.reconciler.actual == {}   # released, not fenced
+    assert w1.reconcile_once() == []
+
+
+def test_lease_expiry_without_renewal_stops_starts():
+    box, ctl = _box_with_cameras(1)
+    ctl.assign("w-1", ["1"])
+    act = FakeActuator()
+    w = VmsWorker("w-1", box.vars, box.objects, act, lease_ttl=30, lease_margin=5, clock=box.clock, wall=box.wall)
+    w.reconcile_once()
+    box.clock.advance(26)
+    assert not w.may_write("1")
+    w.reconciler.lost(1, w.now())                             # the pipeline died meanwhile
+    box.clock.advance(5)                                      # past its backoff
+    assert w.reconcile_once() == [("start", 1)] and act.epochs[1] == 2     # a start takes a fresh epoch and lease

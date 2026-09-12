@@ -1,0 +1,187 @@
+"""vmsworker — DriverPack as the worker.
+
+One process, N pipelines, its own loop. It reads its assignment
+(vms/workers/<me>) and the camera rows it names, runs М9's reconcile loop
+over them with the actuator that builds `driverpacksrc ! tee ! archivesink`,
+takes an epoch per camera by CAS when it starts one, holds a lease per
+camera, and publishes a heartbeat carrying its status. It never writes
+configuration. Nomad (or systemd, on one box) supervises the process; the
+process supervises its pipelines; nothing supervises the loop, because the
+loop is the process.
+"""
+from __future__ import annotations
+
+import logging
+import os
+import socket
+import time
+
+from vmsplatform.contract import Subsystem, Worker
+from vmsplatform.objects import ObjectStore
+from vmsplatform.variables import Variables
+
+from .config import row
+from .reconciler import CONVERGED, Reconciler
+
+log = logging.getLogger("vmsworker")
+VMS = Subsystem("vms")
+
+
+class FakeActuator:
+    """М9 Lesson 6's print(), with a memory. `failing` is a set of camera ids
+    (or a predicate) whose start fails."""
+
+    def __init__(self, failing=frozenset()):
+        self.failing = failing
+        self.calls: list[tuple[str, int]] = []
+        self.running: set[int] = set()
+        self.epochs: dict[int, int] = {}
+
+    def __call__(self, verb: str, cam: dict) -> bool:
+        cid = cam["id"]
+        self.calls.append((verb, cid))
+        if verb == "stop":
+            self.running.discard(cid)
+            return True
+        fails = self.failing(cid) if callable(self.failing) else cid in self.failing
+        if fails:
+            self.running.discard(cid)
+            return False
+        self.running.add(cid)
+        self.epochs[cid] = cam.get("epoch", 0)
+        return True
+
+    def pump(self) -> list[int]:
+        return []
+
+    def stop_all(self) -> None:
+        self.running.clear()
+
+
+class VmsWorker(Worker):
+    def __init__(self, name: str, vars_: Variables, objects: ObjectStore, actuator=None,
+                 lease_ttl: float = 30.0, lease_margin: float = 5.0, clock=time.monotonic, wall=time.time,
+                 server: str | None = None):
+        super().__init__(VMS, name, vars_, objects, lease_ttl, lease_margin, clock, wall)
+        self.actuator = actuator or FakeActuator()
+        self.rows: list[dict] = []
+        self.assignment_rev = 0
+        self.reconciler = Reconciler(self, self._actuate)
+        self.recording_allowed = True
+        self.fenced_reason: str | None = None
+        self.server = server or os.environ.get("NOMAD_NODE_ID") or socket.gethostname()
+        self.started_at = clock()
+        self.passes = 0
+
+    # -- the store, as the reconciler sees it ------------------------------------
+    def desired(self) -> list[dict]:
+        return self.rows
+
+    def refresh(self) -> None:
+        """Read the assignment and the rows it names. A fresh worker knows
+        nothing and reads everything; nothing about what is running is stored."""
+        a = self.assignment()
+        self.assignment_rev = a.rev
+        rows = []
+        for unit in a.units:
+            items, _ = self.vars.get(VMS.config("cameras", unit))
+            if items and items.get("deleted") != "true":
+                rows.append(row(items))
+        self.rows = rows
+
+    # -- the gate ---------------------------------------------------------------
+    def _actuate(self, verb: str, cam: dict) -> bool:
+        unit = str(cam["id"])
+        if verb in ("start", "restart"):
+            if not self.recording_allowed:
+                return False
+            if verb == "start" or unit not in self.epochs:
+                cam = dict(cam, epoch=self.take_epoch(unit))       # a new epoch for a new writer
+            else:
+                cam = dict(cam, epoch=self.epochs[unit])
+            if not self.may_write(unit):
+                return False
+            return self.actuator(verb, cam)
+        ok = self.actuator("stop", cam)
+        self.release(unit)
+        return ok
+
+    def now(self) -> float:
+        return self.clock() - self.started_at
+
+    # -- the passes ---------------------------------------------------------------
+    def reconcile_once(self, now: float | None = None) -> list[tuple[str, int]]:
+        self.refresh()
+        actions = self.reconciler.reconcile(self.now() if now is None else now)
+        self.passes += 1
+        for verb, cid in actions:
+            log.info("%s: %s camera %s", self.name, verb, cid)
+        return actions
+
+    def lease_pass(self) -> list[str]:
+        """Renew every lease. A lost lease on a camera that is no longer
+        assigned to me is a reassignment: let it go. A lost lease on a camera
+        that IS still mine means another instance of ME took it: I am the
+        zombie, and the whole instance fences."""
+        lost = self.renew_leases()
+        if not lost:
+            return []
+        assigned = set(self.assignment().units)
+        for unit in lost:
+            if unit not in assigned:
+                self.actuator("stop", {"id": int(unit)})
+                self.reconciler.actual.pop(int(unit), None)
+                self.release(unit)
+            else:
+                self.fence(f"camera {unit}: a newer epoch was issued to another instance of {self.name}")
+                break
+        return lost
+
+    def fence(self, why: str) -> None:
+        if not self.recording_allowed:
+            return
+        log.error("%s: FENCED (%s). Stopping every pipeline.", self.name, why)
+        self.recording_allowed, self.fenced_reason = False, why
+        self.actuator.stop_all()
+        self.reconciler.clear()
+
+    def pump_once(self) -> None:
+        for cid in self.actuator.pump():
+            self.reconciler.lost(cid, self.now())
+
+    def status(self) -> list[dict]:
+        st = self.reconciler.status()
+        out = []
+        for cam in self.rows:
+            cid = cam["id"]
+            pos, lag = st.get(cid, (CONVERGED, 0))
+            phase = "running" if cid in self.reconciler.actual else ("pending" if not cam["enabled"] else
+                                                                     ("failed" if cid in self.reconciler.failures else "pending"))
+            out.append({"id": cid, "name": cam["name"], "enabled": cam["enabled"], "phase": phase, "position": pos,
+                        "revision": cam["revision"], "observed_revision": self.reconciler.actual.get(cid, {}).get("revision", 0),
+                        "epoch": self.epochs.get(str(cid), 0)})
+        return out
+
+    def heartbeat_once(self) -> None:
+        self.heartbeat(self.status(), server=self.server, assignment_rev=self.assignment_rev,
+                       fenced=not self.recording_allowed, conflicts=self.conflicts(), passes=self.passes)
+
+    def run(self, poll: float = 2.0, stop=None) -> None:
+        """One box: the loop as a process. Nomad or systemd restarts it."""
+        import threading
+        stop = stop or threading.Event()
+        lease_every = max(1.0, (self.lease_ttl - self.lease_margin) / 3)
+        last_lease = last_hb = 0.0
+        while not stop.is_set():
+            try:
+                self.reconcile_once()
+                self.pump_once()
+                if self.clock() - last_lease >= lease_every:
+                    self.lease_pass(); last_lease = self.clock()
+                if self.clock() - last_hb >= 10.0:
+                    self.heartbeat_once(); last_hb = self.clock()
+            except Exception:                              # noqa: BLE001
+                log.exception("%s: pass failed; will retry", self.name)
+            stop.wait(poll)
+        self.actuator.stop_all()
+        self.heartbeat_once()

@@ -1,0 +1,12 @@
+# The archive resource has no controller — it has a policy. This is the policy, run by a timer.
+[Unit]
+Description=VMS archive resource — retention and manifest repair
+
+[Service]
+Type=oneshot
+Environment=PLATFORM_DIR=/data/platform SPOOL=/data/spool ARCHIVE=/data/archive
+WorkingDirectory=/opt/vmsnode
+ExecStart=/usr/bin/python3 -c "import os,time; from vms.archive import ArchiveResource; from vmsplatform.variables import FileVariables; from vms.config import row; \
+r=ArchiveResource(os.environ['SPOOL'],os.environ['ARCHIVE']); v=FileVariables(os.path.join(os.environ['PLATFORM_DIR'],'config')); \
+print('repair', r.repair()); \
+[print(c['id'], 'removed', r.retain(c['id'], c['retention_days'], time.time())) for p in v.list('vms/cameras/') for c in [row(v.get(p)[0])]]"
