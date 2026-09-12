@@ -1,6 +1,6 @@
 package cluster
 
-// Actuator is verb -> success: "start", "restart", "stop". In М10 it is
+// Actuator is verb -> success: "start", "restart", "stop". In М9 it is
 // GStreamer (and in a Go controller, a client of a C++ media worker — the
 // per-frame rule survives cgo). It carries the Settings because the epoch
 // is in every segment path it opens.
@@ -14,7 +14,7 @@ type Actuator interface {
 	Settings() Settings
 }
 
-// FakeActuator is М10 Lesson 1's print(), grown a memory so tests can
+// FakeActuator is М9 Lesson 5's print(), grown a memory so tests can
 // assert on it. Failing is the set of camera ids whose start fails.
 type FakeActuator struct {
 	mu       sync.Mutex

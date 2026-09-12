@@ -1,11 +1,11 @@
-"""The Node under a scheduler: М10's AppHost plus what М11 adds.
+"""The Node under a scheduler: М9's AppHost plus what М11 adds.
 
     prologue      identity → migrate → rehydrate → epoch by CAS → lease
     publish()     every second: publish on change, with a floor           (Lesson 27)
     lease()       renew by reading my epoch; fence myself if it moved      (Lesson 28)
     heartbeat()   a timestamp in my Variable, for node_failover_seconds    (Lesson 28)
 
-Everything М10 does — reconcile, pump_buses, report, retention, console —
+Everything М9 does — reconcile, pump_buses, report, retention, console —
 is inherited unchanged. Only the actuator's gate and the report grow:
 a fenced instance starts nothing, and `replicated` joins the conditions.
 """
@@ -27,7 +27,7 @@ from .rehydrate import RestoreResult, rehydrate
 from .reindex import RealFs as ReindexFs, sweep as reindex_sweep
 from .variables import Variables
 
-from apphost.apphost import MIGRATIONS, AppHost   # М10's nodevms, on sys.path via cluster/__init__.py
+from apphost.apphost import MIGRATIONS, AppHost   # М9's nodevms, on sys.path via cluster/__init__.py
 
 log = logging.getLogger("cluster.apphost")
 
@@ -251,7 +251,7 @@ async def main() -> None:
     if ident.column_key:
         os.makedirs(os.path.dirname(settings.column_key_file), exist_ok=True)
         with open(settings.column_key_file, "wb") as f:
-            f.write(ident.column_key)               # М10's key, delivered by the cluster, not from a backup
+            f.write(ident.column_key)               # М9's key, delivered by the cluster, not from a backup
         key = ColumnKey(ident.column_key)
     objects = open_store(os.environ.get("OBJECT_STORE_URL", "file:///data/restore"))
     store = await ClusterPgStore.connect(settings.database_url)

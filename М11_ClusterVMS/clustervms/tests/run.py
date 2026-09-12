@@ -2,7 +2,7 @@
 """Run the millisecond suite without pytest (the appliance image has none):
     python3 tests/run.py
 Discovers test_* functions in tests/test_*.py, runs coroutines with
-asyncio.run, prints one line per test like М10 Lesson 2 does."""
+asyncio.run, prints one line per test like М9 Lesson 6 does."""
 from __future__ import annotations
 
 import asyncio
@@ -13,7 +13,7 @@ import sys
 import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import cluster  # noqa: E402,F401  — puts М10's nodevms on sys.path
+import cluster  # noqa: E402,F401  — puts М9's nodevms on sys.path
 
 try:
     import pydantic  # noqa: F401

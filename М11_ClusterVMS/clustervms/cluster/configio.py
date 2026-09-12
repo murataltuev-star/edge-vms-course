@@ -4,7 +4,7 @@ Lesson 3's table: footage stays, the index is rebuilt, events are
 expendable, configuration MUST come. A dump is sites + cameras (operator
 columns, the encrypted credential, the revision) + operators + grants.
 Nothing controller-owned travels: the new instance re-derives phase and
-observed_revision by observation, which is М10 Lesson 2's rule.
+observed_revision by observation, which is М9 Lesson 6's rule.
 """
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def revision_of(blob: bytes) -> int:
 
 
 class ClusterStoreMixin:
-    """The three statements ClusterVMS adds to М10's PgStore. Mixed into
+    """The three statements ClusterVMS adds to М9's PgStore. Mixed into
     PgStore for the real thing; tests use FakeClusterStore."""
 
     async def dump_config(self) -> bytes:

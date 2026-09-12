@@ -15,8 +15,8 @@ There is also a trap in it that looks like the grown-up answer. Shared storage w
 ## Prerequisites
 
 - **Lesson 2** — the Node as a job, its Variable, and the three-stores rule.
-- **М10 Lesson 1** — what is in the database, and which of it is configuration. This lesson is about exactly that column split, one level up.
-- **М10 Lesson 4** — the archive index is rebuildable from segments; events are observations.
+- **М9 Lesson 5** — what is in the database, and which of it is configuration. This lesson is about exactly that column split, one level up.
+- **М9 Lesson 8** — the archive index is rebuildable from segments; events are observations.
 - **М9 Lesson 4** — *delete on acknowledgement, never on send.* The same shape returns here as *acknowledge on local commit, show durability.*
 - An S3-compatible object store reachable from every client — MinIO on the three servers is enough for the bench.
 
@@ -33,13 +33,13 @@ There is also a trap in it that looks like the grown-up answer. Shared storage w
 
 ## Step 1 — What must travel, and what must not
 
-Node 3's data sits on Server A's disk. Nomad moves Node 3 to Server B. Go through the four things in its Postgres from М10 Lesson 1 and ask of each: *does the new instance need this to do its job?*
+Node 3's data sits on Server A's disk. Nomad moves Node 3 to Server B. Go through the four things in its Postgres from М9 Lesson 5 and ask of each: *does the new instance need this to do its job?*
 
 |                   | On the dead server | Comes with the Node?                                                                                                                                                          |
 | ----------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Footage**       | stays              | **No — and it does not need to.** The past stays where it was written; a replacement records the future. Moving terabytes to move a process would be the tail wagging the dog |
-| **Archive index** | stays              | **Rebuilt.** М10 Lesson 4 made it derivable from the segments on disk; when Server A returns, its index comes back with it                                                    |
-| **Events**        | stays              | Expendable. They are observations, and М10 Lesson 1 said so                                                                                                                   |
+| **Archive index** | stays              | **Rebuilt.** М9 Lesson 8 made it derivable from the segments on disk; when Server A returns, its index comes back with it                                                    |
+| **Events**        | stays              | Expendable. They are observations, and М9 Lesson 5 said so                                                                                                                   |
 | **Configuration** | stays              | **Must come. It is the source of truth, and losing it loses the Node**                                                                                                        |
 
 So exactly one thing has to travel, and it is the smallest of the four: a few hundred rows of what the operator asked for. Everything else is either derivable or belongs where it is.
@@ -88,7 +88,7 @@ Four things follow, and each one is a property people usually have to fight for:
 Walk it explicitly. Server A dies; Nomad places Node 3 on Server B:
 
 ```
-1. empty Postgres; migrations run                       (М10 Lesson 1's runner, unattended)
+1. empty Postgres; migrations run                       (М9 Lesson 5's runner, unattended)
 2. read its own Nomad Variable — "I am Node 3; my configuration
    is object node-3/rev-812, and these are my camera ids"   (Lesson 2)
 3. fetch that object from the CLUSTER's object store
@@ -146,7 +146,7 @@ Three consequences to build in:
   {"state": "unconfigured"}
   ```
 
-- **The archive index does not come back.** It is large and constantly written, so it is never published; only the configuration is. After a failover the Node knows *camera 7 has footage on Server A's storage* and nothing finer until Server A returns. Rebuild by scanning segments when it does — М10 Lesson 4's orphan sweep, run forwards — and know how long that takes at your scale: a million segments is minutes of `stat()`, not seconds.
+- **The archive index does not come back.** It is large and constantly written, so it is never published; only the configuration is. After a failover the Node knows *camera 7 has footage on Server A's storage* and nothing finer until Server A returns. Rebuild by scanning segments when it does — М9 Lesson 8's orphan sweep, run forwards — and know how long that takes at your scale: a million segments is minutes of `stat()`, not seconds.
 
 ## Step 6 — The acknowledgement problem
 
@@ -158,7 +158,7 @@ Here is the gap the backup framing exposes. **What is the operator told when the
 | Acknowledge on local commit, say nothing | Silent data loss on failover. The operator was told *saved*; the change is gone |
 | **Acknowledge on local commit, and show durability** | The operator sees *saved · not yet replicated* until it lands |
 
-The third needs no new machinery. М10 already has `observed_revision >= revision` for the AppHost applying a change; the console shows the same shape for the directory receiving it. A camera row carries `revision`; the Node's Variable carries `revision` as last published; the difference is *how many edits are not yet safe*, and a Node that has been unable to publish for N minutes raises a condition — `replicated`, false, since 14:02 — on М10 Lesson 5's conditions axis.
+The third needs no new machinery. М9 already has `observed_revision >= revision` for the AppHost applying a change; the console shows the same shape for the directory receiving it. A camera row carries `revision`; the Node's Variable carries `revision` as last published; the difference is *how many edits are not yet safe*, and a Node that has been unable to publish for N minutes raises a condition — `replicated`, false, since 14:02 — on М9 Lesson 9's conditions axis.
 
 This is М9 Lesson 4's rule in its second instance. There it was *delete on acknowledgement, never on send*. Here it is:
 

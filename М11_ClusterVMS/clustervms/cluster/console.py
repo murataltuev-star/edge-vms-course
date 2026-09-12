@@ -1,9 +1,9 @@
-"""Lesson 5 — the cluster's questions, on the same console as М10's.
+"""Lesson 5 — the cluster's questions, on the same console as М9's.
 
     GET /cluster/node               who am I, which epoch, lease, replicated, failover
     GET /cluster/directory          every Node's holdings, one scan
     GET /cluster/where/{camera_id}  where is camera 7
-    GET /metrics                    М10's, plus node_failover_seconds and node_epoch_conflicts
+    GET /metrics                    М9's, plus node_failover_seconds and node_epoch_conflicts
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from . import metrics as cluster_metrics
 
 
 def add_cluster_routes(app: FastAPI, host) -> None:
-    # Replace М10's /metrics with one that appends the cluster's two numbers.
+    # Replace М9's /metrics with one that appends the cluster's two numbers.
     base_metrics = None
     for r in list(app.routes):
         if getattr(r, "path", None) == "/metrics":

@@ -1,8 +1,8 @@
 # ClusterVMS — the М11 project, whole
 
-What a Node needs to outlive its server, built **on** М10's `nodevms/` rather
-than beside it: `cluster.apphost.ClusterAppHost` subclasses М10's AppHost and
-adds the prologue and three tasks. Everything М10 does — reconcile, pump
+What a Node needs to outlive its server, built **on** М9's `nodevms/` rather
+than beside it: `cluster.apphost.ClusterAppHost` subclasses М9's AppHost and
+adds the prologue and three tasks. Everything М9 does — reconcile, pump
 buses, report, retention, the console — is inherited unchanged.
 
 ```
@@ -12,13 +12,13 @@ clustervms/
     objectstore.py   the restore point: a directory, anonymous HTTP PUT/GET, or S3 with SigV4 (s3.py — verified against Amazon's published examples)
     identity.py      L2 — who am I: the Variable the scheduler delivered, never the allocation index
     epoch.py         L4 — next_epoch by CAS; Lease on a monotonic clock, renewal = reading my own epoch
-    configio.py      L3 — what travels: the configuration as one blob; dump/restore on М10's PgStore
+    configio.py      L3 — what travels: the configuration as one blob; dump/restore on М9's PgStore
     publish.py       L3 — object first, then the Variable; publish on change with a floor; `replicated`
     rehydrate.py     L3 — the six steps; `unconfigured`; a dangling pointer refused
     directory.py     L5 — scan nodes/*: where is camera 7
     placement.py     L5 — capacity measured, constraints as labels, placement STORED in placement/<camera>, budgeted rebalance
     reindex.py       L4 — files back into rows: a fenced instance's footage keeps its epoch; a returned server's archive is rebuilt
-    metrics.py       L4 — node_failover_seconds{kind="worst"}, node_epoch_conflicts, appended to М10's /metrics
+    metrics.py       L4 — node_failover_seconds{kind="worst"}, node_epoch_conflicts, appended to М9's /metrics
     console.py       /cluster/node, /cluster/directory, /cluster/where/{id}
     apphost.py       the ClusterAppHost: prologue → publish / lease / heartbeat tasks; fence()
   deploy/
@@ -36,15 +36,15 @@ clustervms/
 ## What happens when the Node starts
 
 ```
-1. migrate                        М10's runner; on a fresh server the database is empty
+1. migrate                        М9's runner; on a fresh server the database is empty
 2. identity.from_environment      NODE_ID, CONFIG_OBJECT, CONFIG_REVISION, CAMERA_IDS — from the template; the Variable is re-read as authoritative
 3. rehydrate                      empty + seen before → fetch the object, check its revision, restore
                                   empty + never seen  → `unconfigured`; invent nothing
                                   not empty           → a restart on the same server; nothing to do
 4. next_epoch by CAS              nodes/<node>/epoch; the loser of the race re-reads and goes again
-5. EPOCH into the archive path    every new segment lands in /data/archive/<cam>/e<epoch>/ — М10's `e1` was for this
+5. EPOCH into the archive path    every new segment lands in /data/archive/<cam>/e<epoch>/ — М9's `e1` was for this
 6. Lease(ttl, margin)             may_write while now − last_renewal < ttl − margin, on a monotonic clock
-   then М10's loop, plus:
+   then М9's loop, plus:
    publish()     each second: if the local revision moved and the floor has passed — object, then Variable (cas)
    lease_task()  every (ttl − margin)/3: read my epoch. Moved → FENCED: stop every pipeline, start nothing, count it
    heartbeat()   every 10 s: a wall-clock timestamp, as a tiny OBJECT <node>/heartbeat — never a raft write
@@ -75,7 +75,7 @@ nomad job validate node-3.nomad.hcl && nomad job run node-3.nomad.hcl
 curl -s http://<its server>:8080/cluster/node
 ```
 
-Add cameras through М10's console (`POST /cameras`) or `psql`; within a
+Add cameras through М9's console (`POST /cameras`) or `psql`; within a
 second the Node publishes `node-3/rev-N` to the object store and points its
 Variable at it. `GET /cluster/where/7` answers from the directory.
 
@@ -124,6 +124,6 @@ in its Variable, logs `FENCED`, stops every pipeline, and
 - **The ACL scoping of Variable writes per job is the module's open question, and `deploy/verify-bench.sh node-3` answers it on a bench.** Item 4 creates a client token carrying only the Node's policy and tries its own path and another Node's; item 5 does the same from inside the running allocation with the task's own workload-identity token, expecting `own=200 other=403`. Until that prints PASS, one-writer-per-key is a convention.
 - `deploy/failover-drill.sh node-3 10.0.0.11:8080` is Lesson 4's Step 6 as a script: three pulls, `node_failover_seconds` read from `/cluster/node` each time, the worst case printed as the datasheet number, and `node_epoch_conflicts` read after each server returns.
 - The lease numbers are the module's decision (Lesson 4): TTL 30 s, margin 5 s, `stop_on_client_after` 25 s, `lost_after` 45 s. `render.py` ships them as defaults; measure `node_failover_seconds` on the bench before changing them.
-- `reindex()` rebuilds a returned server's index from its segments and re-indexes a fenced instance's footage with its epoch (Lesson 4's decision: re-index, never delete). The console shows a row whose epoch is older than the Node's current one as *recorded by a fenced instance*; the flag is the `epoch` column М10's `timeline` already returns.
-- A camera move decided by `tools/place.py` is recorded in `placement/<camera>`; the Nodes do not yet *act* on it — the wire from a placement row to М10's `cameras` table on the losing and gaining Nodes is the two-writer handover Lesson 5 describes, and it belongs with М12's placement-at-the-level-above.
+- `reindex()` rebuilds a returned server's index from its segments and re-indexes a fenced instance's footage with its epoch (Lesson 4's decision: re-index, never delete). The console shows a row whose epoch is older than the Node's current one as *recorded by a fenced instance*; the flag is the `epoch` column М9's `timeline` already returns.
+- A camera move decided by `tools/place.py` is recorded in `placement/<camera>`; the Nodes do not yet *act* on it — the wire from a placement row to М9's `cameras` table on the losing and gaining Nodes is the two-writer handover Lesson 5 describes, and it belongs with М12's placement-at-the-level-above.
 - `S3ObjectStore` signs with SigV4 in the standard library and reproduces both of Amazon's published worked examples (`tests/test_s3.py`); it has not been run against a live MinIO from the authoring sandbox. `OBJECT_STORE_URL=s3+http://minio:9000/cluster-restore?region=us-east-1`, credentials from `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` in the task's template.

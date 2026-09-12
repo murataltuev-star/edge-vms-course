@@ -8,7 +8,7 @@
 
 Lesson 3 built a write API on every Node, and it is unauthenticated. That is N endpoints where there used to be one. Node-owned configuration is why an operator can edit a camera while the domain is unreachable — and it is also why the thing to protect is now per-Node. This is a real cost of the design and it belongs next to the benefit rather than three modules later.
 
-The lesson is in two halves that turn out to be one argument. The first is *what* protects a Node's API: a channel, then a caller, then a local check that needs no network. The second is a defect the course has been carrying since М10 Lesson 5 — a login against a local `operators` table with a password hash — and what it becomes on N Nodes: N Alices, N stealable hashes, and an account that outlives the grants it was meant to bound. Both halves resolve the same way, and it is the move this course keeps making: **delegate an authority; do not distribute a secret.**
+The lesson is in two halves that turn out to be one argument. The first is *what* protects a Node's API: a channel, then a caller, then a local check that needs no network. The second is a defect the course has been carrying since М9 Lesson 9 — a login against a local `operators` table with a password hash — and what it becomes on N Nodes: N Alices, N stealable hashes, and an account that outlives the grants it was meant to bound. Both halves resolve the same way, and it is the move this course keeps making: **delegate an authority; do not distribute a secret.**
 
 > **What you can verify without hardware.** Tokens, the key set, the revocation list, users, grants, the agent, break-glass and the identity restore all run in `tests/test_lesson4_identity_grants_agent.py`, with a clock. The revocation window is stated by `access_ends()` and then measured by moving that clock. The mTLS channel itself — certificates on the wire — is Lesson 7's `TrustBundle` and the bench.
 
@@ -17,7 +17,7 @@ The lesson is in two halves that turn out to be one argument. The first is *what
 - **Lesson 3** — the console's write API and the `verifier` hook it left empty.
 - **М11 Lesson 2** — Variables and their ACL: one writer per prefix. The agent is that pattern with a new prefix.
 - **М11 Lesson 3** — publish-then-point. The identity set travels the same way a Node's configuration does.
-- **М10 Lesson 5** — the login marked temporary, and the `operators` and `grants` tables it left behind.
+- **М9 Lesson 9** — the login marked temporary, and the `operators` and `grants` tables it left behind.
 
 ## Learning objectives
 
@@ -26,7 +26,7 @@ The lesson is in two halves that turn out to be one argument. The first is *what
 3. Put users where they belong and prove nothing about them reaches a Node.
 4. Carry trust into every cluster with an agent that can write `domain/*` and nothing else.
 5. Enforce with Node-local grants that expire, and state then measure the revocation window.
-6. Say why М10's `operators` table is superseded, not extended — and what break-glass costs.
+6. Say why М9's `operators` table is superseded, not extended — and what break-glass costs.
 
 ---
 
@@ -34,11 +34,11 @@ The lesson is in two halves that turn out to be one argument. The first is *what
 
 Every stream in this module — configuration upward, grants downward, status both ways — runs **mTLS from the domain's own self-signed root**. A credential says who is calling; it says nothing about the channel. The root is hand-provisioned in the sense that a student runs `openssl` (or, here, `Signer.__init__`) to make it, and **it is not a stand-in**: this is the customer's root, permanently, and Lesson 7 gives it lifetimes and rotation. The certificate names the **Node**, never the server it happens to run on — failover relocates the Node, and a hostname-shaped name would have to be reissued on every move.
 
-The per-Node credential that authenticates on that channel is hand-provisioned in *this* lesson and marked temporary, exactly as М9 hand-provisions AWS keys and М10 a database password. Lesson 6 replaces it with a certificate the box earns by enrolling.
+The per-Node credential that authenticates on that channel is hand-provisioned in *this* lesson and marked temporary, exactly as М9 hand-provisions AWS keys and М9 a database password. Lesson 6 replaces it with a certificate the box earns by enrolling.
 
 ## Step 2 — Delegate an authority, do not distribute a secret
 
-The defect first. М10 Lesson 5 put a login on the console against a local `operators` table. On one box that was right. On N Nodes it means four accounts for one person, four passwords she will make identical, four hashes an attacker can take — and worse, **a grant expires and the account does not.** Revoke Alice's grants and her credential still authenticates on every Node; you have bounded the authorization window and left the authentication window unbounded.
+The defect first. М9 Lesson 9 put a login on the console against a local `operators` table. On one box that was right. On N Nodes it means four accounts for one person, four passwords she will make identical, four hashes an attacker can take — and worse, **a grant expires and the account does not.** Revoke Alice's grants and her credential still authenticates on every Node; you have bounded the authorization window and left the authentication window unbounded.
 
 The fix is the same one the CA made a paragraph ago:
 
@@ -60,7 +60,7 @@ payload: {'exp': 1757500900.0, 'iat': 1757500000.0, 'iss': 'acme', 'jti': '28ec5
 
 Read what is not in the payload: no roles, no grants, no cameras. **The token names the subject and nothing else.** What Alice may do is each Node's own table (Step 5), because a token that carried rights would be a lookup that expired with the domain. `verify()` returns the payload or raises `Expired`, `Revoked`, `UnknownKey`, `BadSignature` — and takes a `KeySet`, not a key, so that rotation (Lesson 7) is an overlap and not an outage.
 
-**N Nodes holding password hashes is N places to steal them from. N Nodes holding a public key is zero.** That is a security improvement, not a tidiness one. М10's `operators` table is superseded, not extended: a student who keeps it and adds a `node_id` column has built the N-Alices problem on purpose.
+**N Nodes holding password hashes is N places to steal them from. N Nodes holding a public key is zero.** That is a security improvement, not a tidiness one. М9's `operators` table is superseded, not extended: a student who keeps it and adds a `node_id` column has built the N-Alices problem on purpose.
 
 ## Step 3 — Where users live, and what touches a Node
 
@@ -145,7 +145,7 @@ audit: [{'at': ..., 'who': 'carol', 'why': ..., 'ok': False}, {'at': ..., 'who':
 
 The token it issues carries `via: break-glass` and `who: carol`, so a Node's grant check can treat the subject `break-glass` differently and the events say who was holding it.
 
-**Deliverable:** grant an operator rights on a Node, then revoke them while that Node is unreachable — and state, in advance (`access_ends()`) and then by measurement (the clock), exactly when their access ends. Then delete М10's `operators` rows on every Node and show that Alice still logs in.
+**Deliverable:** grant an operator rights on a Node, then revoke them while that Node is unreachable — and state, in advance (`access_ends()`) and then by measurement (the clock), exactly when their access ends. Then delete М9's `operators` rows on every Node and show that Alice still logs in.
 
 ---
 
@@ -166,7 +166,7 @@ The token it issues carries `via: break-glass` and `who: carol`, so a Node's gra
 - The token names the subject and nothing else. Nodes hold a public key set, never a hash.
 - Users live in `identity/*` in the domain cluster's raft, published object-first; nothing about them reaches a Node. The agent carries the key set and the revocation list into `domain/*` of every cluster and can write nothing else.
 - Grants are Node-local with `valid_until`; expiry is the revocation mechanism; the window is the shorter of the two lifetimes, stated, then measured.
-- М10's `operators` table is superseded. Break-glass is one account, audited, alarmed, rotated — and admitted.
+- М9's `operators` table is superseded. Break-glass is one account, audited, alarmed, rotated — and admitted.
 
 ## Exercises
 

@@ -17,7 +17,7 @@ The lesson is built around the property that makes those three questions a diffe
 - **М11 Lesson 5** — the cluster directory: a scan of `nodes/*` Variables, and why it is current inside one raft. This lesson aggregates several of those.
 - **М11 Lesson 2** — Variables belong to a region, and the three-stores rule.
 - **М11 Lesson 4** — the epoch is per-Node, issued by check-and-set. This lesson shows why per-cluster raft is precisely the right scope for it.
-- **М10 Lesson 1** — `revision` as a monotonic integer. The convergence token here is that idea, one scope up.
+- **М9 Lesson 5** — `revision` as a monotonic integer. The convergence token here is that idea, one scope up.
 
 ## Learning objectives
 

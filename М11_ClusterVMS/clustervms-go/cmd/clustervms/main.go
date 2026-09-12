@@ -26,7 +26,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if ident.ColumnKey != nil { // М10's key, delivered by the cluster, not from a backup
+	if ident.ColumnKey != nil { // М9's key, delivered by the cluster, not from a backup
 		os.MkdirAll(filepath.Dir(settings.ColumnKeyFile), 0o700)
 		if err := os.WriteFile(settings.ColumnKeyFile, ident.ColumnKey, 0o600); err != nil {
 			log.Fatal(err)
@@ -42,7 +42,7 @@ func main() {
 	}
 	defer closeStore()
 	// The actuator is where a Go controller stops being a host of pipelines
-	// and becomes a client of a media worker (М10 Lesson 5). Until that
+	// and becomes a client of a media worker (М9 Lesson 9). Until that
 	// worker exists, the fake records nothing and the rest of the Node is real.
 	host := cluster.NewClusterAppHost(settings, store, vars, objects, ident, cluster.NewFakeActuator(), nil, nil)
 	if err := host.Run(ctx, true); err != nil {

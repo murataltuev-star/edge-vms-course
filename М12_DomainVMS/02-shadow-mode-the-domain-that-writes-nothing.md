@@ -16,8 +16,8 @@ So the domain's first mode is one where it computes what it *would* do, observes
 
 - **Lesson 1** — the directory of directories and cluster placement; this lesson compares them to reality.
 - **М11 Lesson 4** — the epoch. One of the six kinds is a report under a superseded epoch, and it is the fencing rule catching a writer that should have stopped.
-- **М10 Lesson 2** — `observed_revision` and the `>=` rule. Shadow mode reads the same numbers, one level up.
-- **М10 Lesson 5** — positions and reasons. The report has kinds, not a health enum.
+- **М9 Lesson 6** — `observed_revision` and the `>=` rule. Shadow mode reads the same numbers, one level up.
+- **М9 Lesson 9** — positions and reasons. The report has kinds, not a health enum.
 
 ## Learning objectives
 
@@ -79,7 +79,7 @@ t=220  observed=7  revision=7   (clean)
 
 `Shadow` remembers, per Node, the last `observed_revision` it saw and *when it changed*. Behind by two for a hundred seconds with no movement is *stalled* — the grace was sixty. The moment progress moves, the clock restarts and the Node is merely *lagging* again, even though it is still behind. Being behind is not the fault. Being behind and not moving is.
 
-This is М10's `>=` rule with time added. A Node that reports `observed_revision = 5` against `revision = 7` is lagging; the same report ten minutes later, unchanged, means the reconcile loop on that Node is not converging, and *that* is what pages someone. "Diverged" would have fired at t=100 and been ignored by t=200.
+This is М9's `>=` rule with time added. A Node that reports `observed_revision = 5` against `revision = 7` is lagging; the same report ten minutes later, unchanged, means the reconcile loop on that Node is not converging, and *that* is what pages someone. "Diverged" would have fired at t=100 and been ignored by t=200.
 
 ## Step 4 — The one number
 
@@ -109,7 +109,7 @@ The criterion is code because a criterion that lives in someone's head is renego
 | Symptom | Likely cause |
 |---|---|
 | Every Node is *stalled* immediately | The grace is shorter than the Nodes' report interval; a Node cannot move `observed_revision` faster than it reports. Grace ≥ 2 × the heartbeat interval. |
-| A Node flips lagging/stalled/lagging | Progress moves in bursts (a batch of edits, a long reconcile). Widen the grace or look at why one pass takes that long — М10 Lesson 3's shard size. |
+| A Node flips lagging/stalled/lagging | Progress moves in bursts (a batch of edits, a long reconcile). Widen the grace or look at why one pass takes that long — М9 Lesson 7's shard size. |
 | `unmanaged` never reaches zero | Something adds cameras at a Node's console without going through placement. In shadow mode that is the measurement working: find the path and route it. |
 | `stale_epoch` on a Node that is healthy | The `epochs` map is stale — the domain read `nodes/<node>/epoch` before the Node's last restart. Re-read; if it persists, the Node is not reading its own epoch after the prologue. |
 | `orphaned` for a camera you know is recording | Its Node's report was dropped as stale-epoch (see above) or the Node has not heartbeaten since. Both are worth knowing. |

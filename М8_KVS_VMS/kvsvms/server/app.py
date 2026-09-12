@@ -82,7 +82,7 @@ def recording_stop():
 
 # ---- М9 Lesson 3: the health check's row 2 --------------------------------
 # "The VMS answers." Nothing more: whether footage is being written is row 3,
-# and it is answered by the spool (М9) or the Node (М10), never by this route.
+# and it is answered by the spool (М9) or the Node (М9), never by this route.
 
 @app.get("/health")
 def health():

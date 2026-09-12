@@ -11,7 +11,7 @@ The module names are not decoration. They mark one idea getting harder three tim
 |                        | The box knows                   | Truth lives                             | What can disagree                               | The new hard problem                                                               |
 | ---------------------- | ------------------------------- | --------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
 | **М9 · EdgeVMS**       | what it *is*                    | in the image that booted                | nothing — a box is whatever was flashed onto it | replacing the OS underneath a running product without destroying the recordings    |
-| **М10 · NodeVMS** | what it *should be* | in a database on the box | desired state and actual state, inside one process | closing the gap — and never persisting the half that must be re-derived |
+| **М9 · NodeVMS** | what it *should be* | in a database on the box | desired state and actual state, inside one process | closing the gap — and never persisting the half that must be re-derived |
 | **М11 · ClusterVMS** | what it should be, *on whichever server survived* | in each Node, unchanged when a server dies | **two instances of the same Node** | surviving a server's death without two writers reaching one archive |
 | **М12 · DomainVMS** | what it should be, *and which cluster holds it* | in each Node, with a directory across clusters | Nodes, with the directory | a layer that must stay useful while it is allowed to be down — and honest when a whole cluster is unreachable |
 | **М14 · VendorVMS** | *— not a scope of the product —* | nowhere the product depends on | the customer, with the vendor | **working with the vendor unreachable, or gone** |
@@ -34,7 +34,7 @@ That rule was chosen for archive locality, and it turns out to put the fencing e
 | **Server** | a box with CPUs and disks. Runs whichever Nodes the scheduler puts on it | the scheduler, continuously |
 | **Site** | where cameras physically are. The only one of the three an operator names | the customer's building |
 
-**A Node is not a server**, and М10 builds exactly one Node without ever needing the distinction. It matters from М11 onward, where a server dying moves the Node rather than reassigning its cameras — which is why failover rewrites nothing.
+**A Node is not a server**, and М9 builds exactly one Node without ever needing the distinction. It matters from М11 onward, where a server dying moves the Node rather than reassigning its cameras — which is why failover rewrites nothing.
 
 [**М8**](./М8_KVS_VMS) comes before the progression starts: it builds the product itself with no local truth at all, because Kinesis holds the configuration and the archive both. Everything after it is the consequence of the box having to hold its own.
 
@@ -63,8 +63,8 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | Module | Layer it builds | State |
 |---|---|---|
 | [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 8 lessons |
-| [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback | **Written** · 4 lessons |
-| [**М10** — NodeVMS](./М10_NodeVMS) | 3 · Postgres — the Node's own state<br>4 · AppHost — the loop that acts on it | **Written** · 5 lessons |
+| [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback<br>3 · Postgres — the Node's own state<br>4 · AppHost — the loop that acts on it | **Written** · 9 lessons |
+| [**М10** — NodeVMS](./М10_NodeVMS) | The platform's shape on one Node: `driverpacksrc`, `archivesink`, a controller and a worker — the subsystem contract, prototyped without a scheduler | **Designed** · 5 lessons |
 | [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — a Node that outlives its server, inside one cluster<br>4 · The cluster's own directory | **Written** · 5 lessons |
 | [**М12** — DomainVMS](./М12_DomainVMS) | 4 · Several clusters, one directory of directories<br>5 · The domain as its own root: enrollment, lifetimes, identity<br>7 · Its own update server, and clusters it rents for itself | **Written** · 8 lessons |
 | [**М13** — Observability](./М13_Observability) | 6 · Prometheus + logs — collecting what М9–М12 emit, from the domain cluster | **Designed** · 4 lessons |
@@ -92,11 +92,11 @@ Fifteen lessons take a student who knows Python but has never built a web applic
 
 ## М9 — EdgeVMS
 
-Four lessons turning that cloud VMS into an appliance: A/B partitions, signed update bundles, rollback proven by shipping a deliberately broken update, and then Podman and Quadlet.
+Nine lessons in two halves. **Lessons 1–4** turn that cloud VMS into an appliance: A/B partitions, signed update bundles, rollback proven by shipping a deliberately broken update, and then Podman and Quadlet. **Lessons 5–9** make the box own its truth: `INSERT INTO cameras` causes a camera to start recording, `DELETE` stops it, and killing the AppHost loses nothing but the open segment.
 
 Its spine is that a real edge product has **two independent update planes** — the operating system underneath, the workload on top — and both are visible on one box. М9 Lesson 4 is where it bites: Podman's storage must be redirected to the data partition, because images and volumes left in a rootfs slot are destroyed by the next OS update. Conflate the planes and you build systems where a config change requires an OS flash.
 
-The same lesson has the module's other sharp edge. **Pull the network cable for ten minutes and go looking for those ten minutes of video** — with `kvssink` publishing straight to AWS there is nothing behind it, so an uplink blink is data loss rather than a visibility problem. So the box spools segments to the data partition and uploads them separately, deleting only on acknowledgement. Those segments are the first thing in the course a later module *upgrades* rather than replaces: **М10 puts an index over the same files and they become the archive; М13 makes the upload conditional.**
+The same lesson has the module's other sharp edge. **Pull the network cable for ten minutes and go looking for those ten minutes of video** — with `kvssink` publishing straight to AWS there is nothing behind it, so an uplink blink is data loss rather than a visibility problem. So the box spools segments to the data partition and uploads them separately, deleting only on acknowledgement. Those segments are the first thing in the course a later module *upgrades* rather than replaces: **М9 puts an index over the same files and they become the archive; М13 makes the upload conditional.**
 
 *The multi-node half of this module moved to М11, where Nodes are scheduled across servers. A module called EdgeVMS should not build a raft cluster.*
 
@@ -108,17 +108,20 @@ The same lesson has the module's other sharp edge. **Pull the network cable for 
 
 Both reach the same shape of conclusion, as does the orchestrator record now filed with М11: the tool that teaches best is not always the tool that ships best, and the documents say which is which.
 
-## М10 — NodeVMS
-
-Five lessons in which one box starts owning its own truth. `INSERT INTO cameras` causes a camera to start recording; `DELETE` stops it; killing the AppHost loses nothing but the open segment. Between the row and the pipeline there is only a loop the student wrote.
+**The Node half (Lessons 5–9).** Five lessons in which one box starts owning its own truth. `INSERT INTO cameras` causes a camera to start recording; `DELETE` stops it; killing the AppHost loses nothing but the open segment. Between the row and the pipeline there is only a loop the student wrote.
 
 Its organising rule is that **desired state is persisted and actual state is derived** — persist the second and you have built a cache that lies. It is also where the process model from М9's decision record gets built: fifty GStreamer pipelines in one Python process, with the GIL boundary demonstrated rather than asserted.
 
-- [Lesson index](./М10_NodeVMS/README.md) — start here
-- [Module design](./М10_NodeVMS/module-design.md) — lesson plan, the Python shard model, and what the operator is never asked to decide
-- [`reference/shard-memory-probe.py`](./М10_NodeVMS/reference/shard-memory-probe.py) — measures what sharding actually saves, in PSS rather than RSS
-- [`nodevms/`](./М10_NodeVMS/nodevms/README.md) — the module's code, whole: migrations, reconciler, GStreamer actuator, retention, console, tests, Quadlet units
-- [`nodevms-go/`](./М10_NodeVMS/nodevms-go/README.md) — the reconciler ported to Go with the same tests, and the controller baseline measured in both languages
+- [Node design](./М9_EdgeVMS/node-design.md) — lesson plan, the Python shard model, and what the operator is never asked to decide
+- [`reference/shard-memory-probe.py`](./М9_EdgeVMS/reference/shard-memory-probe.py) — measures what sharding actually saves, in PSS rather than RSS
+- [`nodevms/`](./М9_EdgeVMS/nodevms/README.md) — the module's code, whole: migrations, reconciler, GStreamer actuator, retention, console, tests, Quadlet units
+- [`nodevms-go/`](./М9_EdgeVMS/nodevms-go/README.md) — the reconciler ported to Go with the same tests, and the controller baseline measured in both languages
+
+## М10 — NodeVMS
+
+The Node rebuilt on the shape М11 arrived at — **workers, resources, one controller** — and prototyped on a single box first, without a scheduler, without KVS and without a database. From the GStreamer end: `driverpacksrc`, a source that plays files whose names stand in for RTSP addresses; `archivesink`, a local archive on the spool's discipline with the epoch in the path; then `vmscontroller`, the only writer of configuration in the cluster, and `vmsworker`, DriverPack itself as the worker. The result is the **subsystem contract** — a controller, a worker, a config prefix and a heartbeat — that detectors and the gateway will implement the same way, and that the platform knows without knowing what a camera is.
+
+- [Module design](./М10_NodeVMS/module-design.md) — the three elements, the two processes, where configuration lives, and the contract every subsystem gives the platform
 
 ## М11 — ClusterVMS
 
@@ -135,7 +138,7 @@ The answer is that fencing belongs at the archive rather than at a coordinator: 
 - [Lesson index](./М11_ClusterVMS/README.md) — start here
 - [Module design](./М11_ClusterVMS/module-design.md) — the cluster, what must outlive a server, the zombie writer, and fencing at the archive
 - [`reference/`](./М11_ClusterVMS/reference/README.md) — the zombie with two real processes, the CAS issuer, the lease arithmetic, the restore and its RPO, placement with property tests; the jobspec and agent configs
-- [`clustervms/`](./М11_ClusterVMS/clustervms/README.md) — the module's code, whole, built on М10's `nodevms/`: identity from a Variable, the epoch by CAS, publish-then-point, the restore, the lease that fences the zombie, the directory, placement; jobspec renderer, agent configs, MinIO job, tests
+- [`clustervms/`](./М11_ClusterVMS/clustervms/README.md) — the module's code, whole, built on М9's `nodevms/`: identity from a Variable, the epoch by CAS, publish-then-point, the restore, the lease that fences the zombie, the directory, placement; jobspec renderer, agent configs, MinIO job, tests
 - [`clustervms-go/`](./М11_ClusterVMS/clustervms-go/README.md) — the whole module ported to Go with the 29 tests ported alongside and a cross-language restore; the Node measured at idle in both languages and its six operations timed
 - [Kubernetes vs Nomad](./М11_ClusterVMS/kubernetes-vs-nomad.md) — why the orchestrator is Nomad, what it cost, and why neither belongs on one box
 
@@ -160,7 +163,7 @@ Because the Node is the writer, it is also the thing that must be reachable and 
 
 ## М13 — Observability
 
-**It does not introduce observability — it collects it.** Every module below already emits signals, defined where the failure that needed them was introduced: М9's health-check ladder and spool age, М10's `camera_silent_seconds`, М11's failover time, М12's replica lag. Six signals for a whole VMS, and the module opens by taking inventory rather than installing anything.
+**It does not introduce observability — it collects it.** Every module below already emits signals, defined where the failure that needed them was introduced: М9's health-check ladder and spool age, М9's `camera_silent_seconds`, М11's failover time, М12's replica lag. Six signals for a whole VMS, and the module opens by taking inventory rather than installing anything.
 
 What makes it hard is one sentence: **in a datacentre, no news is bad news; at the edge, no news is *no news*.** A site that stops answering might be broken, or its uplink might be down, or the building might have lost power — four different problems for four different people, and an identical signal in every case. A monitoring system that cannot tell *broken* from *unreachable* either pages somebody whenever a router reboots or stays quiet through a real outage, and in practice does both.
 

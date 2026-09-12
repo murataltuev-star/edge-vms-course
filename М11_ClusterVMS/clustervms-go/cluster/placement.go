@@ -45,7 +45,7 @@ type PCamera struct {
 
 type PNode struct {
 	ID       string
-	Capacity float64 // (budget − B) / I from М10's shard-memory-probe
+	Capacity float64 // (budget − B) / I from М9's shard-memory-probe
 	Labels   Labels
 }
 

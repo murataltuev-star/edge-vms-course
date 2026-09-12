@@ -8,14 +8,14 @@ package cluster
 // expendable, configuration MUST come. A dump is sites + cameras (operator
 // columns, the encrypted credential, the revision) + operators + grants.
 // Nothing controller-owned travels: the new instance re-derives phase and
-// observed_revision by observation, which is М10 Lesson 1's rule.
+// observed_revision by observation, which is М9 Lesson 5's rule.
 
 import (
 	"encoding/json"
 	"fmt"
 )
 
-// CameraRow is the operator-owned half of М10's cameras table plus the
+// CameraRow is the operator-owned half of М9's cameras table plus the
 // controller-assigned revision. CredSecret is the encrypted credential as
 // stored — it travels encrypted; the column key travels separately, by the
 // cluster (nodes/<node>/key), never inside a backup.

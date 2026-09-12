@@ -5,7 +5,7 @@ is 200 Mbit/s sustained upstream and ~2 TB a day. Most sites cannot buy
 that, so recording stays at the edge and operation moves to the cloud —
 MIXED is the shape a real deployment takes. And a Node deployed three ways
 — local server, rented instance, split — is the SAME artifact; if it is
-not, this lesson found a bug in М10 or М11.
+not, this lesson found a bug in М9 or М11.
 """
 from __future__ import annotations
 

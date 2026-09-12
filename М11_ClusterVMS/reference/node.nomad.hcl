@@ -1,4 +1,4 @@
-# reference/node.nomad.hcl — Lesson 2: М10's Node as a Nomad job.
+# reference/node.nomad.hcl — Lesson 2: М9's Node as a Nomad job.
 # One job per Node. The job NAME is the Node's identity; the server it lands
 # on is Nomad's business. Requires Nomad >= 1.8.0 (the disconnect block) and
 # the nomad-driver-podman plugin on every client.

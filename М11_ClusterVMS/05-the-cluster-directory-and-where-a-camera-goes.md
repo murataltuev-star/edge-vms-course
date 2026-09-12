@@ -17,7 +17,7 @@ The second half is the other direction: a new camera arrives, and something has 
 - **Lesson 2** — each Node's Variable, and the ACL that makes it one-writer-per-key.
 - **Lesson 1** — `B` and `I` from the probe. Placement is by measured capacity, and this is where the measurement pays.
 - **Lesson 4** — the epoch. Rebalancing is the one two-writer operation in this module, and it needs it.
-- **М10 Lesson 5, Step 4** — *site is a first-class operator concept; server is not, and Node barely is.* Placement is the controller-owned row that lesson said a client may never write.
+- **М9 Lesson 9, Step 4** — *site is a first-class operator concept; server is not, and Node barely is.* Placement is the controller-owned row that lesson said a client may never write.
 
 ## Learning objectives
 
@@ -59,7 +59,7 @@ Four Variables, read in milliseconds, cached by the console. **That is a directo
 - **One writer per key**, enforced by the ACL from Lesson 2: Node 3 writes `nodes/node-3` and nothing else can. There is no reconciliation because there is no contention.
 - **Never queried by anything but an exact scan.** Nobody asks *which Nodes have more than forty cameras* of a directory; they ask *where is 7* and *what does Node 3 hold*.
 
-Those are exactly the three properties that made the configuration store a **database** in М10 — large, contended, queried — with the sign flipped. The same rule that put configuration in Postgres puts the directory in Variables. Same rule, opposite answer, and that is how you know it is a rule rather than a habit.
+Those are exactly the three properties that made the configuration store a **database** in М9 — large, contended, queried — with the sign flipped. The same rule that put configuration in Postgres puts the directory in Variables. Same rule, opposite answer, and that is how you know it is a rule rather than a habit.
 
 ## Step 2 — And it is strongly consistent
 
@@ -73,7 +73,7 @@ Across clusters there is no raft at all. Nomad regions are joined by gossip and 
 
 ## Step 3 — Placement by measured capacity
 
-A camera arrives. Something decides which Node records it, and М10 Lesson 5 already decided *who*: not the operator. The operator names a **site**; the controller turns that into a Node. Here is the controller's half.
+A camera arrives. Something decides which Node records it, and М9 Lesson 9 already decided *who*: not the operator. The operator names a **site**; the controller turns that into a Node. Here is the controller's half.
 
 Two inputs, both measured rather than guessed:
 
@@ -117,7 +117,7 @@ def place(self, cam, cameras):
 
 Three things it does that a naive version would not:
 
-- **It returns `None` rather than raising**, and the caller says *the system is full* — М10 Lesson 5's rule that capacity is expressed as the system, not a Node.
+- **It returns `None` rather than raising**, and the caller says *the system is full* — М9 Lesson 9's rule that capacity is expressed as the system, not a Node.
 - **It stores a reason and a revision.** At 3am, *why is camera 812 on Node 3* is a row: `most free capacity (14.0) among 2 eligible`, at revision 4471. Not a hash to recompute.
 - **It never touches an existing placement.** That is the next step.
 
@@ -211,13 +211,13 @@ One boundary, stated so the next module can cross it: **placement here chooses a
 
 ## The module in Go, measured
 
-М10 Lesson 5 made the language argument on one file — the reconciler — and promised that the rewrite touches only the actuator. A promise about one file is cheap. This module is five lessons of mechanisms, so the course checks the promise on all of them: [`clustervms-go/`](./clustervms-go/README.md) is `clustervms/` ported to Go, **with the Python suite's 29 tests ported alongside, unchanged in meaning**, and one test the Python version could not have written — a Go Node restoring a configuration a Python Node published. All thirty pass, and the CAS race runs on four real goroutines under the race detector rather than four threads under the GIL.
+М9 Lesson 9 made the language argument on one file — the reconciler — and promised that the rewrite touches only the actuator. A promise about one file is cheap. This module is five lessons of mechanisms, so the course checks the promise on all of them: [`clustervms-go/`](./clustervms-go/README.md) is `clustervms/` ported to Go, **with the Python suite's 29 tests ported alongside, unchanged in meaning**, and one test the Python version could not have written — a Go Node restoring a configuration a Python Node published. All thirty pass, and the CAS race runs on four real goroutines under the race detector rather than four threads under the GIL.
 
 Then it puts the **whole Node** in each language at idle — fifty cameras restored from the directory, the epoch taken, every task running, a console listener, fakes for Nomad and Postgres — and reads PSS. And because a cluster controller is not a hot loop, it also times the six things this module actually does, with the same inputs:
 
 | | Go | Python | |
 |---|---|---|---|
-| Node at idle, 50 cameras, every task running | **7.1 MB** | **28.5 MB** | 4.0× — the same ratio М10 saw on the reconciler alone |
+| Node at idle, 50 cameras, every task running | **7.1 MB** | **28.5 MB** | 4.0× — the same ratio М9 saw on the reconciler alone |
 | Static binary (x86-64 / arm64) | 6.6 / 6.2 MB | interpreter + wheels | |
 | SigV4 sign, 64 kB object | 56 µs | 69 µs | 1.2× — SHA-256 is C in both |
 | Issue an epoch by CAS | 0.84 µs | 1.75 µs | 2.1× |
@@ -226,7 +226,7 @@ Then it puts the **whole Node** in each language at idle — fifty cameras resto
 | Parse one segment path | 0.77 µs | 12.3 µs | 16× — the re-index sweep, the one place with a hundred thousand of anything |
 | Encode + decode a 200-camera configuration | 0.57 ms | 0.72 ms | 1.3× |
 
-Read the second half of the table before drawing the conclusion the first half invites. **The controller’s work runs within 2× in Python, and the hashing within 20 %**, because the hot part of each operation is already C. What Python cannot shed is the twenty megabytes it costs to be Python, and the interpreter-plus-wheels rootfs that М9’s bundle has to carry. So the win is exactly the one М10 named — memory per Node and the deployable artifact — and not the one people reach for, throughput. The port cost twice the lines (error returns and types), one dependency the standard library could not replace (a Postgres driver; Nomad and S3 needed none), and no redesign: every `>=`, every *object before the pointer*, every `TTL − margin` went across as it was. That last fact is the point of the exercise. The tests were written against a design, not a language, and the design is what survived.
+Read the second half of the table before drawing the conclusion the first half invites. **The controller’s work runs within 2× in Python, and the hashing within 20 %**, because the hot part of each operation is already C. What Python cannot shed is the twenty megabytes it costs to be Python, and the interpreter-plus-wheels rootfs that М9’s bundle has to carry. So the win is exactly the one М9 named — memory per Node and the deployable artifact — and not the one people reach for, throughput. The port cost twice the lines (error returns and types), one dependency the standard library could not replace (a Postgres driver; Nomad and S3 needed none), and no redesign: every `>=`, every *object before the pointer*, every `TTL − margin` went across as it was. That last fact is the point of the exercise. The tests were written against a design, not a language, and the design is what survived.
 
 ---
 
@@ -254,7 +254,7 @@ Read the second half of the table before drawing the conclusion the first half i
 
 ## Exercises
 
-1. Write the console query that joins the directory scan with М10's `camera_status` — *where is camera 7, and is it recording there* — and time it at 1,000 cameras. Then say whether the scan should be cached and for how long.
+1. Write the console query that joins the directory scan with М9's `camera_status` — *where is camera 7, and is it recording there* — and time it at 1,000 cameras. Then say whether the scan should be cached and for how long.
 2. Add a `priority` to cameras and change `rebalance` to move low-priority cameras first. Then re-run the stability test and confirm it still passes — it should, and say why a rebalance policy cannot affect it.
 3. Remove the dead band and run `rebalance` on a cluster with two Nodes of different capacity. Count how many calls before a camera moves back to where it started.
 4. Implement consistent hashing for the same world and measure how many cameras move when a fifth Node is added. Then add one VLAN constraint and count how many keys become exceptions.

@@ -1,7 +1,7 @@
 # Lesson 2 — The Node as an Allocation
 
 **Module:** ClusterVMS — a Node that outlives the server recording on it (Module 11)
-**You will build:** М10's Node running as a Nomad job, behaving exactly as it did under Quadlet — and a Node identity that survives being moved to another server.
+**You will build:** М9's Node running as a Nomad job, behaving exactly as it did under Quadlet — and a Node identity that survives being moved to another server.
 **Time:** ~120 minutes.
 
 ## Why this lesson exists
@@ -12,12 +12,12 @@ The second half is the reason the lesson exists. Once Nomad can move a Node betw
 
 There is an answer that looks right and has a documented bug that corrupts archives, and there is the right one. The lesson has you meet both.
 
-> **What you can verify without hardware.** The translation table and the jobspec are checkable with `nomad job validate` against the Lesson 1 cluster, and the Variables behaviour is what Lesson 4's [`reference/variables.py`](reference/variables.py) simulates from the API docs. Running the Node needs the bench and the М10 image. Rescheduling it needs a second server — which you have.
+> **What you can verify without hardware.** The translation table and the jobspec are checkable with `nomad job validate` against the Lesson 1 cluster, and the Variables behaviour is what Lesson 4's [`reference/variables.py`](reference/variables.py) simulates from the API docs. Running the Node needs the bench and the М9 image. Rescheduling it needs a second server — which you have.
 
 ## Prerequisites
 
 - **Lesson 1** — the cluster, ACLs enabled, `meta.vlans` set on each client.
-- **М10 Lesson 5** — the Node as it stands: Postgres, AppHost, the console on 8080. [`nodevms/`](../М10_NodeVMS/nodevms/README.md) is what gets scheduled.
+- **М9 Lesson 9** — the Node as it stands: Postgres, AppHost, the console on 8080. [`nodevms/`](../М9_EdgeVMS/nodevms/README.md) is what gets scheduled.
 - **М9 Lesson 4** — Quadlet: `postgres.container` and `apphost.container` are the source text for the translation.
 - A container image of the AppHost on every client (`localhost/nodevms-apphost:latest`, from `nodevms/Containerfile`).
 
@@ -33,7 +33,7 @@ There is an answer that looks right and has a documented bug that corrupts archi
 
 ## Step 1 — Quadlet to jobspec is a translation
 
-Put the two side by side. Left, М10's `quadlet/apphost.container`; right, the same thing as a Nomad task:
+Put the two side by side. Left, М9's `quadlet/apphost.container`; right, the same thing as a Nomad task:
 
 | Quadlet (`.container`) | Nomad (`task`) | Note |
 |---|---|---|
@@ -100,7 +100,7 @@ Two things to notice before running it.
 
 **The job name is the Node's name.** `job "node-3"` — one job per Node, and the name is stable across every server it will ever run on. This is the first half of identity, and it is the easy half.
 
-**The volumes are local, per Node, per server.** `/data/nodes/node-3/pg` on whichever server the job lands on. On a fresh server that directory is empty, Postgres initialises an empty database, М10's migrations run, and the Node has no cameras. **That is correct and expected**, and Lesson 3 is about what happens next. It is *not* a shared volume, and Lesson 3 shows why the obvious "fix" of making it one breaks failover.
+**The volumes are local, per Node, per server.** `/data/nodes/node-3/pg` on whichever server the job lands on. On a fresh server that directory is empty, Postgres initialises an empty database, М9's migrations run, and the Node has no cameras. **That is correct and expected**, and Lesson 3 is about what happens next. It is *not* a shared volume, and Lesson 3 shows why the obvious "fix" of making it one breaks failover.
 
 `resources` are the numbers Lesson 1 measured: `B + 50 × I` for the AppHost, rounded up. A Nomad client will not place a task whose reservation does not fit, which is the first time the probe's numbers do work for you.
 
@@ -219,13 +219,13 @@ Now reschedule again, and the process that starts on the new server has, in its 
 - **It survives rescheduling by construction.** The Variable is in raft; the task reads it wherever it lands.
 - **It is the second half of identity.** The job name says *which* Node; the Variable says *what that Node knows about itself*. Together they are enough to start the restore.
 - **It is ACL'd, one writer per key.** [`reference/node-3-policy.hcl`](reference/node-3-policy.hcl) grants `nodes/node-3` and `nodes/node-3/*` to Node 3's workload identity and read-only on `nodes/*`. Bind it: `nomad acl policy apply -namespace default -job node-3 node-3 node-3-policy.hcl`. Node 3 cannot write `nodes/node-4`, and Lesson 5's directory rests on that. **The module design lists this as the open question to verify on the bench before building on it** — do so: try to write `nodes/node-4` with Node 3's token and confirm the 403.
-- **The password is no longer in a file on the data partition.** М10 Lesson 1 called the column key's placement a debt and named the Variable as the payment. This is it, for the database password; the column key follows the same path.
+- **The password is no longer in a file on the data partition.** М9 Lesson 5 called the column key's placement a debt and named the Variable as the payment. This is it, for the database password; the column key follows the same path.
 
 ## Step 6 — What does *not* go in a Variable
 
 The instinct once Variables work is to put the configuration there too — the cameras, their URLs, their retention — and be done with Lesson 3 before it starts. Resist it, for a reason the maintainers state themselves.
 
-Variables cap at **64 KiB per item** (originally 16 KiB, raised in 1.5.0), and they are capped at all because, in HashiCorp's words, the limit exists *"to reduce the potential performance impact of Variables on our raft store."* Read that as a design statement: raft is memory-resident and replicated to every server, so anything that grows is in the wrong place. A thousand cameras' settings do not fit in 64 KiB and should not be asked to; and a key-value store cannot answer *which cameras have retention over thirty days* anyway, which М10 Lesson 1 built a database to do.
+Variables cap at **64 KiB per item** (originally 16 KiB, raised in 1.5.0), and they are capped at all because, in HashiCorp's words, the limit exists *"to reduce the potential performance impact of Variables on our raft store."* Read that as a design statement: raft is memory-resident and replicated to every server, so anything that grows is in the wrong place. A thousand cameras' settings do not fit in 64 KiB and should not be asked to; and a key-value store cannot answer *which cameras have retention over thirty days* anyway, which М9 Lesson 5 built a database to do.
 
 What *does* fit is **the pointer**: a Node's identity, its camera ids, and *where its configuration object is and at which revision* — hundreds of bytes. That is what Step 5's Variable holds. The configuration itself goes somewhere built for large, rare, opaque blobs, and Lesson 3 chooses it.
 
@@ -254,11 +254,11 @@ One more thing before the Node is properly placed. Camera 7 is on VLAN `cctv-a`,
     }
 ```
 
-Drain `srv-a` and `srv-b` at once and the job goes **pending** rather than landing on `srv-c` where it would record nothing. Pending is the right answer: a Node placed where it cannot reach its cameras is М10 Lesson 2's lying cache with a scheduler attached. The console shows the reason — `nomad job status` says which constraint filtered which node — and that reason is what М10 Lesson 5's "the system is full" message is built from.
+Drain `srv-a` and `srv-b` at once and the job goes **pending** rather than landing on `srv-c` where it would record nothing. Pending is the right answer: a Node placed where it cannot reach its cameras is М9 Lesson 6's lying cache with a scheduler attached. The console shows the reason — `nomad job status` says which constraint filtered which node — and that reason is what М9 Lesson 9's "the system is full" message is built from.
 
 Recordings, meanwhile, stay on the server that wrote them: `/data/nodes/node-3/archive` is a local path. **Do not put video bulk on replicated storage** — М9 Lesson 1 sized the data partition at hundreds of gigabytes per day; replicating that is a network you did not buy, and Lesson 3 shows it buys nothing for failover either.
 
-**Deliverable:** М10's Node running as a Nomad job with the behaviour it had under Quadlet; then drained off its server and started on another with `NODE_ID`, `CONFIG_OBJECT` and `CAMERA_IDS` in its environment, read from a Variable nothing on either disk ever held.
+**Deliverable:** М9's Node running as a Nomad job with the behaviour it had under Quadlet; then drained off its server and started on another with `NODE_ID`, `CONFIG_OBJECT` and `CAMERA_IDS` in its environment, read from a Variable nothing on either disk ever held.
 
 ---
 
@@ -286,7 +286,7 @@ Recordings, meanwhile, stay on the server that wrote them: `/data/nodes/node-3/a
 
 ## Exercises
 
-1. Write the translation table for М10's `postgres.container` yourself, then diff it against the jobspec. Find the one Quadlet key with no Nomad equivalent and say what replaces it.
+1. Write the translation table for М9's `postgres.container` yourself, then diff it against the jobspec. Find the one Quadlet key with no Nomad equivalent and say what replaces it.
 2. Write Node 3's token into a shell and try `nomad var put nodes/node-4 x=1` with it. Record the exact error. Then try `nodes/node-3/anything`. This is the open question from the module design — write down what you found and which Nomad version you found it on.
 3. Set `count = 2` on the job by mistake, run it, and read `NOMAD_ALLOC_INDEX` in both allocations. Then read issue #10727 and explain what would happen to camera 7's archive if the index were its identity and the bug recurred.
 4. Put 65 KiB into a Variable. Read the error. Then compute how many cameras' configuration would fit under the limit at your row size, and compare with the biggest site your product sells to.

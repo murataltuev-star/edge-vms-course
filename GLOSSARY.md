@@ -6,14 +6,14 @@ Terms the course uses precisely, and acronyms it would otherwise leave unexplain
 
 | Term | Meaning here |
 |---|---|
-| **Node** | A VMS instance — its own database, its own cameras, its own archive index. М10 builds one. From М11 it is a scheduler allocation with stable identity that **moves between servers**, carrying its cameras with it. **A Node is not a server.** |
+| **Node** | A VMS instance — its own database, its own cameras, its own archive index. М9 builds one. From М11 it is a scheduler allocation with stable identity that **moves between servers**, carrying its cameras with it. **A Node is not a server.** |
 | **Worker** | A DriverPack shard with N cameras assigned — holds the pipeline and routes it; stable identity, movable between servers, stateless but for a spool. What the Node becomes under М11's decision *2c*. 1+ per cluster, by workload. |
 | **Resource** | Something bound to a server: the archive on its disks, GPU compute for detectors, a NIC on the camera VLAN. A Nomad `system` job pinned by what the server has; N per cluster; when it dies nothing moves because nothing can. |
 | **Controller** (cluster) | The one job per cluster that places cameras onto workers and rebalances on request. Stateless — computation over Variables and objects — correct by CAS, safe at two, and never on the recovery path: when it is down, nothing already running stops. Not to be confused with the retired *domain controller*, which held state. |
 | **Server** | A box with CPUs and disks, running whichever Nodes the scheduler places on it. A Nomad *client*. |
 | **Domain cluster** | The one cluster, named by the operator, that runs the domain services — the signer, placement, the read view, the update server, the remote observer. Nomad picks the server inside it. Its raft holds the signer's key and the local user records; its object store holds their backup and the identity object. If it dies the domain services die with it — bounded, and recording does not. |
 | **Live gateway** | The cluster-level job that serves pictures to browsers — WebRTC live, fMP4 playback, TURN, transcoding — subscribing to a Node's live tee once per camera and fanning out from there. Placed by constraint (GPU, public address), never by hostname. A Node's only viewer, together with the console; a Node never serves a browser. (М12, *Who serves browsers*) |
-| **Console** (cluster) | The cluster-level job that serves the UI: static files, the API façade, the read model built from Node snapshots, TLS, token verification. Stateless; proxies edits to the owning Node, whose grants decide. The domain cluster runs the same console pointed at every cluster. Distinct from a Node's own console (М10 Lesson 5), which serves only these two jobs. |
+| **Console** (cluster) | The cluster-level job that serves the UI: static files, the API façade, the read model built from Node snapshots, TLS, token verification. Stateless; proxies edits to the owning Node, whose grants decide. The domain cluster runs the same console pointed at every cluster. Distinct from a Node's own console (М9 Lesson 9), which serves only these two jobs. |
 | **Domain signer** | The one Nomad job at the domain that holds keys and signs — certificates for machines, tokens for people. The only domain service that cannot be re-provisioned from nothing, and the reason М13's delegated root matters. Hosted by one designated cluster. |
 | ~~**Domain controller**~~ | **Retired.** Named a component the design dissolved: its database became cluster Variables and object stores, its scheduler became Nomad, its API moved onto every Node, its restore point moved into the cluster. What remains at the domain is a signer, a stateless placement function and a read view — none of them authoritative, which is why the old name misleads. |
 | **Site** | Where cameras physically are — a building, a store. The only one of these an operator names. **Sites and clusters are many-to-many on purpose:** a campus is one domain with three clusters and three sites; a cloud deployment is one domain with one cluster serving fifty sites. |
@@ -38,7 +38,7 @@ Two more that are easy to blur:
 |---|---|
 | **Desired state** | What an operator asked for. Persisted. |
 | **Actual state** | What is running right now. Observed, never persisted — anything a system remembers about actual state across a restart is a bug. |
-| **Reconciliation** | The loop that closes the gap between the two. A Nomad jobspec plus its scheduler is one; М10's AppHost is another. |
+| **Reconciliation** | The loop that closes the gap between the two. A Nomad jobspec plus its scheduler is one; М9's AppHost is another. |
 | **Revision** | A monotonic, controller-assigned integer per object. *Applied* means `observed_revision >= revision`. |
 | **Epoch** | A fencing token: increments on every ownership change, never decreases, issued by exactly one authority. Part of the archive path, so a stale writer cannot name the files it would otherwise corrupt. |
 | **Fencing** | Making a stale writer's writes harmless rather than trying to stop them. You cannot stop a zombie from writing. |
@@ -65,7 +65,7 @@ Two more that are easy to blur:
 
 | | |
 |---|---|
-| **Spool** | Segments recorded locally and waiting to be uploaded, deleted only on acknowledgement. Introduced in М9 so an uplink outage costs visibility rather than footage; М10 puts an index over the same files and they become the archive. |
+| **Spool** | Segments recorded locally and waiting to be uploaded, deleted only on acknowledgement. Introduced in М9 so an uplink outage costs visibility rather than footage; М9 puts an index over the same files and they become the archive. |
 | **RSS** — resident set size | Memory a process has in RAM. Counts a shared library page once **per process**, so summing it across processes double-counts and inflates the answer. |
 | **PSS** — proportional set size | The same, but each shared page is divided by the number of processes mapping it. **The only honest way** to compare one process holding N pipelines against N processes holding one each. |
 | **GIL** — global interpreter lock | CPython's lock ensuring one thread runs Python bytecode at a time. Released around C calls, which is why fifty GStreamer pipelines in one Python process work — and re-acquired in every callback, which is why a per-buffer callback does not. |

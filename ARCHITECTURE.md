@@ -40,7 +40,7 @@ And one rule that both of those rest on:
 | Layer | Built in | What it knows | Where truth lives | What can disagree |
 |---|---|---|---|---|
 | **The box** | М9 EdgeVMS | what it *is* | the image that booted | nothing — a box is whatever was flashed onto it |
-| **The Node** | М10 NodeVMS | what it *should be* | a Postgres on the box | desired state and actual state, inside one process |
+| **The Node** | М9 NodeVMS | what it *should be* | a Postgres on the box | desired state and actual state, inside one process |
 | **The cluster** | М11 ClusterVMS | what it should be, *on whichever server survived* | each Node, unchanged when a server dies | **two instances of the same Node** |
 | **The domain** | М12 DomainVMS | what it should be, *and which cluster holds it* | each Node, with a directory across clusters | Nodes, with the directory — and the directory with itself, because it cannot be consistent |
 | **Seeing it** | М13 Observability | whether any of the above is true right now | — | *broken* versus *unreachable* |
@@ -64,7 +64,7 @@ A Node owns its own retention policy, so it cannot go stale on that. Entitlement
 
 **On every box** (М9): an A/B root filesystem under RAUC, signed bundles, one-attempt rollback decided by a health check that reaches all the way to *is footage being written*; Podman under Quadlet; and a data partition holding everything that must outlive both an OS update and an application update — container storage, configuration, and the archive.
 
-**Per Node** (М10): one Postgres holding configuration, the archive index and events; one AppHost running the reconcile loop and up to ~50 GStreamer pipelines in one Python process — in the product, the worker's own controller inside DriverPack, see §1.11; a `/metrics` endpoint exporting `camera_lag` and `camera_silent_seconds`.
+**Per Node** (М9): one Postgres holding configuration, the archive index and events; one AppHost running the reconcile loop and up to ~50 GStreamer pipelines in one Python process — in the product, the worker's own controller inside DriverPack, see §1.11; a `/metrics` endpoint exporting `camera_lag` and `camera_silent_seconds`.
 
 **Per cluster** (М11): Nomad servers and clients — the cluster *is* a Nomad region; an object store on the cluster's own servers holding each Node's restore point; and the cluster directory, which is nothing more than each Node's Nomad Variable, scanned.
 
@@ -191,9 +191,9 @@ The course's **AppHost was a stand-in for the worker's own controller.** It exis
 
 What remains of the "controller" is a few dozen lines inside DriverPack that turn *the platform's assignment for this shard* — a Variable naming a config object — into DriverPack's desired set. Not a process, not a layer.
 
-**What crosses the boundary unchanged is the contract, and it is the point of М10 and М11.** DriverPack's controller must satisfy what the course's tests define, because those tests were written against a design rather than a language: desired is persisted and actual is derived (a fresh process rediscovers everything and persists nothing about what it runs); a report can never move desired (`>=`); exponential backoff with jitter, so cameras that failed together do not retry together; positions kept apart from reasons in what it reports; the epoch in every key it writes and a lease gate on every start; local commit first, publish second; the heartbeat carrying its status so nobody has to call it. `nodevms/`, `clustervms/` and `nodevms-go/` are the **reference implementation of that contract** — the thing DriverPack's tests are ported from, the way the Go port's were — and no longer a claim about what the product's process tree looks like.
+**What crosses the boundary unchanged is the contract, and it is the point of М9 and М11.** DriverPack's controller must satisfy what the course's tests define, because those tests were written against a design rather than a language: desired is persisted and actual is derived (a fresh process rediscovers everything and persists nothing about what it runs); a report can never move desired (`>=`); exponential backoff with jitter, so cameras that failed together do not retry together; positions kept apart from reasons in what it reports; the epoch in every key it writes and a lease gate on every start; local commit first, publish second; the heartbeat carrying its status so nobody has to call it. `nodevms/`, `clustervms/` and `nodevms-go/` are the **reference implementation of that contract** — the thing DriverPack's tests are ported from, the way the Go port's were — and no longer a claim about what the product's process tree looks like.
 
-Two things the boundary must keep explicit. **Crash isolation:** М10 Lesson 5 separated controller from worker partly so that a vendor SDK's segfault would not take the control loop with it; with both in DriverPack it does, and that is acceptable *only because* the state is outside — Nomad restarts the shard, it reloads its assignment, and the lease and epoch make the restart harmless. **The per-frame rule:** DriverPack is C++, so М10 Lesson 3's rule holds by construction; a Python plugin API "for analytics" inside it would bring the argument back. The detector tier exists so that inference never runs in the writer's process.
+Two things the boundary must keep explicit. **Crash isolation:** М9 Lesson 9 separated controller from worker partly so that a vendor SDK's segfault would not take the control loop with it; with both in DriverPack it does, and that is acceptable *only because* the state is outside — Nomad restarts the shard, it reloads its assignment, and the lease and epoch make the restart harmless. **The per-frame rule:** DriverPack is C++, so М9 Lesson 7's rule holds by construction; a Python plugin API "for analytics" inside it would bring the argument back. The detector tier exists so that inference never runs in the writer's process.
 
 **Decided beside it (М11, *2c*):** the cluster is **workers** (1+, by workload — DriverPack shards with stable identity, movable), **resources** (N — the archive on a server's disks, GPU compute, a camera-VLAN NIC; server-bound `system` jobs) and **one controller** (placement and rebalance; stateless, correct by CAS, safe at two, never on the recovery path). Footage stays on the dead *resource* and recording continues on another; the per-Node Postgres goes; the epoch stays in the key. The storage resource is per-server by default, an erasure-coded pool by choice, with the failure arithmetic of each in [М11's design record](./М11_ClusterVMS/module-design.md).
 
@@ -227,7 +227,7 @@ And the rule that made Python viable for the course: **Python touches control, n
 
 **What was found later:** the health-check ladder is an alert-quality ladder, and its bottom row — *is footage being written* — is the highest-stakes alert in the course, written three modules before alerting is taught. And the module had been shipping a defect since its first lesson: `kvssink` publishing straight to AWS with nothing behind it, so an uplink blink was data loss. The **spool** was added — segments to the data partition, a separate uploader, delete on acknowledgement, a bound with a stated policy, a rate-limited drain — and those segments became the first artifact a later module *upgrades* rather than replaces.
 
-### Step 3 — The box owns its truth (М10)
+### Step 3 — The box owns its truth (М9)
 
 **The question:** where does a camera's configuration live now that Kinesis does not hold it?
 
@@ -239,7 +239,7 @@ And the rule that made Python viable for the course: **Python touches control, n
 
 Three rules were set here that everything above inherits:
 
-- **Desired state is persisted; actual state is derived.** Persist the second and you have built a cache that lies — a green console over a box recording nothing, and the student builds that bug on purpose in М10 Lesson 2.
+- **Desired state is persisted; actual state is derived.** Persist the second and you have built a cache that lies — a green console over a box recording nothing, and the student builds that bug on purpose in М9 Lesson 6.
 - **`observed_revision >= revision` is the only definition of applied**, at every layer. An integer, because ordering expresses *distance*; a hash expresses only difference and a timestamp needs clocks to agree.
 - **Operator-owned versus controller-owned columns is a security boundary.** `phase` and `observed_revision` are never settable by a client. And the `cameras` table has no Node column a client may write, because **which Node owns a camera is decided for the operator, never by them.**
 
@@ -289,7 +289,7 @@ The rule that came out of it — *small and consistent in the scheduler's store;
 
 **Rights are Node-local**, because enforcement must survive the domain being down. The asymmetry that decided it: a stale camera edit is benign and self-announcing; a stale *revoke* is silent, adversarial, and unbounded — the removed administrator keeps the site until someone reaches that Node. So grants carry `valid_until`, renewed on the stream that already carries configuration, converting an unbounded window into a number the product states.
 
-**Human credentials removed from the Nodes.** М10's per-Node `operators` table became N Alices and N stealable hashes, with a grant that expires attached to a credential that does not. The Node now holds the signer's public key and verifies a short-lived token offline. Two lifetimes — token and grant — and the revocation window is the shorter, which most people get wrong. Break-glass named as the honest residue.
+**Human credentials removed from the Nodes.** М9's per-Node `operators` table became N Alices and N stealable hashes, with a grant that expires attached to a credential that does not. The Node now holds the signer's public key and verifies a short-lived token offline. Two lifetimes — token and grant — and the revocation window is the shorter, which most people get wrong. Break-glass named as the honest residue.
 
 ### Step 8 — Cluster and domain become different sizes
 

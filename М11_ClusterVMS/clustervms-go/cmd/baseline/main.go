@@ -3,7 +3,7 @@
 // fakes for Nomad and Postgres and a directory for the object store, with
 // fifty cameras, doing nothing. Prints its own proportional set size (PSS)
 // after settling. No GStreamer in either language — that is measured
-// separately by М10's probe and costs the same everywhere.
+// separately by М9's probe and costs the same everywhere.
 package main
 
 import (

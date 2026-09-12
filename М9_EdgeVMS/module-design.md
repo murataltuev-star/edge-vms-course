@@ -4,7 +4,7 @@
 
 Modules 1–7 built a VMS that runs when you type `make serve`. Four lessons turn it into an appliance: an operating system that can be replaced atomically and rolled back with nobody on site, and an application that survives that replacement.
 
-> **Revision note.** This module originally ran to nine lessons and carried a Part B on multi-node scheduling. That work moved to [М11](../М11_ClusterVMS/module-design.md), where Nodes are scheduled across servers and made to survive one dying. What is left here is one box, which is what the name promises. The orchestrator comparison that shaped Part B is still recorded in [`kubernetes-vs-nomad.md`](../М11_ClusterVMS/kubernetes-vs-nomad.md), and its verdict now applies to М10.
+> **Revision note.** This module originally ran to nine lessons and carried a Part B on multi-node scheduling. That work moved to [М11](../М11_ClusterVMS/module-design.md), where Nodes are scheduled across servers and made to survive one dying. What is left here is one box, which is what the name promises. The orchestrator comparison that shaped Part B is still recorded in [`kubernetes-vs-nomad.md`](../М11_ClusterVMS/kubernetes-vs-nomad.md), and its verdict now applies to М9.
 
 ---
 
@@ -23,7 +23,7 @@ That third clause is the one students nod at and then violate, so Lesson 4 makes
 
 Both planes are fully visible on one box, which is why this module needs only one box. Lesson 4 is where the distinction bites: Podman's storage must be redirected to the data partition, because container images and volumes left in a rootfs slot are destroyed by the next OS update. That single configuration line is the thesis made concrete.
 
-**М10 adds a scheduler above this**, not instead of it. Podman remains the runtime there — Nomad's Podman task driver means the scheduler sits on top of what students already know rather than replacing it. One runtime, one mental model, from a single appliance onward.
+**М9 adds a scheduler above this**, not instead of it. Podman remains the runtime there — Nomad's Podman task driver means the scheduler sits on top of what students already know rather than replacing it. One runtime, one mental model, from a single appliance onward.
 
 ---
 
@@ -34,8 +34,8 @@ Both planes are fully visible on one box, which is why this module needs only on
 | Target platform | x86-64, UEFI + GRUB | How a VMS appliance actually ships. Testable end-to-end in QEMU before touching metal. |
 | Payload | M1–7 app, **KVS retained** | The edge box becomes a managed gateway that still publishes to AWS. Deployment and lifecycle are the new skill. |
 | Uplink loss | **Spool to the data partition, then upload** | The one media change this module makes, and it is forced: you cannot buffer behind `kvssink`, and an appliance that loses footage whenever the link blinks is not an appliance. Segments are written locally and uploaded by a separate process. |
-| Those segments | **Become the archive in М10** | They are written here as a buffer and never thrown away: М10 puts an index over the same files, М12 makes the upload optional. The first thing in the course a later module *upgrades* rather than replaces. |
-| Scope | **One appliance** | Scheduling, clustering and multi-site delivery moved to М10 and М12. A module called EdgeVMS should not build a raft cluster. |
+| Those segments | **Become the archive in М9** | They are written here as a buffer and never thrown away: М9 puts an index over the same files, М12 makes the upload optional. The first thing in the course a later module *upgrades* rather than replaces. |
+| Scope | **One appliance** | Scheduling, clustering and multi-site delivery moved to М9 and М12. A module called EdgeVMS should not build a raft cluster. |
 | Bundle format | **`verity`, set explicitly in the manifest and enforced with `bundle-formats=-plain`** | RAUC still defaults to the legacy `plain` format with only a warning if you configure neither. `verity` is also what makes installing from an HTTP URL possible at all. |
 | Slot status storage | **`data-directory`, not `statusfile`** | `statusfile` is deprecated in current RAUC. Most tutorials still use it. |
 | Bundle delivery | Plain HTTP(S) | `rauc install https://…` keeps the focus on the update mechanism. **Eclipse hawkBit** is the production answer and now matters more than it did: it restores pull-based OS updates, partly offsetting the reconciliation lost with Fleet. Candidate for promotion out of a footnote. |
@@ -48,7 +48,7 @@ Carries forward from the existing course:
 
 - **М8 Lesson 3** — containers, images vs. containers, Dockerfile, why credentials are passed by name and never baked in
 - **М8 Lesson 6** — `config.py` reads settings but never credentials; boto3 finds them in the environment. That discipline is what makes an appliance image shippable
-- **М8 Lesson 2** — process supervision and signals. systemd replaces `looper.py`'s hand-rolled supervision here; М10 later adds a scheduler above systemd for multi-node work. The comparison is worth making explicit at both steps
+- **М8 Lesson 2** — process supervision and signals. systemd replaces `looper.py`'s hand-rolled supervision here; М9 later adds a scheduler above systemd for multi-node work. The comparison is worth making explicit at both steps
 
 New assumed knowledge: none.
 
@@ -129,7 +129,7 @@ capture ──▶ splitmuxsink ──▶ /data/spool/<camera>/<ts>.mp4
 - **The spool needs a bound, and hitting it is a decision the student makes, not the disk.** When the partition fills: drop the oldest, or stop recording? Both are defensible and they are different products. Pick one, write it down, and make the appliance say which it did rather than failing silently
 - **Catch-up is its own outage if you let it be.** Ten minutes of backlog from every camera arrives the instant the link returns, competing with live upload — and the live stream is the one someone is watching. Rate-limit the drain, prioritise live over backlog, and know how long full recovery takes. A recovery that saturates the uplink for an hour has turned a ten-minute fault into a seventy-minute one
 
-> **Why this is not premature.** The spool exists here because the link can fail here. **М10 does not throw it away** — it puts an index over the same files and they become the archive. **М12 makes the upload conditional**: an on-prem Node has nobody to upload to, and a cloud Node *is* the destination. Same segments, three meanings.
+> **Why this is not premature.** The spool exists here because the link can fail here. **М9 does not throw it away** — it puts an index over the same files and they become the archive. **М12 makes the upload conditional**: an on-prem Node has nobody to upload to, and a cloud Node *is* the destination. Same segments, three meanings.
 
 **Deliverable:** the VMS running under systemd on the appliance, surviving reboot, publishing to KVS — and then the uplink pulled for ten minutes with **nothing lost**, plus a stated number for how long the spool can survive an outage before the policy you chose takes effect.
 
@@ -161,7 +161,7 @@ Every lesson will mark which claims are run-here versus documentation-derived.
 
 1. **Lesson numbering.** This assumes М9 continues at 16, i.e. М8 doesn't add numbered lessons.
 2. **Commissioning.** Does the appliance need a first-boot setup flow (network, credentials, stream name)? Adds roughly a lesson.
-3. **Hardware acceleration.** GPU/codec passthrough into containers — in scope here, or deferred to М10 where non-containerised task drivers become available?
+3. **Hardware acceleration.** GPU/codec passthrough into containers — in scope here, or deferred to М9 where non-containerised task drivers become available?
 4. **Is four lessons the right size?** RAUC, rollback and the three-way boundary are a focused subject and the module is tight. Commissioning (question 2) is the obvious candidate if it should be five.
 
 ---

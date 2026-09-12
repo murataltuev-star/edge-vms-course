@@ -6,9 +6,9 @@
 
 ## Why this lesson exists
 
-Every screen an operator opens starts with the same list: every camera, its name, its site, whether it is recording, when it was last seen — across Nodes and across clusters. The architecture so far cannot draw it. The directory answers *where* camera 7 is, and holds camera ids and a pointer to a blob; the name, the phase and `last_seen` live in each Node's Postgres, because М10 put them there and М11's *a Node owns its configuration* keeps them there. So the list exists nowhere and has to be assembled, and the wrong way to assemble it is the obvious one.
+Every screen an operator opens starts with the same list: every camera, its name, its site, whether it is recording, when it was last seen — across Nodes and across clusters. The architecture so far cannot draw it. The directory answers *where* camera 7 is, and holds camera ids and a pointer to a blob; the name, the phase and `last_seen` live in each Node's Postgres, because М9 put them there and М11's *a Node owns its configuration* keeps them there. So the list exists nowhere and has to be assembled, and the wrong way to assemble it is the obvious one.
 
-The second half of the lesson is a question the Node-centred modules never had to ask: who talks to people? М10 put a console on the Node and it was the right console for the right client — the Node's own status, one query. It never said who is allowed to be that console's client, and the answer decides whether every browser tab is a subtraction from the camera count.
+The second half of the lesson is a question the Node-centred modules never had to ask: who talks to people? М9 put a console on the Node and it was the right console for the right client — the Node's own status, one query. It never said who is allowed to be that console's client, and the answer decides whether every browser tab is a subtraction from the camera count.
 
 > **What you can verify without hardware.** The read model, the causes, the API façade and the gateway's contract run against fakes in `tests/test_lesson3_readview_api_gateway.py`, including the console over real HTTP on a random port. Two hundred cameras across four Nodes, a server killed, one cause — that is a test. WebRTC, fMP4 and TURN are the transport under the gateway's contract and need a browser and the bench.
 
@@ -17,8 +17,8 @@ The second half of the lesson is a question the Node-centred modules never had t
 - **Lesson 1** — the directory of directories. Writes go through it to find the owner.
 - **М11 Lesson 4** — the heartbeat as an object, and why it left raft. This lesson is that object carrying its payload.
 - **М11 Lesson 3** — `replicated`. It stays the only place the UI learns an edit reached the cluster.
-- **М10 Lesson 5** — positions and reasons; the Node's console; the login marked temporary.
-- **М10 Lesson 3** — `B + n·I`. The reason a Node must not serve browsers is that formula.
+- **М9 Lesson 9** — positions and reasons; the Node's console; the login marked temporary.
+- **М9 Lesson 7** — `B + n·I`. The reason a Node must not serve browsers is that formula.
 
 ## Learning objectives
 
@@ -68,7 +68,7 @@ Three properties, and each is a sentence in the design record. **It is not a dat
 clusters: {"north": "ok", "south": "unreachable"}   complete: false
 ```
 
-This is М10's *desired is persisted, actual is derived* one layer up. The snapshots are actual state; a copy of actual state is only ever a cache, and this one admits it.
+This is М9's *desired is persisted, actual is derived* one layer up. The snapshots are actual state; a copy of actual state is only ever a cache, and this one admits it.
 
 ## Step 3 — One cause
 
@@ -96,7 +96,7 @@ def update_camera(self, camera, fields, idempotency_key, token=None):
     result = self.consoles(ans.node).update_camera(camera, fields, subject)
 ```
 
-Read the refusals. A client may not set `node` or `cluster` — placement is decided and stored by the placement service with a reason, never dictated by an edit. It may not set `phase` or `observed_revision` — those are controller-owned, and М10 Lesson 1 said so. And a camera the directory cannot find gets a `404` only if the answer was complete; if a cluster was unreachable the honest code is `503`, because *not found* and *could not look* are different failures and a client that retries on one should not on the other.
+Read the refusals. A client may not set `node` or `cluster` — placement is decided and stored by the placement service with a reason, never dictated by an edit. It may not set `phase` or `observed_revision` — those are controller-owned, and М9 Lesson 5 said so. And a camera the directory cannot find gets a `404` only if the answer was complete; if a cluster was unreachable the honest code is `503`, because *not found* and *could not look* are different failures and a client that retries on one should not on the other.
 
 The idempotency key is what makes a PUT safe to retry over a link that drops: the retried request returns the first response and the owning Node sees one edit. The edit reaches the Node through *its* console, so the owner does not change, one-writer-per-key is untouched, and `replicated` (М11 Lesson 3) remains the only place the UI learns the edit reached the restore point.
 
@@ -172,7 +172,7 @@ In no case does a web problem reach a recorder, and in no case does a recorder's
 1. Set `lost_after` below `HEARTBEAT_INTERVAL` and describe what the operator sees. Then say why the number must be М11's `lost_after` and not a console setting.
 2. Add the `conditions` from the Node's `/status` to the heartbeat (the payload leaves them out) and cost it: bytes per Node per interval at two hundred cameras with three conditions each.
 3. Write the `causes()` case for a whole datacenter — every server in one cluster silent while the cluster's Variables still answer (the servers are up, the cameras' network is gone). Which scope is that?
-4. The idempotency cache is in the console's memory and `count = 2`. Say what a retry that lands on the other instance does, and whether the Node's own revision check (М10 Lesson 1) saves you.
+4. The idempotency cache is in the console's memory and `count = 2`. Say what a retry that lands on the other instance does, and whether the Node's own revision check (М9 Lesson 5) saves you.
 5. Replace the leaky queue with a blocking one on the *upstream* subscription and run the fan-out test. Then say, in one sentence, which process you just made a dependency of recording.
 
 ## Where this is going

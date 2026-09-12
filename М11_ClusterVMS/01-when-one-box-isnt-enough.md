@@ -6,17 +6,17 @@
 
 ## Why this lesson exists
 
-Everything so far ran on one box, and one box is a perfectly good product. М9 made it update itself and М10 made it own its truth; if the box dies, the cameras stop, and for a shop with eight cameras that is the deal they bought.
+Everything so far ran on one box, and one box is a perfectly good product. М9 made it update itself and М9 made it own its truth; if the box dies, the cameras stop, and for a shop with eight cameras that is the deal they bought.
 
 This module is for the deployment where it is not the deal: two hundred cameras, footage that must survive a server dying, a site where a dark hour is a contract breach. That takes more than one server, and more than one server is not just "more servers" — it is a different kind of system, with a scheduler deciding where work runs and a set of new ways to be wrong.
 
 The lesson has one argument to win before it builds anything: **on a single appliance, a scheduler is the wrong answer**, and students should leave able to make that case rather than repeat it. The second half builds the cluster the rest of the module runs on, and measures the one number every later placement decision depends on.
 
-> **What you can verify without hardware.** The argument, the arithmetic and the shard-size measurement need nothing but Python and М10's probe. Building the cluster needs three VMs from the М9 bench (or three anything with a Linux kernel and Podman). Nothing in this lesson needs a camera.
+> **What you can verify without hardware.** The argument, the arithmetic and the shard-size measurement need nothing but Python and М9's probe. Building the cluster needs three VMs from the М9 bench (or three anything with a Linux kernel and Podman). Nothing in this lesson needs a camera.
 
 ## Prerequisites
 
-- **М10 entire** — the Node: its Postgres, its AppHost, its cameras. This module runs several of them.
+- **М9 entire** — the Node: its Postgres, its AppHost, its cameras. This module runs several of them.
 - **М9 Lesson 4** — Quadlet. Lesson 2 translates those units; this lesson explains why you keep them on one box.
 - [**`apphost-and-process-model.md`**](../М9_EdgeVMS/apphost-and-process-model.md) — the process model at a thousand cameras, and why the orchestrator must not own camera lifecycle.
 - Three bench VMs with Podman, each with a data partition; `nomad` **≥ 1.8.0** (target 1.10.x LTS — see the module design's version floor and [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md) for the licence).
@@ -37,7 +37,7 @@ Four things, and it is worth being precise because people reach for a cluster fo
 
 | Pressure | What runs out | Cluster or bigger box? |
 |---|---|---|
-| **Camera count** | CPU and memory for pipelines — М10 Lesson 3's `B + n × I` | A bigger box, for a long time. Fifty pipelines in one process is cheap; a server does several such shards |
+| **Camera count** | CPU and memory for pipelines — М9 Lesson 7's `B + n × I` | A bigger box, for a long time. Fifty pipelines in one process is cheap; a server does several such shards |
 | **Storage throughput** | disk write bandwidth, then disk *capacity* | More disks first. Two hundred cameras at 4 Mbit/s is 100 MB/s — one good disk — but 2 TB/day, which is where capacity beats bandwidth |
 | **Retention** | disk capacity, linearly with days | More disks, or a second box when the chassis is full of them |
 | **Availability** | **a server that must not be a single point of failure** | **This one.** No bigger box fixes it |
@@ -178,11 +178,11 @@ nomad acl bootstrap
 
 Before placing anything, decide what a unit of placement *is*. The obvious unit is one container per camera, and it is the wrong one; М9's process-model record argues it and this step measures it.
 
-Run М10's probe against the real worker:
+Run М9's probe against the real worker:
 
 ```bash
-python3 ../М10_NodeVMS/reference/shard-memory-probe.py --pipelines 1
-python3 ../М10_NodeVMS/reference/shard-memory-probe.py --pipelines 50
+python3 ../М9_EdgeVMS/reference/shard-memory-probe.py --pipelines 1
+python3 ../М9_EdgeVMS/reference/shard-memory-probe.py --pipelines 50
 ```
 
 It reports two numbers, and they are the ones Lesson 5 sizes placement with:
@@ -209,7 +209,7 @@ So the unit Nomad places is a **Node**: one process, one shard of cameras, one d
 cameras per shard  =  (memory budget − B) / I
 ```
 
-with the budget chosen so that a whole server's shards leave room for page cache — video is a streaming write workload and starving the cache shows up as dropped segments before it shows up as an alarm. The honest cost of the shard, stated in М10 Lesson 3 and repeated here because it now decides a placement policy: **one segfault takes the whole shard.** Fifty cameras, not one. Bounded by shard size, by the scheduler restarting it in seconds, and by `splitmuxsink` losing only the open segment.
+with the budget chosen so that a whole server's shards leave room for page cache — video is a streaming write workload and starving the cache shows up as dropped segments before it shows up as an alarm. The honest cost of the shard, stated in М9 Lesson 7 and repeated here because it now decides a placement policy: **one segfault takes the whole shard.** Fifty cameras, not one. Bounded by shard size, by the scheduler restarting it in seconds, and by `splitmuxsink` losing only the open segment.
 
 **Deliverable:** a three-server cluster with `nomad server members` showing a leader; `B` and `I` from *your* hardware and the shard size they imply; and one page arguing why this deployment needed a cluster and why the eight-camera shop from М9 must never get one.
 
@@ -247,4 +247,4 @@ with the budget chosen so that a whole server's shards leave room for page cache
 
 You have a cluster and a unit of placement. Nothing is placed yet.
 
-**Lesson 2 makes М10's Node a Nomad job** — a translation from Quadlet, not a rewrite — and then meets the first hard question: when Nomad moves that job to a different server, *which Node is it?* The answer is not the allocation index, and getting it wrong corrupts an archive.
+**Lesson 2 makes М9's Node a Nomad job** — a translation from Quadlet, not a rewrite — and then meets the first hard question: when Nomad moves that job to a different server, *which Node is it?* The answer is not the allocation index, and getting it wrong corrupts an archive.

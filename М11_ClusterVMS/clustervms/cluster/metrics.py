@@ -1,5 +1,5 @@
 """Lesson 4 — the two numbers this module exports, in Prometheus text form,
-appended to М10's /metrics.
+appended to М9's /metrics.
 
   node_failover_seconds{kind="last"|"worst"}   the RTO. Worst case is the one that matters.
   node_epoch_conflicts                          zero forever on a healthy cluster. Alarm on it anyway.

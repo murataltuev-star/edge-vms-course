@@ -19,7 +19,7 @@ once the far side has acknowledged. That exit status is the acknowledgement.
 
 The two numbers are written to --signals (default /run/vms/spool-signals) in
 Prometheus text format, where the health check can read them with the uplink
-down. М13 gives them an exporter; М10 turns this spool into an archive.
+down. М13 gives them an exporter; М9 turns this spool into an archive.
 """
 from __future__ import annotations
 

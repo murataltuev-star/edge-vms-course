@@ -56,7 +56,7 @@ and assumed three things that did not exist. They do now:
    `make agent-image` builds it from the course root.
 2. **`GET /health` on port 8000** — row 2 of М9 Lesson 3's health check ("the
    VMS answers"). It answers *only* that; whether footage is being written is
-   row 3, answered by the spool or by М10's Node, never by this route.
+   row 3, answered by the spool or by М9's Node, never by this route.
 3. **`vms-upload-segment`** — the spool's `--upload-cmd`, which must exit 0
    only once the far side has acknowledged. `kvssink` cannot be it, because a
    sink's success is "the write returned". `edge/upload_segment.py` is:
@@ -121,4 +121,4 @@ its fake process table, and only the interpreter line is found.
   started through `POST /api/recording/start` or the Start button, exactly as
   in М8. An appliance that should record from boot needs one more line in
   `vms-agent.container` (`Exec=` a tiny start-on-boot wrapper) — left for
-  М10, where `INSERT INTO cameras` replaces the button.
+  М9, where `INSERT INTO cameras` replaces the button.

@@ -1,6 +1,6 @@
 # domainvms — М12, whole
 
-The smallest layer that can sit above a set of clusters, be switched off, and be the top of the product — as code. Built **on** М11's `clustervms/` (imported, not copied) and through it on М10's `nodevms/`: the domain reads each cluster's Variables through М11's `Directory`, its object store through М11's adapters, and never holds a database.
+The smallest layer that can sit above a set of clusters, be switched off, and be the top of the product — as code. Built **on** М11's `clustervms/` (imported, not copied) and through it on М9's `nodevms/`: the domain reads each cluster's Variables through М11's `Directory`, its object store through М11's adapters, and never holds a database.
 
 ```
 domainvms/

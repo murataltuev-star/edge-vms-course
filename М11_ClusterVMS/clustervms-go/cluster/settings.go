@@ -1,7 +1,7 @@
 package cluster
 
 // Settings are read from the environment (М8: credentials never live in
-// the image). The subset М10's Settings has that the cluster host touches;
+// the image). The subset М9's Settings has that the cluster host touches;
 // the same variable names.
 
 import (

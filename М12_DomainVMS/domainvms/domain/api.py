@@ -21,7 +21,7 @@ FORBIDDEN_FIELDS = ("node", "cluster", "placement", "epoch", "observed_revision"
 
 
 class NodeConsole(Protocol):
-    """What the console can ask of a Node's own console (М10 Lesson 5, М11 Lesson 5)."""
+    """What the console can ask of a Node's own console (М9 Lesson 9, М11 Lesson 5)."""
     def update_camera(self, camera: int, fields: dict, subject: str | None) -> dict: ...
     def create_camera(self, fields: dict, subject: str | None) -> dict: ...
 

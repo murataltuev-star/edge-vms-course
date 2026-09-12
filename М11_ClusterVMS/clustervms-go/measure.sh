@@ -4,7 +4,7 @@
 # Needs: go, python3, NODEVMS_PATH (../nodevms) and CLUSTERVMS_PATH (../clustervms).
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
-export NODEVMS_PATH="${NODEVMS_PATH:-$HERE/../../М10_NodeVMS/nodevms}"
+export NODEVMS_PATH="${NODEVMS_PATH:-$HERE/../../М9_EdgeVMS/nodevms}"
 export CLUSTERVMS_PATH="${CLUSTERVMS_PATH:-$HERE/../clustervms}"
 cd "$HERE"
 echo "== binaries"

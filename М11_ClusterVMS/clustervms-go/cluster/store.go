@@ -1,6 +1,6 @@
 package cluster
 
-// Store is М10's PgStore as ClusterVMS sees it: the statements the host
+// Store is М9's PgStore as ClusterVMS sees it: the statements the host
 // touches, plus the three ClusterVMS adds (dump, revision, restore). The
 // Postgres implementation lives behind the `pg` build tag (pgstore.go);
 // FakeClusterStore is the same contract in memory.
@@ -38,7 +38,7 @@ type Event struct {
 }
 
 type Store interface {
-	// М10 surface
+	// М9 surface
 	Migrate(dir string) (bool, error)
 	FetchDesired() ([]CameraRow, error)
 	Report(rows []StatusRow) error
@@ -148,7 +148,7 @@ func (s *FakeClusterStore) RestoreConfig(blob []byte) (int64, error) {
 }
 
 // Edit is "the operator edited a camera": the row changes and the revision
-// moves past every other row's, as М10's trigger does.
+// moves past every other row's, as М9's trigger does.
 func (s *FakeClusterStore) Edit(id int64, change func(*CameraRow)) int64 {
 	r, ok := s.Rows[id]
 	if !ok {

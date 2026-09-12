@@ -20,7 +20,7 @@ from conftest import FakeClusterStore as _Fake, cam  # noqa: E402
 
 
 class FakeClusterStore(_Fake):
-    """М10's retention task also runs here; give it the two reads it makes."""
+    """М9's retention task also runs here; give it the two reads it makes."""
     async def partitions(self, parent): return []
     async def retention_days(self): return {}
 

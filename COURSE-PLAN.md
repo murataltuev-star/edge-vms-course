@@ -10,19 +10,19 @@ A shipped edge VMS is seven layers deep. The course builds them in dependency or
 |---|---|---|---|---|
 | 1 | **RAUC** | What OS is this box running, and can I change it safely? | М9 | Designed |
 | 2 | **Nomad + Podman** | What workload is running, and where? | М9 (one box) · М11 (a cluster) | Written |
-| 3 | **Postgres** | What does this system know about itself? | М10 | Written |
+| 3 | **Postgres** | What does this system know about itself? | М9 | Written |
 | 4 | **The directory** | Which Node, which cluster — and is that answer complete? | М11 (a cluster's) · М12 (across clusters) | Written (М11) · Written (М12) |
 | 5 | **The domain signer** | Who is allowed to know what, and how do they prove it? | М12 — the domain is its own root; *OpenBao only for a multi-tenant vendor, М13* | Written |
 | 6 | **Prometheus + logs** | Is it working, and how would I know? | М13 — domain-level; the remote observer is a domain service | Designed |
 | 7 | **The vendor boundary** | What may the vendor do, and what must it never be able to? | М14 | Designed |
 
-Layers 1–2 are the two update planes М9 is built around: the OS underneath, the workload on top — both visible on a single box, which is all М9 needs. М9 also owns the **third** thing on that box, which is neither: the data. A spool of recorded-but-not-yet-uploaded segments outlives both planes, and the segments it writes are what М10 turns into the archive. Layers 3–5 are the product, and **the domain is its top** — one customer is one domain. Layer 7 is not a layer of the product at all: it is the far side of a boundary the product must work across in one direction only.
+Layers 1–2 are the two update planes М9 is built around: the OS underneath, the workload on top — both visible on a single box, which is all М9 needs. М9 also owns the **third** thing on that box, which is neither: the data. A spool of recorded-but-not-yet-uploaded segments outlives both planes, and the segments it writes are what М9 turns into the archive. Layers 3–5 are the product, and **the domain is its top** — one customer is one domain. Layer 7 is not a layer of the product at all: it is the far side of a boundary the product must work across in one direction only.
 
 **Layers 5 and 7 turned out to be one layer.** They are both in М12. The plan had identity in layer 5 and device management in layer 7, three modules apart, and each asked the same question — *how does a machine prove who it is in order to get its first secret?* Enrollment is where identity and device management meet, and separating them meant neither owned it.
 
-**Layer 4 is split across two modules,** which is a change from this plan's first version. М10 builds the reconciliation loop on a single Node, where both ends of it are visible at once; М11 handles what happens when ownership is contested. A database with nothing acting on it is not a working system, so М10 could not stop at Postgres.
+**Layer 4 is split across two modules,** which is a change from this plan's first version. М9 builds the reconciliation loop on a single Node, where both ends of it are visible at once; М11 handles what happens when ownership is contested. A database with nothing acting on it is not a working system, so М9 could not stop at Postgres.
 
-**Layer 2 moved out of М9 and into М11.** М9's own progression promises one box — *a box is whatever was flashed onto it* — and it cannot promise that while building a three-server cluster in its second half. It spent one revision in М10, on the grounds that scheduling is desired-state work; that is true, but it put the two-level idea in two modules and taught it twice. A cluster and the controller above it are one arc. Nomad's cross-site federation went further still, to М13, where many networks actually begin.
+**Layer 2 moved out of М9 and into М11.** М9's own progression promises one box — *a box is whatever was flashed onto it* — and it cannot promise that while building a three-server cluster in its second half. It spent one revision in М9, on the grounds that scheduling is desired-state work; that is true, but it put the two-level idea in two modules and taught it twice. A cluster and the controller above it are one arc. Nomad's cross-site federation went further still, to М13, where many networks actually begin.
 
 ---
 
@@ -82,11 +82,11 @@ Worth recording because it inverts the layer table above. Auditing the course's 
 
 That leaves a genuinely narrow scope for OpenBao — **dynamic credentials, and the secrets a multi-tenant operator holds for many customers** — and makes layer 5 a smaller layer than the table implies. What a vault does that Postgres cannot is *issue and revoke*: the encryption key must not sit beside the data, and a stored `valid_until` cannot revoke anything by itself. If the orchestration layer stays single-tenant, the honest answer may be that the product does not need one, and М14 Lesson 4 is written to reach that conclusion rather than avoid it.
 
-**The exception, and it is the course's only real secrets problem:** camera credentials. An RTSP URL carries `user:pass@` inline, so М10's `rtsp_url` column silently held every customer's camera password in plaintext until М10 Lesson 1 was corrected. Those must work with everything above the Node unreachable, so a central vault is the wrong answer by construction — they stay at the site under a key the database backup does not contain.
+**The exception, and it is the course's only real secrets problem:** camera credentials. An RTSP URL carries `user:pass@` inline, so М9's `rtsp_url` column silently held every customer's camera password in plaintext until М9 Lesson 5 was corrected. Those must work with everything above the Node unreachable, so a central vault is the wrong answer by construction — they stay at the site under a key the database backup does not contain.
 
 ### 2. Secrets arrive three modules before the module that resolves them
 
-М9 provisions AWS credentials by hand at commissioning. М10 adds a database password, an operator account and the camera credentials. М12 adds a per-Node credential and a self-signed CA — and then **resolves all five itself**, four by giving things identities and one by promotion: the self-signed CA turns out to be the customer's permanent root. OpenBao appears only in М13, and only for a multi-tenant vendor.
+М9 Lesson 4 provisions AWS credentials by hand at commissioning. М9 Lessons 5–9 add a database password, an operator account and the camera credentials. М12 adds a per-Node credential and a self-signed CA — and then **resolves all five itself**, four by giving things identities and one by promotion: the self-signed CA turns out to be the customer's permanent root. OpenBao appears only in М13, and only for a multi-tenant vendor.
 
 This is deliberate and follows the course's existing discipline — `camera_sim.py` before the real pipeline, `filesink` before `kvssink`, fixtures before real fragments. Hand-provisioned secrets are the stand-in; М12 replaces them, and the replacement is the lesson. What must not happen is the resolution arriving as a surprise: every earlier module should mark its secret handling as temporary at the point it introduces it.
 
@@ -94,7 +94,9 @@ This is deliberate and follows the course's existing discipline — `camera_sim.
 
 ## The modules
 
-### М10 — NodeVMS: Postgres and the AppHost · 5 lessons · [written](./М10_NodeVMS/README.md)
+### М9 — EdgeVMS, Lessons 5–9: Postgres and the AppHost · [written](./М9_EdgeVMS/README.md)
+
+*Folded into М9 on 12 September 2026: the Node's five lessons follow the appliance's four, so one module carries the box from an A/B root to a database that owns what the box should be. The design brief is [`node-design.md`](./М9_EdgeVMS/node-design.md).*
 
 The cloud VMS spec forbade a database outright. The appliance needs one, and understanding *why the answer flipped* is half the module: in the cloud, KVS held the configuration; on-prem, the box holds it. The other half is that a row saying a camera should be recording is a wish until something makes it true.
 
@@ -104,15 +106,25 @@ The cloud VMS spec forbade a database outright. The appliance needs one, and und
 - The reconcile loop, built against a fake actuator first: desired persisted, actual derived, `observed_revision >= revision` as the only test of applied
 - Fifty GStreamer pipelines in one Python process — the GIL boundary demonstrated, `watchdog` for stall detection, and where Python stops being the right answer
 
+### М10 — NodeVMS: the platform's shape on one Node · 5 lessons · [designed](./М10_NodeVMS/module-design.md)
+
+The module that rebuilds the Node on the decision М11 arrived at last — **workers, resources, one controller** — and does it on a single box first, so the shape can be prototyped without a scheduler, without KVS and without a database. Three things are built from the GStreamer end: `driverpacksrc`, a source element that plays files whose names stand in for RTSP addresses; `archivesink`, a local archive on the spool's discipline; and the two processes every subsystem will give the platform — a **controller** that is the only writer of configuration in the cluster and a **worker** that runs pipelines and nothing else.
+
+- **`vmscontroller`** — the sole writer of the camera list and of camera-to-worker assignment; stateless, correct by CAS against the platform's config store; never on the recovery path
+- **`vmsworker`** — DriverPack as the worker: one process, N pipelines, its own reconcile loop over its assignment; Nomad (М11) runs as many as the workload needs
+- **The subsystem contract** — controller + worker + a config prefix + a heartbeat object, the same for the VMS, for detectors, and for the gateway; the platform knows the shape and nothing about video
+- **No sharding on one Node**, and the open question of where configuration lives answered: the controller writes it, the platform stores it, the worker reads its share
+- **KVS retired; the archive is ours**: segments on the spool, closed segments promoted to the archive resource, the epoch in the path, a manifest instead of an index
+
 ### М11 — ClusterVMS: a Node that outlives its server · 5 lessons · [written](./М11_ClusterVMS/README.md)
 
-The only module where getting it wrong corrupts customer data rather than merely stopping a service. М10's loop works on one box; this is one cluster — servers on one network you would bet recording on — and a Node that survives any of them dying.
+The only module where getting it wrong corrupts customer data rather than merely stopping a service. М9's loop works on one box; this is one cluster — servers on one network you would bet recording on — and a Node that survives any of them dying.
 
 - **A Node owns its configuration and never crosses a cluster.** Failover moves the Node within the cluster and its cameras go with it; nothing rewrites ownership. Chosen for archive locality, and it puts the fencing epoch at exactly the scope Nomad's per-cluster raft provides
 - **Leases, epochs and the zombie writer.** Dead, partitioned and paused are indistinguishable, and the design must be correct without resolving that. Fencing happens **at the archive, not the controller** — the epoch is in the segment path, so a stale writer produces orphaned files rather than corruption
 - **The restore point is the cluster's**, in its own object store — a backup, not a directory. Both of failover's dependencies live on the servers it fails over between, so a cluster is a complete product on its own
 - **The cluster directory, which was already built.** Each Node's Variable holds its camera ids; scanning them answers *where is camera 7*, in one raft, strongly consistent. Placement onto Nodes by measured capacity, the stability rule, and why consistent hashing is the reflexive wrong answer
-- **The whole module exists twice** — `clustervms/` in Python and `clustervms-go/` in Go, passing the same tests, restoring from each other's publications, and measured side by side: the language argument from М10 confirmed on a module rather than a file
+- **The whole module exists twice** — `clustervms/` in Python and `clustervms-go/` in Go, passing the same tests, restoring from each other's publications, and measured side by side: the language argument from М9 confirmed on a module rather than a file
 
 ### М12 — DomainVMS: several clusters, and the top of the product · 8 lessons · [written](./М12_DomainVMS/README.md) · [design](./М12_DomainVMS/module-design.md) · [code](./М12_DomainVMS/domainvms/README.md)
 
@@ -136,7 +148,7 @@ What is left once a cluster works alone: **everything that stops being knowable 
 |---|---|---|
 | М9 L3 | the health check's four-row ladder | it decides **rollback**, on the box, offline |
 | М9 L4 | `spool_oldest_seconds`, `spool_bytes_used` | alarm on age, not count — one threshold works at any camera count |
-| М10 L5 | `camera_lag` (a distribution), `camera_silent_seconds` | the second: the only one describing the product |
+| М9 L9 | `camera_lag` (a distribution), `camera_silent_seconds` | the second: the only one describing the product |
 | М11 L4 | `node_failover_seconds` (RTO, worst case), `node_epoch_conflicts` | a counter that should be zero forever |
 | М12 L1 | `node_replica_lag_seconds` | the worst Node, never the mean |
 
@@ -148,7 +160,7 @@ What is left for this module is what is genuinely *cross-cutting*:
 - **Cardinality, which is how monitoring becomes more expensive than the product it watches.** Per-camera series at a thousand cameras is a thousand time series per metric. Export distributions; leave the per-object number in the database the console already queries. **A metric is not a database**
 - **Alarm on the product, not the process** — М9 L3's rule, stated once for everything above it. Fragment write rate and camera-offline, not CPU graphs
 - **The thin uplink:** remote-write with downsampling, or local retention with pull-on-demand — and what an operator is shown for a site whose uplink is down, which is *not* "healthy"
-- **Logs:** journald, retention, and never letting a secret reach them — sharpened by М10 L1's finding that an RTSP URL carries the password inline, so the leak is a **log-formatting** bug rather than a storage one
+- **Logs:** journald, retention, and never letting a secret reach them — sharpened by М9 L5's finding that an RTSP URL carries the password inline, so the leak is a **log-formatting** bug rather than a storage one
 - **A second licensing finding, sharper than the Nomad one.** Grafana, Loki, Tempo and **Mimir** are all **AGPLv3**; Prometheus, VictoriaMetrics, Thanos, Cortex, the OTel Collector and Grafana Alloy are Apache 2.0. BUSL *permitted* this product; AGPL §6 triggers on **conveying at all**, modified or not, and Grafana's free Enterprise binary is explicitly not redistributable. The course's position: teach Prometheus and **ship no dashboard** — the customer installs Grafana and points it at an Apache-2.0 endpoint. Full reasoning in [`М13_Observability/module-design.md`](./М13_Observability/module-design.md)
 
 ### М14 — VendorVMS: the far side of the boundary · 5 lessons · [designed](./М14_VendorVMS/module-design.md)
@@ -166,8 +178,8 @@ What is left for this module is what is genuinely *cross-cutting*:
 
 The order is dependency-driven, not layer-numbered:
 
-- **М9 before М10** — an appliance has to exist before it can be scheduled onto
-- **М10 before М11** — the loop has to work on one box before a scheduler above it, or contested ownership, means anything
+- **М9 before М9** — an appliance has to exist before it can be scheduled onto
+- **М9 before М11** — the loop has to work on one box before a scheduler above it, or contested ownership, means anything
 - **М11 before М12** — a Node has to survive its server, inside one cluster, before a layer across several clusters means anything
 - **М12 before М13** — observability collects what М9–М12 emit, and its remote observer is a domain service; there has to be a domain to host it
 - **М13 before М14** — the vendor module's demo is *the vendor disappears for thirty days*, which can only be demonstrated with instrumentation in place, and its canary halt condition is an alert rule
@@ -180,14 +192,14 @@ The order is dependency-driven, not layer-numbered:
 | Module | Lessons | Numbered |
 |---|---|---|
 | М8 — Cloud VMS | 8 | 1–8 |
-| М9 — EdgeVMS | 4 | 1–4 |
+| М9 — EdgeVMS | 9 | 1–9 |
 | М10 — NodeVMS | 5 | 1–5 |
 | М11 — ClusterVMS | 5 | 1–5 |
 | М12 — DomainVMS | 8 | 1–8 |
 | М13 — Observability | 4 | 1–4 |
 | М14 — VendorVMS | 5 | 1–5 |
 
-**39 lessons**, or a full semester. The count moved three times: down from 49 when collapsing the layer above the domain removed four lessons of redundancy; up one when the licence system, which had been a bullet, turned out to be a lesson; and down by seven when М8's fifteen short lessons were merged into eight — its first twelve became five multi-part lessons, one per original sub-module, and its last three stayed as they were. **Each module numbers its lessons from 1**; a reference into another module always carries the module: *М10 Lesson 2*, never a bare number. М10–М14 are each a genuine module rather than an appendix.
+**39 lessons**, or a full semester. The count moved three times: down from 49 when collapsing the layer above the domain removed four lessons of redundancy; up one when the licence system, which had been a bullet, turned out to be a lesson; and down by seven when М8's fifteen short lessons were merged into eight — its first twelve became five multi-part lessons, one per original sub-module, and its last three stayed as they were. **Each module numbers its lessons from 1**; a reference into another module always carries the module: *М9 Lesson 6*, never a bare number. М9–М14 are each a genuine module rather than an appendix.
 
 **М12 is now the largest at eight lessons**, with a visible seam between the domain's *structure* (1–5) and the domain *looking after itself* (6–8). If it needs splitting, that is where.
 
@@ -213,7 +225,7 @@ The order is dependency-driven, not layer-numbered:
 
 - ~~Where inference runs~~ — a deployment question, not a schema one. Opaque worker config means the controller is unchanged whether inference runs on the appliance, at the camera or in the cloud (М11)
 - ~~Where the write API belongs~~ — built on every Node in М12 Lesson 3, unauthenticated and marked as such; authentication arrives one lesson later from the domain signer, and enrollment replaces the hand-provisioned credential in М12 Lesson 6
-- ~~Lesson numbering~~ — **superseded four times by restructuring, and settled.** Each module numbers from 1: М8 is 1–8 (its first twelve original lessons merged into five multi-part ones), М9 1–4, М10 1–5, М11 1–5, М12 1–8, М13 1–4, М14 1–5. **39 in total.** Cross-module references carry the module name; a bare *Lesson N* always means this module's
+- ~~Lesson numbering~~ — **superseded four times by restructuring, and settled.** Each module numbers from 1: М8 is 1–8 (its first twelve original lessons merged into five multi-part ones), М9 1–4, М9 1–5, М11 1–5, М12 1–8, М13 1–4, М14 1–5. **39 in total.** Cross-module references carry the module name; a bare *Lesson N* always means this module's
 - ~~Consul in or out~~ — out, and for a better reason than licensing alone: the product runs a PKI regardless, so a mesh CA is a second hierarchy that buys nothing. The comparison record was retired when OpenBao left the product too
 - ~~Identity split across М12 and М14~~ — they were one layer; merged into М12
 - ~~Where the domain database lives, and whether hosts replicate it~~ — **there is no domain database.** Each **Node** owns its configuration in its own Postgres and publishes one way upward; the domain's directory is a Nomad Variable per Node plus an object per Node; a **cluster** is the largest set of servers on a reliable network and a **domain** is the clusters under one directory ([`where-the-database-lives.md`](./М12_DomainVMS/where-the-database-lives.md))

@@ -1,48 +1,27 @@
 # М10_NodeVMS — Module Design
 
-**One Node learns what it should be, and closes the gap itself.**
+**The platform's shape on one Node: a controller, a worker, and the archive as a resource — prototyped without a scheduler, without KVS, and without a database.**
 
-М8 built a VMS with no database — Kinesis held the configuration and the archive both. М9 made the box atomic and replaceable, but a box still only knows what was flashed onto it. This module is where a Node learns **what it should be**: five lessons in which `INSERT INTO cameras` causes a camera to start recording, `DELETE` causes it to stop, and nothing sits in between but a loop the student wrote.
+[М9](../М9_EdgeVMS/README.md) ends with a box that owns its OS and its truth: an A/B root under RAUC, and a Node whose Postgres holds what it should be while an AppHost makes it so. [М11](../М11_ClusterVMS/module-design.md) then took that Node, put it under a scheduler, and — in the decision it reached last — took it apart: **workers, resources, one controller** (*2c*). This module is where that shape is built for the first time, on one box, so that every piece can be seen running before М11 spreads it across servers.
 
-**What this module builds is a Node**, and the capital letter matters from М11 onward. A Node is not a server: it is a VMS instance that owns its own database, its own cameras and its own archive — and in М11 it becomes a scheduler allocation that moves between servers, carrying its cameras with it. Everything built here travels intact.
+> **What changed since the first NodeVMS design** ([`node-design.md`](../М9_EdgeVMS/node-design.md), now Lessons 5–9 of М9). That design gave the Node its own Postgres, an AppHost supervising fifty pipelines, and a spool publishing to KVS. Three things are retired here and one is kept. **KVS is gone**: the archive is ours, on the spool's discipline. **The per-Node Postgres is gone**: configuration lives in the platform's stores and has one writer. **The AppHost is gone**: the thing that holds the pipeline is the worker, and it supervises itself. What is kept, unchanged and enforced by the same tests, is the contract: desired persisted and actual derived, `>=` on the revision, backoff with jitter, positions apart from reasons, the epoch in the path, commit-then-publish, the heartbeat carrying its status.
 
-> **Scope note.** This module has been assembled three times, and the last move is the one worth knowing. The course plan first had М10 as Postgres alone with the loop deferred to М11; the loop came back, because a database nothing acts on is not a working system. Then М9's multi-node half landed here — it is desired-state work, and М9 is supposed to be one box. It did not stay: a Nomad cluster and the layer above it turned out to be one arc cut in the wrong place, so scheduling went on to [М11](../М11_ClusterVMS/module-design.md). What is left is one Node, which is what the name promises — and М11 takes that same Node, runs several of them, and moves them between servers without changing anything built here.
+> **Five words, still kept apart.** Server, Node, Cluster, Domain, Site mean what the course has always meant. What this module adds is that *Node* stops naming a process and starts naming **a box running the platform's stores plus one or more subsystems** — and a subsystem is always a controller and its workers.
 
 ---
 
 ## The thesis
 
-Every layer so far has had a single source of truth that lived somewhere else. Now the box owns it, and owning truth means being able to answer one question:
+The platform is everything that does not know what a camera is: a scheduler that places processes by constraint (М11), a small consistent config store, an object store, a signer and an agent for trust (М12), a web gateway, an observer (М13). A **subsystem** is what a product team gives the platform, and it is always the same two things:
 
-| | Holds | Written by | Survives |
-|---|---|---|---|
-| **Desired state** | What the operator asked for | The operator, through the API | Reboots, OS updates, the AppHost dying |
-| **Actual state** | What is running right now | The AppHost, by observation | Nothing — it is re-derived every time |
+| | What it is | How many | State | When it is down |
+|---|---|---|---|---|
+| **Controller** | the only writer of the subsystem's configuration and of the assignment of work to workers | one per cluster — and safe at two, because every write is check-and-set | none of its own: computation over the platform's stores | no edits, no new assignments; nothing already running stops |
+| **Worker** | runs the subsystem's work — for the VMS, pipelines — against its assignment; reports by heartbeat | 1+ per cluster, by workload; the scheduler runs as many as needed | none but a spool; a fresh worker rediscovers everything from its assignment | its share of the work stops until the scheduler restarts it; the epoch and the lease make the restart harmless |
 
-> **The rule that organises the whole module: desired state is persisted, actual state is derived.**
+The VMS is the first subsystem: **`vmscontroller`** and **`vmsworker`**. Detectors are the second (`detectorcontroller`, `detectorworker`); the live gateway is the third. The platform knows the shape — a config prefix, an assignment per worker, a heartbeat object per worker, a metrics endpoint — and nothing about video. That is what "isolating the VMS logic from the platform" means as an artifact rather than an intention: the platform package in this module has no import of anything under `vms/`, and the tests prove it by running a second, trivial subsystem through the same code.
 
-A student who persists actual state has built a cache that goes stale and lies. A student who forgets to persist desired state has built something that forgets its cameras on reboot. Both mistakes are worth making once, deliberately, in Lesson 2.
-
-The convergence test is one comparison, and it is the same one at every layer above this: **applied means `observed_revision >= revision`.**
-
-### The pattern is not exotic
-
-What the student builds here is what a scheduler already is: desired state in one place, actual state observed, and a loop closing the gap. They write it by hand first, at a scale where both ends fit in one terminal.
-
-М11 then hands them a production implementation of the same idea — a Nomad jobspec *is* desired state and its scheduler *is* the loop — and puts the two side by side. Meeting a scheduler after having written one is what stops it being magic, and it is why М11 can argue for two reconcilers at two levels without that sounding like an abstraction.
-
----
-
-## The demo the module is built backwards from
-
-```sql
-INSERT INTO cameras (name, rtsp_url, site_id, enabled)
-VALUES ('front-door', 'rtsp://10.0.0.41/stream1', 'store-14', true);
-```
-
-Within a few seconds, without anyone restarting anything: a pipeline is running, segments are landing on the data partition, and `SELECT name, phase, observed_revision FROM camera_status` says so. `UPDATE ... SET enabled = false` stops it. `systemctl kill apphost` loses nothing but the open segment, and the box converges again on restart.
-
-If a lesson does not move that demo forward, it does not belong in this module.
+**Resources** are the third kind of thing and they are server-bound: on one Node, the archive on its disks, and later a GPU. A resource has no controller; it has a lifecycle policy. The worker writes to it; nothing moves it.
 
 ---
 
@@ -50,247 +29,163 @@ If a lesson does not move that demo forward, it does not belong in this module.
 
 | Decision | Choice | Why |
 |---|---|---|
-| Scope | **One Node, one server, end to end** | The loop is the lesson, and it is far easier to see when both ends are in one terminal. Scheduling Nodes across servers is М11's. |
-| Worker model | **N pipelines in one Python process** | The conclusion of [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md), now built. Container-per-camera is М9's world and stops being right near fifty. |
-| Actual state | **Derived, never persisted** | Kill the AppHost and it must rebuild its picture from Postgres plus observation. Anything it remembers across a restart is a bug. |
-| Change notification | **Poll on a timer, `LISTEN/NOTIFY` for latency** | NOTIFY is not durable — a listener that was disconnected misses it forever. Notify for speed, poll for correctness. Teaching only NOTIFY produces a system that silently stops converging. |
-| Node visibility | **Decided for the operator, never by them** | See below. The `cameras` table has no Node column a client may write. |
-| Language | **Python for the course; Go + C++ for the product** | Python teaches the loop and makes the language boundary visible. The product splits it — Go for the controller, C++ for the media worker — and Lesson 5 says why that split costs almost nothing. |
-| Databases | **One, and the Node owns it** | Configuration, archive index and events in one Postgres. М11 adds Nodes, not a second database — the domain above them is a Nomad Variable and an object store, so nothing here is ever demoted to a cache. See [`where-the-database-lives.md`](../М12_DomainVMS/where-the-database-lives.md). |
-| Database placement | **On the data partition, as a Quadlet unit** | М9's three-way boundary with consequences: `PGDATA` in a rootfs slot is destroyed by the next OS update. |
-| Authentication | **One hand-provisioned operator, marked temporary** | On one Node there is nothing to decide. The `grants` table exists from Lesson 1 so М12 adds policy rather than schema — but the `operators` table is **superseded** there rather than extended: with N Nodes a local password hash is N Alices, and М12 replaces it with an issuer's public key. |
-| Local storage engine | **Postgres, not SQLite** | The archive index and the event stream need a real database regardless, so a second engine for a small cache is pure cost. Partitioning is the deciding feature. |
-| Camera credentials | **Split out of the URL and encrypted at rest** | An RTSP URL carries the password inline, so `rtsp_url text` silently stores a thousand customer passwords in plaintext — and in every log line that URL reaches. The key placement is the real problem: the data partition here, a Nomad Variable or the TPM later. |
-| DB credentials | **Hand-provisioned, marked temporary** | Follows the course's existing discipline. М12 replaces this with certificate auth once the box has an identity, and the replacement is the lesson — but the temporariness is stated here, not discovered there. |
+| The source | **`driverpacksrc`** — a GStreamer source element whose `uri=driverpack://file/<name>` plays a file from the media directory, looping, paced by its own timestamps; later `driverpack://<vendor>/<host>` is the real DriverPack | Files stand in for cameras exactly as `camera_sim.py` did in М8, but *as an element*: the pipeline downstream of the source is the product's, unchanged when the real DriverPack arrives (the ARCHITECTURE boundary). Timestamps are rebased in the element, because that is the one non-mechanical part of any source |
+| The archive | **`archivesink`** — a GStreamer sink element: `splitmuxsink` into the **spool**, the epoch in every path, closed segments **promoted** to the archive resource, a **manifest** per camera instead of an index table | The spool's discipline from М9 Lesson 4 (a segment appears whole or not at all; delete on acknowledgement) becomes the archive's own. No KVS: the restore point, the index and the footage are all ours. The manifest is the index that travels with the footage and is rebuilt from it |
+| The worker | **`vmsworker` is DriverPack**: one process, N pipelines `driverpacksrc ! tee ! archivesink`, its own reconcile loop over its assignment, a heartbeat object; **no second supervisor** | The thing that holds the pipeline owns what happens to it (ARCHITECTURE §1.11). Nomad supervises the process; the worker supervises its pipelines; the AppHost had no third job. In the product the worker is C++; here it is Python with GStreamer, and the *shape* is the product's |
+| The controller | **`vmscontroller` is the only writer of configuration in the cluster** — cameras, their sources, their assignment to workers — by CAS into the platform's config store; the console's write API is its client | One writer per key, one level up: М11 Lesson 2's rule applied to the whole subsystem. Edits are consistent inside the cluster because the store is; the controller's outage stops edits and nothing else; it is **never on the recovery path** — a worker restarts from its assignment without asking anyone |
+| Where configuration lives | **The platform's config store** (`vms/cameras/<id>`, `vms/workers/<worker>`), written by the controller, read by workers; the platform's object store for what is large (segments, heartbeats, config snapshots). On one Node: a **file-backed Variables with `ModifyIndex` and CAS**, and a directory. In М11: Nomad Variables and MinIO, with no change to the VMS | The three-stores rule from М11 Lesson 2, applied before there is a cluster. A camera row is small, rare and must be consistent; a segment is large; a heartbeat is frequent and never queried by key. Postgres held all three in М9 because it was the only store; the platform has three, so the Node needs none |
+| Sharding on one Node | **None — and the worker is a shard from day one** | One box, one `vmsworker`, every camera assigned to it. The assignment mechanism is the same one that will place cameras on many workers, so adding a worker in М11 adds a row, not a design |
+| Fencing | **An epoch per camera, in the archive path** (`<cam>/e<epoch>/<start>.mp4`), taken by CAS when a worker starts recording a camera; a lease per worker | М11 Lesson 4's mechanism, at the granularity that 2c needs: two workers on one camera — during a reassignment, or a zombie — write into different epochs and the manifest says which is live. On one Node it is exercised by two worker processes given the same camera on purpose |
+| Live view and detectors | **A `tee` after the parser, with a leaky queue; nothing subscribes to it in this module** | М12 Lesson 3's gateway and the detector subsystem subscribe later. The branch exists now so that adding a consumer is a subscription, not a pipeline change |
+| The language of the prototype | **Python with PyGObject**, the elements as `Gst.Bin` subclasses registered as plugins | The course builds the shape; М9 Lesson 9's argument for Go or C++ in the product stands, and the contract is what the port carries |
 
 ---
 
-## Prerequisites
+## Where configuration lives, and who writes it
 
-- **М8 Lesson 2** — process supervision, signals, and the self-matching `pkill` bug. The AppHost is what `looper.py` grows into.
-- **М8 Lesson 4** — GStreamer pipelines and what each element does. Lesson 3 builds them from Python instead of a shell string.
-- **М9 Lesson 4** — Quadlet, and the OS/app/data boundary that decides where `PGDATA` goes.
-- **М8 Lesson 6** — configuration is read from the environment; credentials are never in the image.
+This was the open question, and the answer follows from two things the course already decided.
 
-New assumed knowledge: SQL at the level of `CREATE TABLE`, `JOIN` and `INSERT`. No prior Postgres administration.
+**М9 gave the Node its own Postgres so that an operator could edit a camera with everything above the Node unreachable.** That argument was about the *domain*: М12 may be down, and the Node must still accept an edit. It said nothing about a writer *inside the cluster*. Under 2c the worker is stateless and the platform's stores are the cluster's; a single writer of configuration inside the cluster — the controller — keeps every property М9 wanted (edits work with the domain gone; the store is one raft, so edits are consistent) and drops the one М9 paid for it (a database per process, migrated at boot on a box nobody visits).
 
----
+**М11 said one writer per key, and М12 said correctness comes from how a write is made, never from how many instances there are.** The controller is that rule made into a process: it writes `vms/cameras/<id>` and `vms/workers/<worker>` by CAS, and if Nomad briefly runs two of it, the second gets a conflict and re-reads. It holds nothing in memory that is not in the store — the moment it does, the count starts to matter.
 
-## How the shard is actually organised in Python
-
-The question this module has to answer honestly, because the intuition is that Python cannot do this and the intuition is wrong for a specific and teachable reason.
-
-### Where the work happens
-
-Once `pipeline.set_state(Gst.State.PLAYING)` returns, buffers move on **GStreamer's own native threads**, inside libgstreamer, in C. Python is not in that path. And PyGObject documents that "all PyGObject calls release the GIL during their execution and other Python threads can be executed during that time."
-
-So a worker holding fifty recording pipelines is running fifty pipelines' worth of C and a trickle of Python: a bus message every few seconds, a state change when configuration changes, a status write every five seconds. The GIL is close to uninvolved.
-
-### The seam where it goes wrong
-
-PyGObject also documents that "signals get executed in the context they are emitted from." A callback attached to a signal or a pad probe therefore runs **in the streaming thread**, and to run Python there it must take the GIL.
-
-Attach a `GST_PAD_PROBE_TYPE_BUFFER` probe to fifty cameras at 25 fps and that is **1,250 GIL acquisitions per second**, serialised through one lock, each one interpreting Python. That is how a Python media worker dies, and it has nothing to do with how many pipelines are in the process.
-
-> **The rule: Python touches control, never data.**
->
-> Banned in the recording path: `appsink`, `identity handoff`, buffer-level pad probes.
-> Fine: bus messages, state changes, `splitmuxsink::format-location` (once per segment).
-
-### Stall detection without touching a buffer
-
-The obvious way to notice a camera that has stopped sending while its TCP socket stays open is to timestamp every buffer — which is exactly the banned thing. GStreamer already solves it in C: the **`watchdog`** element from `gst-plugins-bad` passes buffers through untouched and posts an **error on the bus** if none arrive within `timeout` milliseconds (default 1000; a few seconds is right for cameras).
+So the answer is: **the controller writes, the platform stores, the worker reads its share.**
 
 ```
-rtspsrc ! rtph264depay ! h264parse ! watchdog timeout=8000 ! splitmuxsink
+console ──PUT /cameras/7──▶ vmscontroller ──CAS──▶ vms/cameras/7        {source, enabled, revision}
+                                          ──CAS──▶ vms/workers/w-1      {cameras: "1,2,7", rev}
+                                                                          │
+vmsworker w-1 ◀── reads its assignment, then each camera row ◀────────────┘
+              ──▶ vms/w-1/heartbeat (object)   {ts, epoch per camera, phase per camera}
 ```
 
-Zero Python in the data path, and the failure arrives on the bus the AppHost is already reading. This one element is worth a section of Lesson 3 on its own, because it is the model for the whole design: push the per-frame concern into C, keep Python at control rate.
+Two lines to hold, both from М11. **The controller is never on the recovery path.** A worker that restarts — killed, rescheduled, moved — reads its assignment and its cameras and records; it does not ask the controller, and if the controller is down the restart is identical. **The controller does not heal.** It assigns new cameras and moves cameras when an operator asks; a dead worker is Nomad's to restart, with its assignment on its name. The failure arithmetic on one Node:
 
-### The event loop, and not having two of them
-
-The AppHost speaks asyncio to Postgres and to its API. Running a `GLib.MainLoop` alongside it gives the process two schedulers and two notions of "later".
-
-Don't. Each pipeline has its own bus; one asyncio task drains all of them with the **non-blocking** `bus.pop_filtered(...)` on a short tick:
-
-```
-Worker  (one process = one shard)
-  asyncio tasks
-    reconcile()    every 2 s, and on NOTIFY     desired (Postgres) vs actual (dict)
-    pump_buses()   every 200 ms                 non-blocking pop on each pipeline's bus
-    report()       every 5 s                    write observed_revision + conditions back
-  CameraPipeline   per camera: state machine, backoff, current segment
-                   IDLE -> STARTING -> RUNNING -> FAILED -> (backoff) -> STARTING
-```
-
-Fifty non-blocking pops every 200 ms costs nothing measurable. `bus.get_pollfd()` with `loop.add_reader()` is the tidier version and makes a good exercise; it is not worth the fragility as the default.
-
-### What it costs
-
-Each recording pipeline creates roughly three to five native threads, so fifty cameras is 150–250 threads in the process. Linux is fine with that, but it is a number to measure rather than assume — `reference/shard-memory-probe.py` from М9 is extended in Lesson 3 to report it alongside PSS.
-
-And the honest cost: **one segfault takes the whole shard.** That is the price of sharding, paid in exchange for the per-process baseline. It is bounded by shard size, by systemd restarting the unit, and by `splitmuxsink` — a crash loses the open segment and nothing else.
-
-### The rule is not really about the GIL
-
-Worth stating explicitly in the lesson, because it is the part that survives a change of language. The constraint is not Python's lock. It is **crossing a language boundary once per frame.**
-
-| | What a per-buffer callback costs | Verdict |
+| Down | What stops | What continues |
 |---|---|---|
-| **Python** | Acquire the GIL and interpret. Fifty cameras at 25 fps is 1,250 acquisitions per second through one lock | Fatal |
-| **Go** | Enter the Go runtime from a C thread through cgo. Cheaper than Python, still real, and the rules on passing pointers make it awkward | Same discipline required |
-| **C++** | Nothing. There is no boundary | The rule dissolves |
-
-That last row is the real argument for C++ in the media worker, and it is a better one than "C++ is faster" — which, for a pipeline that never decodes, would barely be true.
+| `vmscontroller` | edits; adding a camera | recording; restarts of the worker; the console's read model (from heartbeats) |
+| `vmsworker` | recording, until Nomad (or `systemd` on one box) restarts it — seconds | edits (they are applied when the worker returns and reads its assignment) |
+| the archive resource (the disk) | promotion of closed segments; the spool fills at the rate М9 Lesson 4 measured | recording into the spool, until the spool's high-water policy |
+| the config store | edits and new assignments | recording — the worker holds its assignment in memory and needs the store only to change |
 
 ---
 
-## What the operator never decides
+## The worker is DriverPack
 
-The instinct is right: an operator wants to assign cameras, not machines. The useful part is knowing exactly where that stops being true — and that needs two words kept apart, because the course uses them precisely from here on.
+The second open question was whether workers should run *inside* DriverPack's process. Yes, and the stronger statement is the right one: **DriverPack is the worker.** There is no process called "the worker" that hosts DriverPack; `vmsworker` is what DriverPack is called when it is running as a shard of the VMS subsystem.
 
-| | What it is | Who decides |
-|---|---|---|
-| **Node** | a VMS instance — this module builds one. Its own database, its own cameras, its own archive index. From М11 it becomes a scheduler allocation with stable identity and **moves between servers** | an operator, when capacity is bought |
-| **Server** | a box with CPUs and disks, running whichever Nodes it is given | the scheduler, continuously |
+What that means concretely:
 
-This module has exactly one Node on exactly one server, so the distinction costs nothing here. It becomes load-bearing in М11, where a server dying **moves the Node** rather than reassigning its cameras — which is why failover there rewrites no ownership at all.
+- **One supervisor.** The worker's reconcile loop — assignment versus running pipelines, `>=` on the revision, exponential backoff with jitter, `lost()` on a bus error — is the loop from М9 Lesson 6, running in the same process as the pipelines. Nomad supervises the process; the process supervises its pipelines; nothing supervises the loop, because the loop is the process.
+- **Scaling is the scheduler's.** How many `vmsworker`s a cluster runs is the job's `count`; the controller assigns cameras to the workers it sees heartbeating. Whether the controller may *change* the count — asking Nomad for another worker when the assigned load per worker exceeds М9 Lesson 7's `B + n·I` budget — is an open question below; on one Node the count is one.
+- **Crash isolation is by shards and by external state.** A vendor SDK that segfaults takes the shard's loop with it, and that is acceptable only because the state is outside: the scheduler restarts the shard, it reloads its assignment, the epoch and the lease make the restart harmless. This module writes that sentence into a test: `kill -9` the worker mid-segment; the spool keeps the closed segments; the restart resumes into the next epoch; the manifest names both.
+- **The per-frame rule holds by construction** in C++ and by discipline in Python: the prototype's worker touches no buffer, and the tee's branches are for consumers in other processes.
 
-**Which Node owns a camera is decided for the operator, never by them.** The schema consequence Lesson 1 makes concrete: the `cameras` table has **no Node column a client may write**. Placement is a separate, controller-owned row with its own revision, and the API refuses it.
+**The subsystem contract**, which is what the platform actually knows:
 
-But servers are physical, and physics leaks in four places where hiding it would be a lie:
-
-| Where it surfaces | What the operator actually needs to know |
+| The platform provides | The subsystem provides |
 |---|---|
-| **Capacity** | "You cannot add camera 1001." Expressed as *the system is full*, not *Node 3 is full* — but the number has to come from somewhere real. |
-| **Storage locality** | Recordings live on the **server** that wrote them, and a Node moving does not move them. A dead server is unavailable footage until it returns, and that must be visible before it dies. |
-| **Failure grouping** | When a server fails, its Nodes move and two hundred cameras go red together. The console must show one cause, not two hundred faults — which means grouping by failure domain, which means naming the **server** at that moment. |
-| **Reachability** | A camera on an isolated VLAN may be reachable from only some servers. The operator expresses this as a **site**; the controller turns it into a constraint on where that Node may run. |
+| a config prefix `<subsystem>/*` in the config store, writable by the controller only (one ACL policy) | a **controller** job: `count = 1`, writes by CAS, holds nothing |
+| assignment rows `<subsystem>/workers/<worker>` | a **worker** job: `count = N`, reads its row, runs the work, heartbeats |
+| an object prefix `<subsystem>/` for heartbeats and anything large | a heartbeat object per worker: `{ts, epoch, status: [...]}` |
+| a metrics scrape per job (М13) | what its two numbers are — for the VMS, `camera_lag` and `camera_silent_seconds` from М9 Lesson 9 |
+| the epoch issuer and the lease (М11 Lesson 4), generic | the key it puts the epoch in |
 
-> **Site is a first-class operator concept. Server is not, and Node barely is.** Sites are where cameras are; Nodes are how the work is divided; servers are how much hardware it took.
+`platform/` in this module implements the left column on one box — `FileVariables` with `ModifyIndex` and CAS, `FsObjectStore`, an epoch issuer, a lease — behind the same interfaces `clustervms/` uses, so that М11 replaces the implementations and not the contract. `vms/` implements the right column. `tests/test_second_subsystem.py` implements a trivial third thing — a `countercontroller` and a `counterworker` that count seconds — through the same platform code, to prove the boundary is real.
 
-So: invisible in configuration, visible in diagnostics and capacity. The same relationship a filesystem has to disks — you do not assign files to spindles, and you certainly see the spindle when one fails.
+---
+
+## The three GStreamer artifacts
+
+**`driverpacksrc`** — a `Gst.Bin` with one `src` pad. `uri=driverpack://file/lobby.mp4` resolves to `<media_dir>/lobby.mp4`; inside: `filesrc ! qtdemux ! h264parse ! identity sync=true`, looping on EOS by seeking to zero, and — the one part that is not mechanical — **rebasing timestamps** so that PTS is monotonic across the loop and the pipeline's running time never goes backwards. That is exactly the work a real DriverPack element does with a vendor SDK's clock, which is why it is built here and tested first. `uri=driverpack://<vendor>/<host>` is refused with the message that names the real thing.
+
+**`archivesink`** — a `Gst.Bin` with one `sink` pad wrapping `splitmuxsink` with `max-size-time = SEGMENT_SECONDS`, `muxer-factory = mp4mux`, `async-finalize = true`. Its `format-location` names `<spool>/<cam>/e<epoch>/<start>Z.mp4`. On `fragment-closed` it **promotes** the segment — `rename` into the archive resource on one box, `PUT` in М11 — and appends a line to `<archive>/<cam>/manifest.jsonl`: `{epoch, start, end, path, bytes}`. The promotion is the acknowledgement; the spool copy is deleted after it, never before (М9 Lesson 4's rule). A segment younger than two segment lengths with no manifest line is *open*, not lost.
+
+**The manifest** replaces М9 Lesson 5's `segments` table. It is append-only, per camera, rebuildable by walking the archive (М11's re-index sweep becomes *manifest repair*), and it is what the timeline query reads. Retention is a policy on the resource — delete lines and files older than N days per camera, in that order — not a table partition.
 
 ---
 
 ## Lessons
 
-*Five lessons, one Node on one server. The student writes the reconciler.*
+*Five lessons. Each builds one artifact, and the last builds the second subsystem to prove the first one is not special.*
 
-All five are written: see [`README.md`](README.md) for the index and what can be verified without hardware.
+### Lesson 1 — The subsystem contract
 
-### Lesson 1 — The database the cloud VMS didn't need
+- What the platform is, and the test that it knows nothing about video
+- `platform/`: `FileVariables` with `ModifyIndex` and CAS (the same semantics `FakeVariables` promised in М11 Lesson 2, on disk), `FsObjectStore`, the epoch issuer, the lease
+- The contract table, and the ACL it implies: `vms/*` writable by one identity
+- Where configuration lives — the argument above, made against М9 Lessons 5 and 9
+- What a Node is now
 
-- Why М8's spec forbade a database, and why the answer flips on-prem: in the cloud KVS held the configuration; on a box, the box holds it
-- **One database, and this Node owns it.** Not a cache of anything: the Node is the authority for its own configuration, and М11 keeps it that way when several Nodes appear — nothing above ever writes these rows. **There is no second database here and none arrives later**, which is worth saying plainly because most control-plane courses would put one in
-- **Three kinds of data, one engine.** *Configuration* — cameras, streams, sites, retention policies — is what an operator asked for. The *archive index* and the *event stream* are what this box observed. They differ in almost every property except the engine they run on, and Lesson 4 depends on the difference
-- **Configuration schema:** cameras, streams, sites and retention policies
-- **Observation schema:** the archive index (which segment covers which camera over which range, as a `tstzrange` with a GiST index — М8's timeline query, answered directly) and the event stream (motion, camera offline, operator actions, with a JSONB payload because detectors differ)
-- **Time partitioning from day one.** Both index and events are rolling windows taking on the order of a hundred rows a second at scale. Retention drops whole partitions rather than deleting rows — **note the syntax: PostgreSQL has no `DROP PARTITION` statement** (that is Oracle/MySQL), it is `ALTER TABLE … DETACH PARTITION` then `DROP TABLE`. Measured while writing Lesson 1: `DELETE` of 276,768 rows took 231 ms and **freed no disk at all**; detach-and-drop took 5 ms and returned 38 MB. Lesson 4 collects on this
-- **The pruning trap**, found by running it: partition pruning needs a predicate on the *partition key*, so `span && …` alone opens every partition's index. Queries must bound `lower(span)` explicitly
-- **Events are not metrics.** An operator searches events; an engineer alarms on metrics. They look alike and belong in different modules — М13 has the second kind
-- **Operators and grants, in the schema from the start.** An `operators` table, and a `grants` table carrying `subject`, `capability` and `valid_until`. On one Node authorization is a non-problem — one operator, all rights — so this lesson builds the tables and no policy. **The expiry column is unused here and present so that М12 populates rather than migrates.** The lesson says so, rather than leaving a student to wonder why a column does nothing
-- **The credential hiding in `rtsp_url`.** The URL carries `user:pass@` inline, so the obvious schema stores every camera's password in plaintext. Split it into `cred_username` and an encrypted `cred_secret`, and be honest that **key placement, not encryption, is the hard part** — a key on the same partition as the database is in every backup of it. These are the *customer's* secrets, not the product's: unrotatable, unchosen, and often identical across every camera an installer touched
-- **Operator-owned columns versus controller-owned columns.** `enabled`, `rtsp_url`, `cred_username`, `retention_days`, `site_id` are written by people; `revision`, `assigned_worker`, `observed_revision`, `phase` are written by machines and never appear as form fields
-- `revision` as a monotonic, controller-assigned integer per object — not a hash, not a timestamp
-- Migrations as a shipped artifact, and the appliance constraint: they run at boot on a box nobody visits, so they must be idempotent and must never be able to leave it unbootable
-- **`PGDATA` on the data partition.** Postgres as a Quadlet unit with its volume outside both rootfs slots — М9's boundary with teeth
-- The database password and the operator credential are both hand-provisioned and **marked temporary in the lesson text**; М12 replaces them
+**Deliverable:** the platform package with its tests; a config store on disk that survives a restart and refuses a stale CAS; and the contract written as a document a second team could implement from.
 
-**Deliverable:** schema and migrations applied, Postgres surviving a simulated A/B update with its data intact.
+### Lesson 2 — `driverpacksrc`
 
----
+- A GStreamer element in Python: `Gst.Bin`, pads, properties, registration as a plugin
+- Files as cameras: the media directory, the URI scheme, the loop
+- **Timestamps** — rebasing across the loop; what `identity sync=true` does and does not do; the pipeline clock
+- The refusal: `driverpack://hikvision/…` names the element the product ships and this one does not
+- The per-frame rule, restated for an element author
 
-### Lesson 2 — A reconcile loop with nothing in it
+**Deliverable:** `gst-launch-1.0 driverpacksrc uri=driverpack://file/lobby.mp4 ! h264parse ! fakesink -v` running for an hour with monotonic PTS, and the element's unit tests.
 
-The `camera_sim.py` move, applied to control: build the loop before the thing it controls.
+### Lesson 3 — `archivesink`, and the archive as a resource
 
-- Read desired from Postgres, compare against an in-memory dict of actual, log the difference. The actuator is a `print()`
-- The vocabulary: desired, actual, converged, lagging, stalled — and `observed_revision >= revision` as the only test of "applied"
-- **Poll versus `LISTEN/NOTIFY`.** Notify makes it fast; the timer makes it correct. A disconnected listener misses notifications permanently, so a system with only NOTIFY stops converging and does not say so
-- asyncio structure: one task per *concern*, not one task per camera
-- **Deliberate mistake, then fix:** persist actual state, restart the process, and watch it confidently report pipelines that are not running
+- `splitmuxsink` inside a bin; `format-location` with the epoch; `fragment-closed`
+- Spool → promote → manifest: the acknowledgement order, and `kill -9` mid-segment
+- The manifest as the index: append, read, rebuild
+- Retention as a policy on the resource; the high-water rule when the resource is slower than the source
+- What a resource is: server-bound, no controller, a policy
 
-**Deliverable:** an AppHost that converges a fake world, and passes a test that kills it mid-change.
+**Deliverable:** record a file-camera for ten minutes; kill the worker at minute seven; show one open segment lost, six promoted, the manifest complete; rebuild the manifest from the archive alone and diff it.
 
----
+### Lesson 4 — `vmsworker`: DriverPack as the worker
 
-### Lesson 3 — Fifty pipelines in one process
+- The reconcile loop over an *assignment* rather than a table: `vms/workers/<worker>` and `vms/cameras/<id>`
+- N pipelines in one process; the state machine, backoff and jitter, `lost()` — ported from М9 Lessons 6 and 8 with their tests
+- The heartbeat object with the status snapshot (the same one М12's console reads)
+- The epoch per camera by CAS, and the lease gate on every start; two workers given one camera on purpose
+- **Kill it.** The worker restarts with the controller stopped; nothing asks the controller
 
-Swap the `print()` for GStreamer. This is the module's technical centre; see *How the shard is actually organised* above.
+**Deliverable:** М9 Lesson 8's four failures reproduced against the worker — pipeline death, stall, store unreachable, `kill -9` — with the contract's tests passing unchanged in meaning; and the zombie experiment on one Node.
 
-- Building pipelines from Python with PyGObject rather than a shell string
-- **The global interpreter lock (GIL) boundary**, demonstrated rather than asserted: add a buffer pad probe, watch the worker fall over, remove it
-- Draining buses from asyncio without a `GLib.MainLoop`
-- The per-camera state machine, and where backoff lives
-- **The `watchdog` element** — stall detection in C, delivered on the bus
-- Re-run the М9 probe against the real worker; add thread count to what it reports
-- **The spool becomes the archive.** М9 wrote segments to `/data/spool` to survive an uplink outage and deleted each one on acknowledgement. Here the same `splitmuxsink` writes the same files and **nothing deletes them** — an index row is written instead, and the uploader becomes optional. *The pipeline barely changes; what changed is who owns the footage.* Point at it, because it is the module's thesis in one diff
+### Lesson 5 — `vmscontroller`, and the second subsystem
 
-**Deliverable:** insert a row, get a recording. Delete the row, the recording stops. Fifty cameras in one process, with measured memory and thread counts — and a `git diff` against М9's pipeline that fits on one screen.
+- The only writer: camera CRUD by CAS; assignment; what it refuses (М12 Lesson 3's list, at the cluster)
+- Two controllers at once, and why nothing breaks
+- The console: the read model from heartbeats (М12 Lesson 3, on one box), the write API as the controller's client
+- The failure arithmetic, measured: stop each process in turn and say what stopped
+- **The second subsystem**: `countercontroller` and `counterworker` through the same platform code — the proof that the VMS is a subsystem and not the platform
 
----
-
-### Lesson 4 — Failure is the feature
-
-Each failure mode reproduced on purpose, then handled.
-
-- **Camera offline** → exponential backoff **with jitter**. Two hundred cameras reconnecting in lockstep after a switch reboot is a self-inflicted outage, and the jitter is the whole fix
-- **Stalled stream, socket still open** → `watchdog` fires, that one pipeline restarts, the other forty-nine never notice
-- **Disk full** → retention enforcement degrades by policy, and this is М9's spool-bound question returning with the answer changed: there, a full disk meant choosing between dropping the oldest and stopping recording, because the footage was in transit. Here it is *the archive*, so retention decides and the choice is the customer's, written down. The deletion loop must be conservative: never delete what it cannot prove is superseded. With Lesson 1's partitioning this is a partition detach-and-drop plus a segment unlink, not a scan — which is what makes it fast enough to run under pressure. Order matters: drop the index rows *before* unlinking, so a crash leaves orphaned files rather than index rows pointing at nothing
-- **The AppHost dies** → systemd restarts it, state is re-derived, and the segment discipline bounds the loss
-- **The fencing rule, introduced small:** on restart, never resume the previous segment — open a new one. Leases and epochs are М11's problem; the rule that makes them necessary lands here
-
-**Deliverable:** a test suite that kills, fills, stalls and unplugs, and asserts convergence after each.
-
----
-
-### Lesson 5 — What the console shows, and what Python stops being right for
-
-- The joined view: desired and observed in one query, so "is this camera actually recording?" is not three round trips
-- **The console requires a login**, against Lesson 1's `operators` table — one hand-provisioned account, all capabilities, **marked temporary**. No VMS ships with an open API, and this is the last module where there is exactly *one* surface to protect: М11 gives every Node its own, which is where authorization stops being trivial
-- Status vocabulary for the UI: `converged`, `lagging`, `stalled`, `unreachable` as *positions*; licence, storage and reachability as **conditions** — reasons an object cannot converge, kept out of the phase enum
-- **The Node-versus-server conversation**, from the section above: what the operator is asked, and the four places the server has to surface anyway
-- **The rewrite sidebar.** Three things end Python's case for the product: the per-process baseline `B` is larger than a compiled worker's, one segfault takes the whole shard, and any requirement for per-frame work in Python is fatal by the table above
-- **The split that follows from it.** **Go for the controller** — it is a gRPC-and-Postgres service, which is Go's centre of gravity, and its per-frame exposure is zero because the controller never touches a buffer. **C++ for the media worker** — GStreamer is a C library, so C++ calls it with no binding layer at all, and existing pipeline code can be reused rather than ported
-- **What the rewrite does *not* touch**, which is the point of having written it in Python first: the schema, the reconcile loop, the state machine, the backoff policy and the desired/actual contract are all language-independent. Only the actuator changes. Building it in Python proved the design cheaply; it did not waste the work
-- **Binding reality**, because it is easy to choose wrong here: `gstreamer-rs` is maintained by GStreamer's own developers and is the strongest non-C binding; `go-gst` is the live Go one; `gstreamermm` for C++ has been archived, so C++ means calling the C API directly — which is what C++ projects do anyway
-
-**Deliverable:** the console view, and a written statement of every decision the operator is never asked to make.
+**Deliverable:** one box, two subsystems, one console; `INSERT`-equivalent (`PUT /cameras`) starts a recording; the controller stopped, the worker killed, recording resumes; and a written statement of what the platform knows about the VMS (nothing).
 
 ---
 
 ## Verification plan
 
-Better than М9's, because almost nothing here needs hardware.
+**Track 1 — in the authoring sandbox, milliseconds:** the platform stores (CAS, persistence, the epoch issuer, the lease); the worker's loop and state machine with a fake actuator (М9's tests, ported); the controller's CRUD and assignment with two racing writers; the manifest's append, read and rebuild against a fake filesystem; the read model; the second subsystem end to end.
 
-**Track 1 — verified in the authoring sandbox, and now actually run.** Postgres 16.13 and plain Python produced every figure printed in Lessons 1, 2 and 4 — the retention timings, the pruning plans, and the seven reconciler tests including the 200-camera jitter spread. The schema, migrations, the reconcile loop and the state machine are all ordinary software. The loop is tested against a fake actuator exactly as М8 Lessons 5–8 tested against fake AWS objects, which means convergence, backoff, restart and the deliberate mistakes are all provable here.
+**Track 2 — needs a box with GStreamer (`python3-gi`, `gst-plugins-good/bad`):** the two elements, the promotion of real segments, `kill -9` mid-segment, the hour-long PTS run, and the zombie experiment with two real worker processes. The same bench as М9's.
 
-**Track 2 — needs a real bench.** Anything with GStreamer in it: the pipeline strings, the GIL demonstration, the `watchdog` timing, and the memory and thread measurements. The authoring sandbox has no GStreamer and the package mirrors are blocked, so Lesson 3's numbers come from the student's box, produced by a script that ships with the module rather than from figures asserted in the text.
-
-Every lesson marks which of its claims were run and which are documentation-derived.
+Every number printed in a lesson comes from Track 1 unless the lesson says which Track 2 run it came from.
 
 ---
 
 ## Open questions
 
-1. **Does the API belong here or in М11?** Lesson 5 builds a read view. A write API with authentication is arguably М11's and arguably М12's; М11 currently builds it.
-2. **How much retention policy is domain design rather than infrastructure?** The deletion loop is М10; schedules, per-camera overrides and legal-hold are product decisions that may deserve their own lesson in М11.
-3. **Postgres in a container or on the host?** The module currently says Quadlet unit. On an appliance that nobody administers, a host package with systemd is a defensible alternative and the tradeoff is worth teaching either way. Note this now carries both databases, so the answer applies to the archive index and the event stream too.
-4. **Does Lesson 4 need a real camera that misbehaves?** Cheap cameras stall in ways a simulator does not reproduce faithfully, and the module's most valuable failure mode is the hardest to fake.
-5. **Does the shard-memory probe belong here or in М11?** It ships with this module and Lesson 3 runs it, but М11 Lesson 1 runs it again to derive a shard size. Duplicated use, single home — worth confirming that is the right call.
+1. **Who changes the worker count.** The operator sets `count`; or the controller asks Nomad for another worker when the assigned load per worker exceeds the `B + n·I` budget. The second makes the controller a Nomad client, which the platform allows; whether it should is a product question.
+2. **Where the live branch is consumed on one box.** М12's gateway subscribes to the tee; on a single Node with no gateway job, is a local viewer a worker concern or a gateway concern? The module leaves the branch unsubscribed.
+3. **The manifest under concurrent promotion.** Two workers on one camera (a reassignment window) both append to one manifest; lines carry the epoch so playback is unambiguous, but the file needs an append lock or per-epoch manifests. Decide by measurement in Lesson 3.
+4. **The worker's language in the product.** М9 Lesson 9's argument (Go for the controller, C++ for the media worker) stands; whether `vmscontroller` is Go and `vmsworker` is DriverPack's C++ from the first release, or the Python prototype ships for small sites, is not this module's to decide.
 
 ---
 
 ## Sources
 
-- [PyGObject — Threads & Concurrency](https://pygobject.gnome.org/guide/threading.html) — "all PyGObject calls release the GIL during their execution"; "signals get executed in the context they are emitted from"
-- [GStreamer `watchdog` element](https://gstreamer.freedesktop.org/documentation/debugutilsbad/watchdog.html) — `timeout` in ms, default 1000, posts an error to the bus when no buffers arrive
-- [`gstwatchdog.c`](https://github.com/GStreamer/gst-plugins-bad/blob/master/gst/debugutils/gstwatchdog.c) — the implementation, for the lesson that reads it
-- [GStreamer pipeline manipulation](https://gstreamer.freedesktop.org/documentation/application-development/advanced/pipeline-manipulation.html?gi-language=python) — probes and their thread context
-- [GStreamer bindings](https://gstreamer.freedesktop.org/bindings/) — which bindings are officially maintained
-- [`go-gst`](https://github.com/go-gst/go-gst) — the live Go binding, successor to `tinyzimmer/go-gst`
-- [`gstreamermm`](https://github.com/GNOME/gstreamermm) — archived, which is why C++ uses the C API directly
-- [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) — the process model this module implements
+- [`ARCHITECTURE.md` §1.11](../ARCHITECTURE.md) — the platform/VMS boundary, row by row
+- [М11's decision *2c*](../М11_ClusterVMS/module-design.md) — workers, resources, one controller, and the storage knob
+- [`node-design.md`](../М9_EdgeVMS/node-design.md) — the first NodeVMS design this one supersedes, and М9 Lessons 5–9, whose tests are the contract
+- [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) — the tier model this module finally builds
+- [GStreamer: writing elements in Python](https://gstreamer.freedesktop.org/documentation/plugin-development/) · [`splitmuxsink`](https://gstreamer.freedesktop.org/documentation/multifile/splitmuxsink.html) · [`identity`](https://gstreamer.freedesktop.org/documentation/coreelements/identity.html)
 
-*Written 4 September 2026.*
+*Written 12 September 2026, after М11's decision 2c and the fold of the first NodeVMS into М9.*

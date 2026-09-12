@@ -11,7 +11,7 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 # Give the system time to actually start doing its job before judging it.
-# Must exceed one segment length (М10 Lesson 3) plus startup; the bench shortens it.
+# Must exceed one segment length (М9 Lesson 7) plus startup; the bench shortens it.
 ExecStartPre=/bin/sleep 150
 ExecStart=/usr/local/bin/rauc-health-check
 ExecStartPost=/usr/bin/rauc status mark-good

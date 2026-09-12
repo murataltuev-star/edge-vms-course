@@ -54,7 +54,7 @@ The reason it wins is that the expensive part is per-*process*, not per-camera: 
 | Container per camera | (baseline + pipeline) × 1000 | **~38 GB** |
 | 50-camera shards | (baseline + 50 × pipeline) × 20 | **~9 GB** |
 
-**These are estimates, not measurements** — flagged as such deliberately, because the module can do better. [`shard-memory-probe.py`](../М10_NodeVMS/reference/shard-memory-probe.py) measures the two quantities that decide it:
+**These are estimates, not measurements** — flagged as such deliberately, because the module can do better. [`shard-memory-probe.py`](./reference/shard-memory-probe.py) measures the two quantities that decide it:
 
 ```
 B = process baseline   : GStreamer initialised, zero pipelines
@@ -171,7 +171,7 @@ The break-even is somewhere near 50, and it is worth having students find it rat
 - [Large number of RTSP streams: nvstreammux or separate pipeline per camera?](https://forums.developer.nvidia.com/t/large-number-of-rtsp-streams-nvstreammux-or-separate-pipeline-per-camera/229269) — "10 streams in one pipeline per container is preferred"; single-process memory overhead described as low
 - [Building a multi-camera media server for AI processing on Jetson](https://developer.nvidia.com/blog/building-multi-camera-media-server-ai-processing-jetson) — multi-camera media-server structure
 - [Nomad task drivers](https://developer.hashicorp.com/nomad/plugins/drivers) — `exec2` and `virt` for the non-containerised tier
-- [`М10_NodeVMS/reference/shard-memory-probe.py`](../М10_NodeVMS/reference/shard-memory-probe.py) — the measurement this record declines to guess at
+- [`М9_EdgeVMS/reference/shard-memory-probe.py`](./reference/shard-memory-probe.py) — the measurement this record declines to guess at
 - Memory figures in §2 are engineering estimates, explicitly not measurements. The probe exists to replace them.
 
 *Written 4 September 2026.*

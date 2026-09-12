@@ -48,8 +48,8 @@ Which is also why this is the first layer in the course **allowed to be unavaila
 | Convergence token | **Monotonic revision**, not token equality | Ordering expresses *distance*; equality only *difference*. See below. |
 | Transport | **mTLS, from the domain's own self-signed root** | The Node↔directory streams carry configuration, grants and status. A credential says who is calling; it says nothing about the channel. **The root is the customer's and stays self-signed on purpose** — a vendor-held root above it would be a vendor that can impersonate the customer's whole trust domain. |
 | Authentication | **A hand-provisioned credential per Node, marked temporary — until Lesson 6** | The course's existing discipline: the stand-in is named where it appears. Lesson 6's enrollment replaces it with an LDevID issued by the domain's own signer. |
-| Human identity | **A token signed by the domain signer; Nodes hold the public key, never a password hash** | М10's per-Node `operators` table becomes N Alices and N stealable hashes. Verifying a signature needs no network, so this survives the domain being down. **The signer federates to the customer's own IdP** where one exists — one domain, one Alice, and nothing above either. |
-| Distribution of identity | **Nothing about a user is ever sent to a Node. What travels is trust: the signer's public key and the revocation list, written into each cluster's Variables by a domain agent — one Nomad job per cluster, allowed to write `domain/*` and nothing else** | A user is the customer's, not a Node's: replicating Alice into thirty Postgres databases makes thirty writers of one key and asks for cross-cluster consistency that does not exist. A public key and a short list of revoked token ids are small, rare and consistent — raft's shape — but no raft spans clusters, so something inside each cluster has to write them, and that something is not a Node and not the UI. The agent is the same one-writer-per-prefix pattern `verify-bench.sh` checks for Nodes. A role change is a new token; an old one runs to its expiry. М10's per-Node `operators` table survives only as break-glass. |
+| Human identity | **A token signed by the domain signer; Nodes hold the public key, never a password hash** | М9's per-Node `operators` table becomes N Alices and N stealable hashes. Verifying a signature needs no network, so this survives the domain being down. **The signer federates to the customer's own IdP** where one exists — one domain, one Alice, and nothing above either. |
+| Distribution of identity | **Nothing about a user is ever sent to a Node. What travels is trust: the signer's public key and the revocation list, written into each cluster's Variables by a domain agent — one Nomad job per cluster, allowed to write `domain/*` and nothing else** | A user is the customer's, not a Node's: replicating Alice into thirty Postgres databases makes thirty writers of one key and asks for cross-cluster consistency that does not exist. A public key and a short list of revoked token ids are small, rare and consistent — raft's shape — but no raft spans clusters, so something inside each cluster has to write them, and that something is not a Node and not the UI. The agent is the same one-writer-per-prefix pattern `verify-bench.sh` checks for Nodes. A role change is a new token; an old one runs to its expiry. М9's per-Node `operators` table survives only as break-glass. |
 | Where users live | **Local user records in the domain cluster's Variables under the signer's prefix (`identity/*`), the signer the only writer; an OIDC subject and no secret where the customer has an IdP; per-user UI configuration as objects (`users/<id>/prefs`), no consistency claimed** | Three shapes, three places, no database. A user record is small, rare and must be consistent — raft, beside the signer's key, under the same one-writer-per-prefix ACL. Layouts and bookmarks are larger, frequent, read by one key and harmless if the last write wins — an object. What Nodes need is neither: only the public key and the revocation list. The identity set is published as one object with a pointer so that losing the domain cluster loses users only back to the last publication. Above a few hundred users the customer has an IdP, and the record holds a subject, not a person. |
 | Authorization | **Node-local grants carrying an expiry** | Enforcement must survive the domain being down, so it cannot be a lookup. Expiry is what bounds the revocation window. |
 | Status model | **Positions and reasons kept apart** | Kubernetes shipped a phase enum and then documented why it was a mistake. |
@@ -62,8 +62,8 @@ The decisions about the servers underneath — camera ownership, Node identity, 
 
 - **М11 entire.** Nodes that move between servers, and the epoch that keeps two instances of one Node from corrupting an archive. This module adds a layer above that and must not weaken it.
 - **М11 Lesson 2** — Nomad Variables, and why configuration does *not* go in them. **М11 Lesson 5** turns the half that does into a cluster directory; this module aggregates several of those.
-- **М10 Lesson 1** — `revision` as a monotonic integer. The convergence token here is that same idea, one scope up.
-- **М10 Lesson 5** — positions versus reasons. The console in Lesson 3 is that model at fleet scale.
+- **М9 Lesson 5** — `revision` as a monotonic integer. The convergence token here is that same idea, one scope up.
+- **М9 Lesson 9** — positions versus reasons. The console in Lesson 3 is that model at fleet scale.
 
 ---
 
@@ -185,7 +185,7 @@ The operator names the **domain cluster**. **Nomad names the server**, continuou
 
 > **At the domain, correctness comes from how a write is made, never from how many instances Nomad promises.** Placement is safe because it writes with CAS, not because there is one of it.
 
-**What the operator may still say:** a **constraint**, never a server. *The signer runs on a server with a TPM* or *not on a server carrying fifty cameras* — a requirement Nomad satisfies, which is М10's *physics leaks* table again: the operator names what must be true, the scheduler decides where.
+**What the operator may still say:** a **constraint**, never a server. *The signer runs on a server with a TPM* or *not on a server carrying fifty cameras* — a requirement Nomad satisfies, which is М9's *physics leaks* table again: the operator names what must be true, the scheduler decides where.
 
 ### Cold start, which the rehydration lesson never had to face
 
@@ -195,7 +195,7 @@ The operator names the **domain cluster**. **Nomad names the server**, continuou
 
 ## The camera list, and where the console gets it
 
-The first screen any UI wants is the one the architecture so far cannot draw: *every camera, with its name, its site, whether it is recording, and when it was last seen* — across Nodes, and across clusters. The directory does not have it. М11's directory answers **where** camera 7 is, in one raft, correctly; it holds camera ids and a pointer to a configuration object, and nothing an operator would recognise as a camera. Names, phases, conditions and `last_seen` live in each Node's own Postgres, because М10 put them there and М11's *a Node owns its configuration* keeps them there. So the list is not stored anywhere. It has to be **assembled**, and the question is by whom and from what.
+The first screen any UI wants is the one the architecture so far cannot draw: *every camera, with its name, its site, whether it is recording, and when it was last seen* — across Nodes, and across clusters. The directory does not have it. М11's directory answers **where** camera 7 is, in one raft, correctly; it holds camera ids and a pointer to a configuration object, and nothing an operator would recognise as a camera. Names, phases, conditions and `last_seen` live in each Node's own Postgres, because М9 put them there and М11's *a Node owns its configuration* keeps them there. So the list is not stored anywhere. It has to be **assembled**, and the question is by whom and from what.
 
 Three ways to assemble it, and the shape rule from М11 Lesson 2 — *small, rare and consistent is raft; large, rare and never queried is an object; everything a Node needs at once is its Postgres* — decides between them before any of them is built.
 
@@ -207,7 +207,7 @@ Three ways to assemble it, and the shape rule from М11 Lesson 2 — *small, rar
 
 The third is the decision, and it is not a new mechanism: **it is the heartbeat, carrying its payload.** The Node already has the task; it grows from `{ts, epoch}` to `{ts, epoch, cameras: [...]}`, at `HEARTBEAT_INTERVAL`. The arithmetic is the reason it is cheap: two hundred cameras at roughly two hundred bytes each is a 40 kB object per Node every ten seconds; fifty Nodes are 200 kB/s into an object store that was sized for footage restore points. Nothing about that needs a design.
 
-**What the read view is, and is not.** It is a process that lists `*/status` in each cluster's object store, keeps the result in memory, and serves the list, search and pagination from there — no call to any Node on any request. It is **not a database** (the *No database at all* decision stands): it holds nothing it cannot rebuild from the objects in one pass, and a restart of it is exactly that pass. It is a cache that admits to being one, which is М10's *desired is persisted, actual is derived* one layer up — the snapshots are actual state, and a copy of actual state is only ever a cache.
+**What the read view is, and is not.** It is a process that lists `*/status` in each cluster's object store, keeps the result in memory, and serves the list, search and pagination from there — no call to any Node on any request. It is **not a database** (the *No database at all* decision stands): it holds nothing it cannot rebuild from the objects in one pass, and a restart of it is exactly that pass. It is a cache that admits to being one, which is М9's *desired is persisted, actual is derived* one layer up — the snapshots are actual state, and a copy of actual state is only ever a cache.
 
 **Staleness is shown, never hidden.** Every row carries the age of the snapshot it came from, and the UI prints it: *as of 8 s ago*. A Node whose snapshot is older than `lost_after` is shown as *unreachable — last known state*, with its cameras still listed, greyed, from the last object. The console never blocks on a Node, never times out on a page, and never presents a Node's silence as its cameras' absence — which is the *not mine* versus *not anywhere* distinction from the thesis, applied to a screen.
 
@@ -221,9 +221,9 @@ The third is the decision, and it is not a new mechanism: **it is the heartbeat,
 
 ## Who serves browsers
 
-Everything up to here has been about recorders talking to stores. Nothing has said who talks to *people*: the operator's browser, the sixteen-up wall in the lobby, the investigator scrubbing yesterday's footage. М10 Lesson 5 put a console on the Node, and it was the right console for the right client — the Node's own status, for the Node's own operator, one query. It never said who is allowed to be that console's client, and the answer matters, because the wrong one turns every viewer into a subtraction from the camera count.
+Everything up to here has been about recorders talking to stores. Nothing has said who talks to *people*: the operator's browser, the sixteen-up wall in the lobby, the investigator scrubbing yesterday's footage. М9 Lesson 9 put a console on the Node, and it was the right console for the right client — the Node's own status, for the Node's own operator, one query. It never said who is allowed to be that console's client, and the answer matters, because the wrong one turns every viewer into a subtraction from the camera count.
 
-**A Node serves few, trusted, internal clients. Something else serves many, untrusted, external ones.** A Node's memory is `B + n·I` (М10 Lesson 3), budgeted for cameras; a browser is everything a camera is not — numerous, on a bad network, behind NAT, inclined to open six tabs and leave them. The moment a Node serves browsers directly, a slow viewer on a Saturday night competes with recording for the same process. So the Node's clients are exactly two: the live gateway, which subscribes to its live tee once per camera, and the console, which reads its status and forwards edits. The Node never sees a viewer.
+**A Node serves few, trusted, internal clients. Something else serves many, untrusted, external ones.** A Node's memory is `B + n·I` (М9 Lesson 7), budgeted for cameras; a browser is everything a camera is not — numerous, on a bad network, behind NAT, inclined to open six tabs and leave them. The moment a Node serves browsers directly, a slow viewer on a Saturday night competes with recording for the same process. So the Node's clients are exactly two: the live gateway, which subscribes to its live tee once per camera, and the console, which reads its status and forwards edits. The Node never sees a viewer.
 
 That leaves two processes, and they are separate because they fail differently.
 
@@ -304,7 +304,7 @@ Lesson 3 built a write API on every Node. That is **N endpoints where there used
 
 - **The surface, counted honestly.** Node-owned configuration is why an operator can edit a camera while the domain is unreachable — and it is also why the thing to protect is now per-Node. This is a real cost of the design, and it belongs next to the benefit rather than three modules later
 - **The channel, before the caller.** Every stream in this module — configuration upward, grants downward, status both ways — runs **mTLS**, from the **domain's own self-signed root**. It is hand-provisioned here in the sense that a student runs `openssl` to make it, and **it is not a stand-in** — this is the customer's root, permanently, and Lesson 7 gives it lifetimes and rotation. The certificate names the **Node**, never the server it happens to be running on: failover relocates the Node, and a hostname-shaped name would have to be reissued on every move. Certificates are short-lived and renewed against this root, so renewal never reaches outside the domain — which is what lets the channel keep working with everything above it gone
-- **Authentication, hand-provisioned and marked temporary.** A credential per Node, exactly as М9 hand-provisions AWS keys and М10 a database password. **Lesson 6 replaces it** with an LDevID the box earns by enrolling, and the replacement is that lesson
+- **Authentication, hand-provisioned and marked temporary.** A credential per Node, exactly as М9 hand-provisions AWS keys and М9 a database password. **Lesson 6 replaces it** with an LDevID the box earns by enrolling, and the replacement is that lesson
 - **Grants are Node-local.** Each Node stores *subject X may do Y here*. Enforcement is a local query — no lookup, no token exchange — which is the only way authorization survives the domain being down. It also **partitions privilege**: a compromised Node can only grant rights on itself, where a central store compromised is total
 
 #### The asymmetry that makes rights different from configuration
@@ -324,9 +324,9 @@ Configuration staleness is benign and self-announcing. Revocation staleness is s
 - **The tension, and it has no clean answer:** short renewal revokes fast and locks an operator out of their own site during a long outage; long renewal is the reverse. The lesson makes students pick a number and defend it
 - Rights are therefore not special — they are one more thing *cached from above with an expiry*, governed by the rule this module already applies to entitlement and placement
 
-#### The other credential: М10's `operators` table, times N
+#### The other credential: М9's `operators` table, times N
 
-М10 Lesson 5 of М10 put a login on the console, against a local `operators` table holding a password hash. On one box that was right. **On N Nodes it is a defect**, and naming it is this lesson's second half.
+М9 Lesson 9 of М9 put a login on the console, against a local `operators` table holding a password hash. On one box that was right. **On N Nodes it is a defect**, and naming it is this lesson's second half.
 
 Four Nodes means four accounts for one person, four passwords she will make identical, and four hashes an attacker can take. Worse, it breaks the rule this lesson just established: **a grant expires and the account does not.** Revoke Alice's grants and her credential still authenticates on every Node; you have bounded the authorization window and left the authentication window unbounded.
 
@@ -347,7 +347,7 @@ Alice ──▶ domain identity service ──▶ short-lived signed token (subj
 
 - **N Nodes holding password hashes is N places to steal them from. N Nodes holding a public key is zero.** That is a security improvement, not just a tidiness one
 - **The issuer is the domain signer**, the same job that runs the CA, and it is permanent too. Where the customer already has an identity provider — and enterprises do — the signer **federates to it** over OIDC: Alice authenticates against her employer's IdP, the signer issues a domain token naming her, and the Nodes never learn the IdP exists. One domain, one Alice, and nothing above either of them
-- **М10's `operators` table is superseded, not extended.** Say so explicitly — a student who keeps it and adds a `node_id` column has built the N-Alices problem on purpose
+- **М9's `operators` table is superseded, not extended.** Say so explicitly — a student who keeps it and adds a `node_id` column has built the N-Alices problem on purpose
 
 #### Two lifetimes, and they are not independent
 
@@ -435,7 +435,7 @@ The domain's root is self-signed and it is the top. That removes a layer and add
 М11 built clusters from servers in a room. This lesson changes one thing: **where the servers come from** — and proves the software cannot tell.
 
 - **A cloud region is just a cluster.** Rented instances on one provider network satisfy М11's definition exactly as a rack does, and Nomad cannot tell the difference. The domain cluster **provisions** it, using the customer's own cloud account — which is why this is a domain feature and not something above it
-- **Deploy М10's Node three ways** — local server, rented instance, and split so a site's Nodes are local while the domain services are not — and diff the artifacts. **They are identical.** If they are not, this lesson found a bug in М10 or М11
+- **Deploy М9's Node three ways** — local server, rented instance, and split so a site's Nodes are local while the domain services are not — and diff the artifacts. **They are identical.** If they are not, this lesson found a bug in М9 or М11
 - **The bandwidth arithmetic, done before the demo:** fifty cameras at 4 Mbit/s is 200 Mbit/s sustained upstream and ~2 TB a day. Most sites cannot buy that, so **recording stays at the edge and operation moves to the cloud** — *mixed* is the shape a real deployment takes, and a cloud-only site is for a handful of cameras with no hardware to install
 - **What differs by placement**, and it is a short list: storage class and its cost curve, how the camera's stream reaches the Node, who is paged when hardware dies. **What must never differ:** configuration ownership, the epoch, the certificate chain, the update mechanism
 - **A cloud site has no spool.** Its cameras stream over the internet to a Node that writes locally; an uplink outage is not buffered, it is lost — so **the camera becomes the buffer**, edge recording backfilled over ONVIF when the link returns. Say this to the customer before they choose it

@@ -69,7 +69,7 @@ If a lesson does not move that wall forward, it does not belong here.
 | Cardinality | **No per-object series.** Distributions, plus the database for detail | A thousand cameras is a thousand series per metric. A metric is not a database. |
 | Alerting | **On the product, not the process** | М9 Lesson 3's rule, stated once for everything above it. |
 | Silence | **A first-class state, never rendered as health** | The module's thesis. `unreachable` is not `up` and not `down`. |
-| Logs | **Local, structured, and never containing a secret** | М10 Lesson 1 found the password inside `rtsp_url`; the leak is a formatting bug, not a storage one. |
+| Logs | **Local, structured, and never containing a secret** | М9 Lesson 5 found the password inside `rtsp_url`; the leak is a formatting bug, not a storage one. |
 | Dashboards | **Ship none. See the licensing section** | Grafana is **AGPLv3**, and §6 triggers on shipping at all — modified or not. This is a sharper constraint than the BUSL one the course already settled. |
 
 ---
@@ -78,8 +78,8 @@ If a lesson does not move that wall forward, it does not belong here.
 
 - **М9 Lesson 3** — the health-check ladder, and *a health check is not monitoring*. This module supplies the other half of that distinction.
 - **М9 Lesson 4** — `spool_oldest_seconds`, and why age beats count.
-- **М10 Lesson 1** — events are not metrics; and the credential hiding in `rtsp_url`, which Lesson 4 collects on.
-- **М10 Lesson 5** — `camera_lag` and `camera_silent_seconds`, and positions versus reasons.
+- **М9 Lesson 5** — events are not metrics; and the credential hiding in `rtsp_url`, which Lesson 4 collects on.
+- **М9 Lesson 9** — `camera_lag` and `camera_silent_seconds`, and positions versus reasons.
 - **М11 Lesson 4** and **М12 Lesson 1** — failover duration, epoch conflicts, replica lag.
 - **М12 Lesson 8** — regions, because a fleet view spans them.
 
@@ -93,7 +93,7 @@ The module opens by taking inventory rather than by installing anything:
 |---|---|---|
 | М9 L3 | the health-check ladder | it decides **rollback**, on the box, offline |
 | М9 L4 | `spool_oldest_seconds`, `spool_bytes_used` | the spool was the first thing whose health was a *quantity* |
-| М10 L5 | `camera_lag` (distribution), `camera_silent_seconds` | the second is the only one describing the product |
+| М9 L5 | `camera_lag` (distribution), `camera_silent_seconds` | the second is the only one describing the product |
 | М11 L4 | `node_failover_seconds`, `node_epoch_conflicts` | RTO, and a counter that should be zero forever |
 | М12 L1 | `node_replica_lag_seconds` | the RPO made visible per Node |
 
@@ -125,7 +125,7 @@ Grafana, Loki and Tempo relicensed from Apache 2.0 to AGPLv3 in **April 2021**; 
 
 **And the question that actually decides it is one a VMS walks straight into**: a video product wants dashboards *inside* its own console, not on a separate port. The tighter that coupling, the more arguable it becomes that the proprietary VMS is a covered work. Loose coupling — separate process, network API, no linking, no embedding — is the standard mitigation, and it is a design constraint rather than a legal footnote.
 
-> **The course's position: teach Prometheus, and ship no dashboard.** Build the console you already have — М10 Lesson 5 built one and М12 Lesson 3 extended it — and let Grafana be something the *customer* installs and points at your Apache-2.0 endpoint. That keeps every shipped component permissive, and it is a better product decision anyway: an operator should not need two consoles.
+> **The course's position: teach Prometheus, and ship no dashboard.** Build the console you already have — М9 Lesson 9 built one and М12 Lesson 3 extended it — and let Grafana be something the *customer* installs and points at your Apache-2.0 endpoint. That keeps every shipped component permissive, and it is a better product decision anyway: an operator should not need two consoles.
 
 Not legal advice, and the anti-tivoisation clause in §6 deserves its own look for a secure-boot appliance. But a course that teaches students to embed Grafana in a product they sell, without saying this, has done them harm.
 
@@ -138,7 +138,7 @@ Not legal advice, and the anti-tivoisation clause in §6 deserves its own look f
 ### Lesson 1 — What you already emit, and what silence means
 
 - **Take inventory first.** The six signals above, and for each one: what it cannot tell you. That column is the lesson
-- Build the exporter: a `/metrics` endpoint on the Node, exposing what М10 Lesson 5 already computes. **No new measurements** — this is plumbing over decisions already taken
+- Build the exporter: a `/metrics` endpoint on the Node, exposing what М9 Lesson 9 already computes. **No new measurements** — this is plumbing over decisions already taken
 - Metric types, and picking them correctly: `camera_silent_seconds` is a **gauge**, `node_epoch_conflicts` is a **counter**, and confusing them makes the second unalertable
 - **The three states of a target, kept apart:** `up`, `down`, and **`unknown`**. Prometheus gives you `up` for free and *nothing* for the third — the site whose scrape failed is indistinguishable from the site that is fine but unreachable. Deriving the third is this module's whole thesis in one expression
 - **Staleness, and the honest gap.** When a Node returns after an outage, its metrics have a hole. Do not interpolate it, do not carry the last value forward — **render the gap**, because a flat line through an outage is a lie an operator will act on
@@ -180,9 +180,9 @@ The capstone, and it is a reading exercise as much as a building one.
 
 - journald: retention on a data partition sized for footage, rate limiting, and why an unbounded log is a disk-full incident waiting for a busy night
 - **Structured logs**, so a machine can filter what a human cannot read
-- **Never log a secret — and М10 Lesson 1 showed why this is a formatting bug, not a storage one.** An RTSP URL carries `user:pass@` inline, so *any* code path that logs a URL leaks a credential: the pipeline description, the bus error, the exception, the support bundle. Grep for it, find the paths, and fix the composition rather than the log line
+- **Never log a secret — and М9 Lesson 5 showed why this is a formatting bug, not a storage one.** An RTSP URL carries `user:pass@` inline, so *any* code path that logs a URL leaks a credential: the pipeline description, the bus error, the exception, the support bundle. Grep for it, find the paths, and fix the composition rather than the log line
 - **What travels upward:** alarms and counts, never log bodies. A site's logs stay at the site and are fetched on demand — the same shape as footage, index, events and metrics
-- **The capstone:** induce one failure at each layer — a bad OS update (М9), a stalled camera (М10), a dead server (М11), an unreachable directory (М12) — and for each, state **which signal fired first, which fired second, and what the operator saw.** Then do it again with the uplink down
+- **The capstone:** induce one failure at each layer — a bad OS update (М9), a stalled camera (М9), a dead server (М11), an unreachable directory (М12) — and for each, state **which signal fired first, which fired second, and what the operator saw.** Then do it again with the uplink down
 
 **Deliverable:** a support bundle a field engineer could actually use, containing no credentials — and the four-failure table, written.
 

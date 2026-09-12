@@ -1,6 +1,6 @@
 package cluster
 
-// The Node under a scheduler: М10's AppHost plus what М11 adds.
+// The Node under a scheduler: М9's AppHost plus what М11 adds.
 //
 //	Prologue      identity → migrate → rehydrate → epoch by CAS → lease
 //	publish       every second: publish on change, with a floor           (Lesson 3)
@@ -8,7 +8,7 @@ package cluster
 //	heartbeat     a timestamp in an OBJECT, for node_failover_seconds      (Lesson 4)
 //	reindex       files back into rows: the fenced instance's footage      (Lesson 4)
 //
-// What М10 does — reconcile, report — is the same loop (nodevms/reconciler,
+// What М9 does — reconcile, report — is the same loop (nodevms/reconciler,
 // imported) driven by goroutines and tickers instead of asyncio tasks.
 // Only the actuator's gate and the report grow: a fenced instance starts
 // nothing, and `replicated` joins the conditions.

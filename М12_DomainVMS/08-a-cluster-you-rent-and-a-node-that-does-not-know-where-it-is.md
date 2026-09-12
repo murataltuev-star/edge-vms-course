@@ -6,7 +6,7 @@
 
 ## Why this lesson exists
 
-М11 built clusters from servers in a room. This lesson changes exactly one thing — where the servers come from — and the point is that nothing else changes. A cloud region is a cluster: rented instances on one provider network satisfy М11's definition exactly as a rack does, and Nomad cannot tell the difference. If the software *can* tell, that is a bug in М10 or М11, and the lesson's method is to go looking for it with a diff.
+М11 built clusters from servers in a room. This lesson changes exactly one thing — where the servers come from — and the point is that nothing else changes. A cloud region is a cluster: rented instances on one provider network satisfy М11's definition exactly as a rack does, and Nomad cannot tell the difference. If the software *can* tell, that is a bug in М9 or М11, and the lesson's method is to go looking for it with a diff.
 
 It is also the lesson where the course closes the arc it opened. М8 rented a cloud VMS from Kinesis with hand-provisioned AWS keys. Here the shape is rebuilt the customer's way — their Nodes, their object storage, their cloud account, provisioned by their domain — and М9's hand-provisioned credentials are retired by no longer being needed. And before any of that is demonstrated, the arithmetic is done, because the demo is cheap and the decision it invites is not.
 
@@ -80,7 +80,7 @@ diff local/rented:
 identical from `group` down: True
 ```
 
-Two lines differ, and neither is about the Node. Everything from `group` down — the constraint on the camera VLAN, the `disconnect` block with М11 Lesson 4's `lost_after`/`stop_on_client_after`, the reschedule policy, the task, its identity, its template, the lease numbers, the resources — is byte-identical. The Node cannot tell where it is running because nothing it reads says so. If the diff ever shows a third line, this lesson found a bug in М10 or М11, and the fix goes there, not here.
+Two lines differ, and neither is about the Node. Everything from `group` down — the constraint on the camera VLAN, the `disconnect` block with М11 Lesson 4's `lost_after`/`stop_on_client_after`, the reschedule policy, the task, its identity, its template, the lease numbers, the resources — is byte-identical. The Node cannot tell where it is running because nothing it reads says so. If the diff ever shows a third line, this lesson found a bug in М9 or М11, and the fix goes there, not here.
 
 ## Step 5 — What differs by placement, and what must never
 
@@ -91,7 +91,7 @@ Two lines differ, and neither is about the Node. Everything from `group` down �
 | who is paged when hardware dies (you, or the provider) | the certificate chain — the domain's root, everywhere |
 | whether there is a spool, and what the buffer is | the update mechanism — the domain's server, pulled |
 
-The left column is real and belongs on the deployment sheet. The right column is the module's thesis, and every row of it has a test somewhere in М10–М12.
+The left column is real and belongs on the deployment sheet. The right column is the module's thesis, and every row of it has a test somewhere in М9–М12.
 
 ## Step 6 — Closing the arc with М8
 
@@ -124,7 +124,7 @@ The course opened by renting a cloud VMS: cameras into Kinesis, playback from HL
 
 1. Re-run `recommend()` with a sub-stream at 1 Mbit/s for recording. Which shapes change, and what did the customer give up to get there?
 2. Add egress to `Prices` — a fee per TB played back out of the cloud — and a wall of sixteen streams for eight hours a day. Recompute the six-camera cloud site.
-3. Write the ONVIF backfill as a reconcile-loop concern (М10 Lesson 2): what is desired, what is actual, what closes the gap, and what the backoff is for a camera that has no local storage.
+3. Write the ONVIF backfill as a reconcile-loop concern (М9 Lesson 6): what is desired, what is actual, what closes the gap, and what the backoff is for a camera that has no local storage.
 4. Take the split shape and cut the site's uplink for a day. List what the operators can and cannot do, hour by hour, from the failure arithmetic in Lesson 3.
 5. Find one thing М8's Kinesis deployment did that this shape does not. Decide whether it was a feature or a dependency.
 

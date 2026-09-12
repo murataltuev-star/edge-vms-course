@@ -17,7 +17,7 @@ This is also where the module's two numbers come from: how long a site can be da
 ## Prerequisites
 
 - **Lesson 3** — the restore; step 5 of the sequence is this lesson.
-- **М10 Lesson 4, Step 5** — *on restart, never resume the previous segment.* This lesson is the reason.
+- **М9 Lesson 8, Step 5** — *on restart, never resume the previous segment.* This lesson is the reason.
 - **М8 Lesson 2** — `SIGSTOP`/`SIGCONT`, and what a process cannot know about itself.
 - [Kleppmann, *How to do distributed locking*](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html) — read it before Step 4. Twenty minutes, and the module's central argument is in it.
 
@@ -39,7 +39,7 @@ Two words Nomad keeps apart, and so should you:
 
 | | Where | Governed by | Fixes |
 |---|---|---|---|
-| **Restart** | the same server | `restart { }` | a crashed process — М10 Lesson 3's segfault taking the shard |
+| **Restart** | the same server | `restart { }` | a crashed process — М9 Lesson 7's segfault taking the shard |
 | **Reschedule** | a different server | `reschedule { }` | a dead server, a full disk, a constraint no longer met |
 
 Service jobs default to unlimited reschedule attempts with exponential delay, which is right for a recorder: a Node that cannot be placed should keep trying, because the alternative is a Node that gave up while the operator was asleep. The jobspec in `reference/node.nomad.hcl` sets a 15-second initial delay, doubling to two minutes.
@@ -84,7 +84,7 @@ archive/node-3/epoch-000005/cam-7/seg-00042.mkv   <- the old instance
 archive/node-3/epoch-000006/cam-7/seg-00000.mkv   <- the live one
 ```
 
-The old instance cannot corrupt the new one's segments because **it cannot name them.** It writes valid files into a directory the index no longer references, and retention deletes them. М10 Lesson 3 put `e1` into the path and said it did nothing yet. This is what it was for.
+The old instance cannot corrupt the new one's segments because **it cannot name them.** It writes valid files into a directory the index no longer references, and retention deletes them. М9 Lesson 7 put `e1` into the path and said it did nothing yet. This is what it was for.
 
 Run it, with two real processes:
 
@@ -122,7 +122,7 @@ python3 reference/fencing_demo.py --no-fencing
 
 Twenty-four of twenty-four. The zombie resumed its segment numbering where it left off, which is exactly where the live instance had started, and overwrote every file the index names. No error, no log line, and the customer finds out when they ask for footage from an evening that plays back as a different evening.
 
-That second run is also the justification for a rule М10 introduced without one: **on restart, never resume the previous segment.** A resumed segment is a shared path by another name.
+That second run is also the justification for a rule М9 introduced without one: **on restart, never resume the previous segment.** A resumed segment is a shared path by another name.
 
 ## Step 4 — Where the token comes from: the wrong answer first
 
@@ -256,7 +256,7 @@ rauc install update-2026.10-1.raucb && reboot         # М9 Lesson 2
 nomad node drain -disable <node id>                   # the server takes work again
 ```
 
-Drain is `disconnect` without the uncertainty: Nomad knows the server is leaving, stops the allocation cleanly (the open segment finalizes — М10's `SIGTERM` path), and places it elsewhere before the reboot. This is where М9's two update planes meet the scheduler: the OS plane updates a server, the scheduler keeps the Nodes running somewhere else while it does, and the health check from М9 Lesson 3 decides whether the server rejoins.
+Drain is `disconnect` without the uncertainty: Nomad knows the server is leaving, stops the allocation cleanly (the open segment finalizes — М9's `SIGTERM` path), and places it elsewhere before the reboot. This is where М9's two update planes meet the scheduler: the OS plane updates a server, the scheduler keeps the Nodes running somewhere else while it does, and the health check from М9 Lesson 3 decides whether the server rejoins.
 
 What does not fail over, planned or not: **the footage.** It stays on the drained server's disks and comes back with them.
 

@@ -30,7 +30,7 @@ class Grant:
 
 
 class NodeGrants:
-    """One Node's grants table (М10's `grants`, with valid_until)."""
+    """One Node's grants table (М9's `grants`, with valid_until)."""
 
     def __init__(self, node: str, now=time.time):
         self.node, self.now = node, now

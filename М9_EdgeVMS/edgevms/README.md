@@ -43,7 +43,7 @@ stand-in: "a segment appeared in the spool in the last N seconds". That
 check is weak on purpose (a fast uploader empties the spool) and the lesson
 marks it.
 
-`health/rauc-health-check` now prefers the real thing. М10's Node exports
+`health/rauc-health-check` now prefers the real thing. М9's Node exports
 `nodevms_camera_silent_seconds_max` on `127.0.0.1:8080/metrics` — the same
 number М13 alarms on — and the health check reads it **locally**, with the
 uplink down, and decides:

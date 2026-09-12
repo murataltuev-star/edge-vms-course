@@ -1,5 +1,5 @@
 """Fakes: a Variables raft in memory, an object store on disk, and the async
-surface of М10's PgStore that ClusterVMS touches. No Nomad, no Postgres."""
+surface of М9's PgStore that ClusterVMS touches. No Nomad, no Postgres."""
 from __future__ import annotations
 
 import os
@@ -22,7 +22,7 @@ def cam(i, revision=1, enabled=True, **kw):
 
 
 class FakeClusterStore:
-    """М10's PgStore as ClusterVMS sees it, in memory."""
+    """М9's PgStore as ClusterVMS sees it, in memory."""
 
     def __init__(self, cameras=None):
         self.rows: dict[int, dict] = {c["id"]: dict(c) for c in (cameras or [])}
@@ -33,7 +33,7 @@ class FakeClusterStore:
         self.events: list = []
         self.migrated = 0
 
-    # М10 surface
+    # М9 surface
     async def migrate(self, d): self.migrated += 1; return True
     async def listen(self, ch, cb): return None
     async def fetch_desired(self): return [dict(r) for r in self.rows.values()]

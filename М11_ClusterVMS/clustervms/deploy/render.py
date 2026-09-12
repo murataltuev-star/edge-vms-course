@@ -6,7 +6,7 @@
     python3 deploy/render.py node-3 --bootstrap          # prints the `nomad var put` lines for a new Node
 
 One job per Node; the job name IS the Node's identity. Memory and CPU come
-from М10's shard-memory-probe: B + n × I, rounded up.
+from М9's shard-memory-probe: B + n × I, rounded up.
 """
 from __future__ import annotations
 

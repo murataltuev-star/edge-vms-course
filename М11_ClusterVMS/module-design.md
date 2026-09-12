@@ -2,7 +2,7 @@
 
 **A Node that outlives the server recording on it.**
 
-М10 built one Node: a database holding what it should be, and a loop making it so. It ran on one box, and if that box died the cameras stopped. This module runs several servers and makes a Node survive any one of them dying — carrying its configuration, its cameras and its archive identity to whatever hardware it lands on.
+М9 built one Node: a database holding what it should be, and a loop making it so. It ran on one box, and if that box died the cameras stopped. This module runs several servers and makes a Node survive any one of them dying — carrying its configuration, its cameras and its archive identity to whatever hardware it lands on.
 
 The organising decision, taken up front because everything depends on it: **a Node owns its own configuration.** Nomad moves the Node; the cameras go with it; nothing rewrites who owns what. That is what makes failover teachable *here* rather than deferred to a coordinating layer: there is no ownership to reassign, so a dead server is a relocation rather than a decision.
 
@@ -16,7 +16,7 @@ The organising decision, taken up front because everything depends on it: **a No
 
 ## The thesis
 
-**A Node is a logical thing, not a server.** М10's Node — its Postgres, its AppHost, its cameras — becomes a Nomad allocation with stable identity. Nomad decides which server runs it. The Node does not change when that answer changes.
+**A Node is a logical thing, not a server.** М9's Node — its Postgres, its AppHost, its cameras — becomes a Nomad allocation with stable identity. Nomad decides which server runs it. The Node does not change when that answer changes.
 
 | | Node | Server |
 |---|---|---|
@@ -55,7 +55,7 @@ Node 3 reappears on another server with its configuration intact and resumes its
 | Failover scope | **Within a cluster. A Node never crosses one** | Two independent reasons, and either alone would decide it: footage lives on the cluster's disks, and **the epoch comes from Nomad's raft, which is per-cluster** — regions share no state, so there is no domain-wide issuer and no need for one. |
 | The restore point | **Cluster-scoped object storage — a backup, not a directory** | Failover needs somewhere off-box to restore configuration from. That is not the same thing as knowing *which Node has camera 7*, which is М12's and does not exist yet here. |
 | **Minimum version** | **Nomad ≥ 1.8.0. Target 1.10.x LTS or 2.0.x** | The `disconnect` block Lesson 4 is built on arrived in **1.8.0**; before that there is only `max_client_disconnect`/`stop_after_client_disconnect` and **no `reconcile` strategies at all**. Those predecessors were then *removed* in 1.10.0, so writing against 1.7.x teaches syntax that no longer exists. 1.7.x is also EOL with an allocation-directory-escape CVE fixed only in Enterprise. |
-| Language of the controller | **Designed in Python, shippable in Go — both exist, both pass the same tests** | [`clustervms-go/`](./clustervms-go/README.md) ports the whole module with the 29 tests unchanged in meaning; a Node in either language restores from the other's publication. Measured: 7.1 MB vs 28.5 MB at idle, within 2× on the work. The win is memory and the artifact, not throughput — М10 Lesson 5's argument, confirmed on a whole module (Lesson 5, *The module in Go, measured*). |
+| Language of the controller | **Designed in Python, shippable in Go — both exist, both pass the same tests** | [`clustervms-go/`](./clustervms-go/README.md) ports the whole module with the 29 tests unchanged in meaning; a Node in either language restores from the other's publication. Measured: 7.1 MB vs 28.5 MB at idle, within 2× on the work. The win is memory and the artifact, not throughput — М9 Lesson 9's argument, confirmed on a whole module (Lesson 5, *The module in Go, measured*). |
 | Single-server deployments | **No orchestrator at all** | М9's Quadlet stack is better on one box, and Lesson 1 makes students argue that rather than assert it. |
 
 The decisions about the layer *above* these Nodes — what a directory holds, how it is stored, and who may call it — are [М12's](../М12_DomainVMS/module-design.md).
@@ -64,7 +64,7 @@ The decisions about the layer *above* these Nodes — what a directory holds, ho
 
 ## Prerequisites
 
-- **М10 entire.** What it built on one box is a Node. This module runs several and moves them between servers.
+- **М9 entire.** What it built on one box is a Node. This module runs several and moves them between servers.
 - **М9 Lesson 4** — Quadlet. Lesson 2 maps those units onto a scheduler, which is a translation rather than a rewrite.
 - **М8 Lesson 2** — signals. `kill -STOP` is the module's most important teaching device.
 - **М9's process-model record** — capacity, shard sizing, and why the orchestrator must not own camera lifecycle.
@@ -154,7 +154,7 @@ Two properties carry the whole design, and each is a sentence the tests already 
 
 **Detectors** are the other resource and impose one placement rule: a stream should not cross the LAN twice, so workers carry an *affinity* — not a constraint — for servers that also carry GPUs, and where that cannot hold the detector opens the camera's sub-stream directly, as the live gateway does.
 
-**What each module keeps and loses.** М10 keeps the loop, the state machine and the numbers — they are DriverPack's contract now — and loses the per-Node Postgres and the disk-full policy in its current form (it becomes a bucket quota). М11 Lesson 2 becomes the worker as an allocation; Lesson 3 keeps *only configuration travels* and rewrites *footage stays on the dead server* as *footage stays on the dead resource and recording continues on another*; Lesson 4 is unchanged; Lesson 5 becomes the controller's lesson with its two properties named. М12 does not move — the domain never knew what a camera was. The lessons as written describe the Node; this section is the decision they will be rewritten to, and the tests in `nodevms/` and `clustervms/` are the contract that rewrite must keep.
+**What each module keeps and loses.** М9 keeps the loop, the state machine and the numbers — they are DriverPack's contract now — and loses the per-Node Postgres and the disk-full policy in its current form (it becomes a bucket quota). М11 Lesson 2 becomes the worker as an allocation; Lesson 3 keeps *only configuration travels* and rewrites *footage stays on the dead server* as *footage stays on the dead resource and recording continues on another*; Lesson 4 is unchanged; Lesson 5 becomes the controller's lesson with its two properties named. М12 does not move — the domain never knew what a camera was. The lessons as written describe the Node; this section is the decision they will be rewritten to, and the tests in `nodevms/` and `clustervms/` are the contract that rewrite must keep.
 
 ---
 
@@ -191,7 +191,7 @@ The old instance cannot corrupt the new one's segments because **it cannot name 
 
 > **You cannot stop a zombie from writing. You can only make its writes harmless.**
 
-This is also the justification for the rule М10 introduced without one: **on restart, never resume the previous segment — open a new one.**
+This is also the justification for the rule М9 introduced without one: **on restart, never resume the previous segment — open a new one.**
 
 ### Clocks
 
@@ -242,7 +242,7 @@ Which generalises into the rule the whole module stores things by — **three st
 - **Why an orchestrator is the wrong answer for a single appliance.** Students should leave able to argue this, not assert it. On one box the scheduler has nothing to schedule — "place N workers" is a systemd template unit. Nomad's production guidance suggests 4–8+ cores and 16–32 GB+ for *servers* and says nothing about single-node deployments. And HashiCorp publishes a support note on orphaned Podman containers after an agent restart, which is a poor trade for no scheduling benefit
 - Nomad's model: **servers** accept jobs and place work, **clients** register and execute it; raft per region, three or five servers
 - Build a cluster: three servers, two clients
-- **Break container-per-camera on purpose.** Run [`shard-memory-probe.py`](../М10_NodeVMS/reference/shard-memory-probe.py), measure the per-process baseline against the per-pipeline increment, and derive the shard size. Teach **proportional set size (PSS)** versus **resident set size (RSS)** — summing RSS across processes double-counts every shared library page, because it counts each shared page once per process
+- **Break container-per-camera on purpose.** Run [`shard-memory-probe.py`](../М9_EdgeVMS/reference/shard-memory-probe.py), measure the per-process baseline against the per-pipeline increment, and derive the shard size. Teach **proportional set size (PSS)** versus **resident set size (RSS)** — summing RSS across processes double-counts every shared library page, because it counts each shared page once per process
 
 **Deliverable:** a working cluster, a measured shard size, and a written justification for why this deployment needed one.
 
@@ -261,7 +261,7 @@ Which generalises into the rule the whole module stores things by — **three st
 - Storage reality: recordings stay local. **Do not put video bulk on replicated storage**
 - Placement constraints: cameras are not uniformly reachable from every server
 
-**Deliverable:** М10's Node running as a Nomad job with the behaviour it had under Quadlet — and a Node identity that survives being rescheduled.
+**Deliverable:** М9's Node running as a Nomad job with the behaviour it had under Quadlet — and a Node identity that survives being rescheduled.
 
 ---
 
@@ -327,7 +327,7 @@ The lesson that costs almost nothing to build, because **you already built it in
 - **Scanning your Nodes' Variables answers *where is camera 7*.** Each Node's Variable already carries its camera ids. Tens of entries, read in milliseconds, cached by the console. That is a directory, and noticing it is the lesson's first move
 - **Why it is a directory and not a database:** small, one writer per key enforced by a Nomad ACL, and never queried by anything but an exact scan. The same three properties that made the configuration store a database make this one not
 - **And it can be *strongly consistent*, because it is one raft.** Say this out loud, because it is the single thing М12 cannot have: inside a cluster there is one Nomad raft, so *where is camera 7* has one answer and it is current. Across clusters there is no raft at all
-- **Placement onto Nodes: capacity, measured.** [`shard-memory-probe.py`](../М10_NodeVMS/reference/shard-memory-probe.py) from М10 is why this is observed rather than guessed. Constraints are labels — a camera on an isolated VLAN is reachable from some Nodes and not others
+- **Placement onto Nodes: capacity, measured.** [`shard-memory-probe.py`](../М9_EdgeVMS/reference/shard-memory-probe.py) from М9 is why this is observed rather than guessed. Constraints are labels — a camera on an isolated VLAN is reachable from some Nodes and not others
 - **The stability rule, with a property test:** *adding a Node moves nothing.* Then the tests that follow from it — every camera lands on exactly one Node, no constraint violated
 - **Why not consistent hashing.** Cameras are not uniform (4K at 8 Mbps beside 720p at 1); constraints break the ring; and it is not inspectable — at 3am *"why is camera 812 on Node 3"* should be a row with a reason and a timestamp, not a hash to recompute
 - **Store the placement; do not derive it.** Rebalance between Nodes is explicit: **budgeted** at N moves per minute, observable, interruptible — and it is the one two-writer operation in this module, which is why it needs the epoch you just built

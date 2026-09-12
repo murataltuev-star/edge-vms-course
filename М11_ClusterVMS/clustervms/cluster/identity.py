@@ -5,7 +5,7 @@ carry (the column key, the heartbeat).
 
     nodes/<node>          node, config, revision, cameras
     nodes/<node>/pg       password
-    nodes/<node>/key      hex            (М10's column key — the debt paid)
+    nodes/<node>/key      hex            (М9's column key — the debt paid)
     nodes/<node>/epoch    epoch
     nodes/<node>/heartbeat ts, epoch     (for node_failover_seconds)
     nodes/<node>/failover last, worst    (RTO, worst case)

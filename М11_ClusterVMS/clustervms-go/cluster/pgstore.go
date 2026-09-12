@@ -2,7 +2,7 @@
 
 package cluster
 
-// PgStore is М10's PgStore in Go on pgx — the same statements, the same
+// PgStore is М9's PgStore in Go on pgx — the same statements, the same
 // migrations directory, the same three ClusterVMS additions. Behind the
 // `pg` build tag because pgx is the one dependency this project has:
 //
@@ -12,7 +12,7 @@ package cluster
 // Type-checked against pgx's API on the machine this was written on (the
 // module proxy was not reachable there, so it was compiled against a stub
 // carrying pgx's signatures, not run against Postgres). The SQL is the
-// Python version's, which М10 verified on Postgres 16.
+// Python version's, which М9 verified on Postgres 16.
 
 import (
 	"context"

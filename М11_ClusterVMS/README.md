@@ -1,6 +1,6 @@
 # Module 11 — ClusterVMS: A Node That Outlives Its Server
 
-[Module 10](../М10_NodeVMS/README.md) built a Node: a database holding what it should be, and a loop making it so. It ran on one box, and if that box died the cameras stopped — which is the deal an eight-camera shop bought. This module is for the deployment that did not buy it: several servers in one room, and a Node that survives any one of them dying, carrying its configuration, its cameras and its archive identity to whatever hardware it lands on.
+[Module 9](../М9_EdgeVMS/README.md) built a Node: a database holding what it should be, and a loop making it so. It ran on one box, and if that box died the cameras stopped — which is the deal an eight-camera shop bought. This module is for the deployment that did not buy it: several servers in one room, and a Node that survives any one of them dying, carrying its configuration, its cameras and its archive identity to whatever hardware it lands on.
 
 Five lessons in which a server is pulled from the wall and, within a number of seconds you measured, its Node is recording again somewhere else — and when the dead server comes back believing it still owns those cameras, the archive is provably intact.
 
@@ -57,13 +57,13 @@ Three things in this module were checked against the projects' own trackers rath
 
 ## The code, whole
 
-[`clustervms/`](./clustervms/README.md) is the five lessons as one runnable package, built **on** М10's `nodevms/` — `ClusterAppHost` subclasses М10's AppHost and adds the prologue (identity, restore, epoch, lease) and three tasks (publish, lease, heartbeat). `reference/` proves each mechanism in isolation; `clustervms/` is the mechanisms wired into the Node, with the jobspec renderer, the agent configurations, the MinIO job and the placement tool. Its 29 tests run with no Nomad and no Postgres:
+[`clustervms/`](./clustervms/README.md) is the five lessons as one runnable package, built **on** М9's `nodevms/` — `ClusterAppHost` subclasses М9's AppHost and adds the prologue (identity, restore, epoch, lease) and three tasks (publish, lease, heartbeat). `reference/` proves each mechanism in isolation; `clustervms/` is the mechanisms wired into the Node, with the jobspec renderer, the agent configurations, the MinIO job and the placement tool. Its 29 tests run with no Nomad and no Postgres:
 
 ```bash
 cd clustervms && python3 tests/run.py
 ```
 
-[`clustervms-go/`](./clustervms-go/README.md) is the same package in Go — every mechanism, the 29 tests ported unchanged in meaning plus a cross-language restore, and `measure.sh`, which puts the whole Node in each language at idle and times the six things it does. The numbers are in Lesson 5 (*The module in Go, measured*): 7.1 MB against 28.5 MB at idle, and within 2× on the work — the win М10 named, and only that one.
+[`clustervms-go/`](./clustervms-go/README.md) is the same package in Go — every mechanism, the 29 tests ported unchanged in meaning plus a cross-language restore, and `measure.sh`, which puts the whole Node in each language at idle and times the six things it does. The numbers are in Lesson 5 (*The module in Go, measured*): 7.1 MB against 28.5 MB at idle, and within 2× on the work — the win М9 named, and only that one.
 
 ```bash
 cd clustervms-go && go test ./cluster/          # 30 tests

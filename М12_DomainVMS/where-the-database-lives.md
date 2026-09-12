@@ -1,6 +1,6 @@
 # Where the Databases Live
 
-**A decision record for М10_NodeVMS and М11_ClusterVMS.** Companion to [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md), written in answer to *"a domain exists when its Postgres exists — so is Postgres installed on every host, and how do they sync?"*, and then revised in answer to a second question that corrected it: *if the host needs an event store and an index anyway, why not Postgres locally too?*
+**A decision record for М9_EdgeVMS and М11_ClusterVMS.** Companion to [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md), written in answer to *"a domain exists when its Postgres exists — so is Postgres installed on every host, and how do they sync?"*, and then revised in answer to a second question that corrected it: *if the host needs an event store and an index anyway, why not Postgres locally too?*
 
 It was revised a third time, and that revision **inverted the second verdict below.** The question that did it: *the Node is a Nomad allocation, not a server — its configuration does not change when Nomad moves it from one server to another, so why does anything need to write ownership at all?* That is right, and the design changed because of it.
 
@@ -64,7 +64,7 @@ Both designs have exactly one writer per row, so neither has a merge problem. Th
 - **Events** — motion, camera offline, analytics hits, operator actions. High volume, mostly never read
 - **Its own certificate and key** — how it proves it is Node 3 on every stream to the directory. Short-lived, renewed from the domain's CA, and the key never leaves the Node
 
-> This does not contradict М10's rule that *desired state is persisted and actual state is derived*. The Node persists desired state because it *is* the authority for it; what stays derived is everything about what is actually running.
+> This does not contradict М9's rule that *desired state is persisted and actual state is derived*. The Node persists desired state because it *is* the authority for it; what stays derived is everything about what is actually running.
 
 ### The domain has no database
 
@@ -109,7 +109,7 @@ Still Postgres, and still one. An earlier draft said SQLite was plenty; that was
 **Why Postgres locally rather than SQLite**, once index and events are in the picture:
 
 - **Concurrency.** SQLite permits one writer at a time; WAL lets readers run alongside a writer but does not change that. Twenty media workers writing index rows, an event stream, and the AppHost reading is real contention
-- **Partitioning is the decisive feature.** Index and events are both rolling time windows. `DROP PARTITION` against `DELETE FROM` on a table taking a hundred rows a second is not a close comparison, and it makes М10 Lesson 4's retention loop instant instead of a vacuum problem
+- **Partitioning is the decisive feature.** Index and events are both rolling time windows. `DROP PARTITION` against `DELETE FROM` on a table taking a hundred rows a second is not a close comparison, and it makes М9 Lesson 8's retention loop instant instead of a vacuum problem
 - **Types that match the work.** `tstzrange` with a GiST index answers *what footage covers this window* directly — which is М8's timeline query — and JSONB carries event payloads that differ per detector
 - **One engine, one skillset.** The same `psql`, `pg_dump`, monitoring and client library. Students learn one thing; whoever operates the appliance operates one thing
 
@@ -288,7 +288,7 @@ Most events are never read. A filtered subset — alarms an operator must acknow
 | Where does the domain end? | At the first network you would not bet recording on |
 | HA? | **Not a question the design asks any more.** Nomad's raft is replicated for scheduling; object storage durability is its product. Nothing was made highly available *for this* |
 
-**Course changes.** М10 Lesson 1 builds **one** database, owned by the Node, and what М10 builds *is a Node* — so М11 adds Nodes rather than restructuring anything. М11 Part A now carries what makes failover real: what must outlive a server, shared storage versus one-way replication, and fencing. Part B shrinks to the three things a Node cannot know about itself.
+**Course changes.** М9 Lesson 5 builds **one** database, owned by the Node, and what М9 builds *is a Node* — so М11 adds Nodes rather than restructuring anything. М11 Part A now carries what makes failover real: what must outlive a server, shared storage versus one-way replication, and fencing. Part B shrinks to the three things a Node cannot know about itself.
 
 **Product recommendation: the Node is the authority for its own configuration and owns the only database; the domain is a Variable, an object, and a certificate authority.** Nothing in that list has to be available for the product to *record*; the directory has to be available for the product to *recover*. Five revisions of this record moved in one direction throughout — **every one of them took state out of a database** — and the last one removed the database.
 
