@@ -84,6 +84,7 @@ Four threads issuing twenty-five epochs each get `1..100` with no number twice. 
 | a heartbeat object `<name>/<worker>/heartbeat` — `{worker, ts, status: [...], ...}` | what goes in `status` — for the VMS, each camera's phase, epoch and revisions |
 | an epoch prefix `<name>/epoch/<unit>`, taken by workers by CAS | which key the epoch goes in |
 | a slot prefix `<name>/slots/<worker>` — a worker's *name*, claimed by CAS and renewed (Step 5a) | a headroom number in its heartbeat, for whoever decides `N` |
+| an event log per unit on the resource — `<name>/<unit>/e<epoch>/<start>Z.events.jsonl`, written by the worker holding that unit's epoch (Lesson 3, Step 5a) | what its events say; its retention |
 | a metrics scrape per job (М13) | its two numbers |
 
 ```

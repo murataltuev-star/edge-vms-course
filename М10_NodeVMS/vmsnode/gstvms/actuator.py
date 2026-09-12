@@ -50,12 +50,6 @@ class GstActuator:
         self.pipelines[cid] = p
         return True
 
-    def event(self, cid: int, t: float, kind: str, **fields) -> bool:
-        """Record an observation beside the segment being written for `cid`."""
-        p = self.pipelines.get(cid)
-        sink = p.get_by_name("sink") if p else None
-        return bool(sink and sink.event(t, kind, **fields))
-
     def pump(self) -> list[int]:
         dead, self.dead = self.dead, []
         for cid in dead:

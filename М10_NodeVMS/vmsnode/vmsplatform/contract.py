@@ -5,6 +5,9 @@ and it is all of this:
     assignment rows        <name>/workers/<worker>       what each worker should run
     a heartbeat object     <name>/<worker>/heartbeat     {ts, status: [...]} — the worker's own report
     an epoch prefix        <name>/epoch/<unit>           fencing tokens the workers take by CAS
+    an event log           <resource>/<name>/<unit>/e<epoch>/<start>Z.events.jsonl   (vmsplatform.events)
+                                                         what a worker observed about a unit it holds the epoch for;
+                                                         on its server's resource, under the subsystem's prefix
     a slot prefix          <name>/slots/<worker>         identity by claim: a worker's name is a slot it
                                                          holds by CAS and renews; a replacement process
                                                          takes the lapsed slot and inherits its assignment

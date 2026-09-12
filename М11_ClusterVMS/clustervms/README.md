@@ -11,7 +11,7 @@ clustervms/
     controller.py    L5  the controller as a job: placement under label constraints with the server in the reason; `unplaceable`; the snapshot for М12; vms_failover_seconds from the heartbeats
     directory.py     L5  where is camera 7 — one scan of vms/workers/*
     resource.py      L3  the archive resource as a system job: its heartbeat, its manifests, footage and event files served, its policy (repair, then retain)
-    eventindex.py    L3  the cluster's event "database", which is a cache: SQLite over the resources' event files, rebuildable, honest about a silent server
+    eventindex.py    L3  the cluster's event "database", which is a cache: SQLite over every subsystem's buckets on every resource, rebuildable, honest about a silent server; joins subsystems on a `cam` field
     timeline.py      L3  one camera across two resources; the unreachable one named; *unavailable*, never *lost*
     console.py       L5  the cluster console, standard library: /cameras /where /timeline /resources /unplaceable /metrics
     publish.py, configio.py   the first design's Node-shaped snapshot — kept only because М12's fixture reads it; goes with М12's rewrite
@@ -27,7 +27,7 @@ clustervms/
     verify-bench.sh            the six checks that need a real cluster, PASS/FAIL — including the ACL from inside an allocation and a scale drill
     failover-drill.sh          L4  the power pull, measured: three runs, worst case kept, the old instance's conflicts counted
     Containerfile              the image: vmsnode + cluster, three entrypoints
-  tests/                       26 tests, no Nomad, no MinIO, no GStreamer, milliseconds: python3 tests/run.py
+  tests/                       27 tests, no Nomad, no MinIO, no GStreamer, milliseconds: python3 tests/run.py
 ```
 
 ## What a cluster adds, and what it does not
@@ -42,7 +42,7 @@ clustervms/
 | The archive | a directory on the box | the same directory on *each* server, pinned by a `system` job, with a heartbeat and its manifests served | `resource.py` |
 | A timeline | one manifest | merged across the resources that hold the camera; a silent one is named as unreachable | `timeline.py` |
 | What leaves the cluster | nothing | one snapshot object for М12's read model — a copy with an age | `controller.py` |
-| Events | lines beside the segment, written by the worker | the same, on each resource; indexed across the cluster by `eventindex`, a cache | `eventindex.py` |
+| Events | buckets per unit on the resource, written by the worker holding the epoch, any subsystem | the same, on each server's resource; indexed across the cluster by `eventindex`, a cache | `eventindex.py` |
 | The contract, the controller's logic, the worker's loop, the epoch, the lease, the manifest | | **unchanged**: imported from `vmsnode/` | |
 
 ## The three lines the tests hold
@@ -55,4 +55,4 @@ clustervms/
 
 ## Verified where
 
-The 26 tests ran in the authoring sandbox (Python 3.11) and on the author's machine (3.10), on fakes that implement what Nomad's and S3's documentation promise. `deploy/verify-bench.sh` and `deploy/failover-drill.sh` are what proves the promises against real Nomad: the ACL from inside an allocation, the four jobspecs validating, the scale drill, and the power pull with the worst case kept. `clustervms-go/` is the Go port of the *first* design and stays as its measurement record; its 2c port follows this package.
+The 27 tests ran in the authoring sandbox (Python 3.11) and on the author's machine (3.10), on fakes that implement what Nomad's and S3's documentation promise. `deploy/verify-bench.sh` and `deploy/failover-drill.sh` are what proves the promises against real Nomad: the ACL from inside an allocation, the four jobspecs validating, the scale drill, and the power pull with the worst case kept. `clustervms-go/` is the Go port of the *first* design and stays as its measurement record; its 2c port follows this package.

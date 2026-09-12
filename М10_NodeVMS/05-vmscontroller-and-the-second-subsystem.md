@@ -143,7 +143,7 @@ GET  /metrics                        -> vms_epoch_conflicts, vms_workers_live, v
 
 ## Step 7 — The second subsystem
 
-`tests/test_second_subsystem.py` defines a `CounterController` and a `CounterWorker` over `Subsystem("counter")`: units with a `step`, a worker that adds the step each pass and heartbeats its values. Forty lines, no reference to the VMS, and the platform runs it:
+`tests/test_second_subsystem.py` defines a `CounterController` and a `CounterWorker` over `Subsystem("counter")`: units with a `step`, a worker that adds the step each pass, heartbeats its values, and writes an event into `counter/b/e1/…` on the same resource every tenth tick through the platform's `EventLog`. Forty lines, no reference to the VMS, and the platform runs it:
 
 ```
 counter/units/a  counter/units/b  counter/workers/c-1  counter/epoch/a  counter/epoch/b

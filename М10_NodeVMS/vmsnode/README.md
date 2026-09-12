@@ -9,9 +9,10 @@ vmsnode/
     objects.py                 Lesson 1  an object store: a directory
     epoch.py                   Lesson 1  the fencing-token issuer and the lease — generic
     contract.py                Lesson 1  Subsystem, Assignment, Heartbeat, Slot; the Controller and Worker bases; identity by claim
+    events.py                  Lesson 3  the event log: buckets per unit per epoch on the resource, for any subsystem — generic
   vms/                         the VMS — the first subsystem
     reconciler.py              Lesson 4  М9 Lesson 6's loop, copied unchanged: the contract
-    archive.py                 Lesson 3  the archive resource: spool → promote → manifest; repair; retention as a policy; events beside the segment
+    archive.py                 Lesson 3  the archive resource under vms/<cam>/: spool → promote → manifest; the camera's event buckets; repair; retention per kind
     worker.py                  Lesson 4  vmsworker: N pipelines against an assignment; an epoch per camera; a lease; the heartbeat
     controller.py              Lesson 5  vmscontroller: cameras and placement by CAS; what it refuses; rebalance on request
     console.py                 Lesson 5  the one-box console, standard library: the read model from heartbeats; writes to the controller
@@ -39,7 +40,7 @@ python3 -m vms worker                                  # no name: claims the fir
 |---|---|---|
 | 1 | a config store that survives a restart and refuses a stale CAS; one writer per prefix; the contract a second team could implement; names by claim | `test_lesson1_platform.py` — including *the platform knows nothing about video* (no import from `vms/`, and not the word) and *identity by claim* (two claims, a lapse inherited, a release, the scheduler's index) |
 | 2 | `driverpacksrc` running for an hour with monotonic PTS; the refusal of a vendor URI | `test_lesson2_driverpacksrc.py` — the URI logic here; the element and the hour on a box with GStreamer |
-| 3 | kill the worker at minute seven: six promoted, one closed-but-not-promoted picked up on restart, the open one lost; rebuild the manifest from the files | `test_lesson3_archive.py` — the acknowledgement order, `closed_in_spool`, `repair()`, the fenced epoch on the timeline, two resources merged, retention, events promoted, counted, fenced and retained with the segment |
+| 3 | kill the worker at minute seven: six promoted, one closed-but-not-promoted picked up on restart, the open one lost; rebuild the manifest from the files | `test_lesson3_archive.py` — the acknowledgement order, `closed_in_spool`, `repair()`, the fenced epoch on the timeline, two resources merged, retention per kind, event buckets recording or not — silent included — closed, counted onto media, fenced, rebuilt |
 | 4 | М9's four failures against the worker with its tests passing unchanged; the zombie on one box | `test_lesson4_worker.py` — М9 Lesson 6's seven, then the assignment, the epoch per camera, the restart with the controller stopped, a nameless replacement inheriting the lapsed slot, the zombie fenced at the slot, the reassignment that is not one |
 | 5 | one box, two subsystems, one console; the controller stopped, the worker killed, recording resumes | `test_lesson5_controller.py` and `test_second_subsystem.py` — refusals, stored placement by the capacity each worker reports, adding a worker moves nothing, two controllers agree, scale-in redistributed and a crash left alone, the failure arithmetic, the console over HTTP, the counter subsystem |
 
@@ -49,7 +50,7 @@ python3 -m vms worker                                  # no name: claims the fir
 
 **The controller never decides how many workers there are.** It has no scheduler client and no `count`. `test_scale_in_releases_a_slot_and_the_controller_redistributes` shows the only thing it does about worker numbers: moving the cameras of a slot whose holder *said* it was stopping — and leaving a merely silent one alone for Nomad. The workers export `headroom`; `/metrics` serves it; whoever runs `count` reads it.
 
-**The platform knows nothing about video.** `test_the_platform_knows_nothing_about_video` greps `vmsplatform/` for an import from `vms/` and for the word *camera*, and `test_second_subsystem.py` runs a controller and a worker that count seconds through the same base classes with a different prefix.
+**The platform knows nothing about video.** `test_the_platform_knows_nothing_about_video` greps `vmsplatform/` — `events.py` included — for an import from `vms/` and for the word *camera*, and `test_second_subsystem.py` runs a controller and a worker that count seconds through the same base classes with a different prefix, and writes their events into `counter/b/…` on the same resource.
 
 ## Verified where
 

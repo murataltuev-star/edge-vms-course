@@ -6,7 +6,7 @@ and no more writes:
     GET /timeline/<id>     merged across the resources that hold the camera; unreachable ones named
     GET /resources         which archive resources exist, their usage, which are silent
     GET /unplaceable       cameras nothing live can reach, with the labels that say why
-    GET /events?from&to&cam&kind   from the eventindex — a cache over the resources; its state says if it is catching up
+    GET /events?from&to&cam&kind&subsystem&unit   from the eventindex — a cache over the resources; its state says if it is catching up
     GET /metrics           vms_workers_live, vms_worker_headroom, vms_worker_load, vms_epoch_conflicts,
                            vms_failover_seconds{kind="worst"}, vms_resources_live, vms_cameras_recording
     POST /cameras, PUT /cameras/<id>     through the controller; Idempotency-Key
@@ -89,9 +89,10 @@ def make_handler(ctl: ClusterController, reader=None, worst_failover: float = 0.
             if u.path == "/events":
                 if index is None:
                     return self._send(503, {"error": "no eventindex in this cluster"})
-                cur = {int(p.rsplit("/", 1)[1]): current_epoch(ctl.vars, p) for p in ctl.vars.list(ctl.sub.name + "/epoch/")}
+                cur = {("vms", p.rsplit("/", 1)[1]): current_epoch(ctl.vars, p) for p in ctl.vars.list(ctl.sub.name + "/epoch/")}
                 return self._send(200, index.query(float(q.get("from", 0)), float(q.get("to", 1e12)),
-                                                   int(q["cam"]) if "cam" in q else None, q.get("kind"), cur))
+                                                   int(q["cam"]) if "cam" in q else None, q.get("kind"),
+                                                   q.get("subsystem"), q.get("unit"), cur))
             if u.path == "/metrics":
                 return self._send(200, metrics_text(ctl, worst_failover), raw=True)
             self._send(404, {"error": "no such path"})

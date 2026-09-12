@@ -43,7 +43,7 @@ def worker() -> None:
     res = ArchiveResource(spool, archive)
     for p in res.closed_in_spool(grace_seconds=30, now=__import__("time").time()):     # what the last instance closed but did not promote
         res.promote(p)
-    w = VmsWorker(name, vars_, objects, act, capacity=int(os.environ.get("CAPACITY", "50")))
+    w = VmsWorker(name, vars_, objects, act, capacity=int(os.environ.get("CAPACITY", "50")), archive_root=archive)
     logging.info("worker %s (instance %s) claimed its slot", w.name, w.instance)
     w.run(stop=stop)
 

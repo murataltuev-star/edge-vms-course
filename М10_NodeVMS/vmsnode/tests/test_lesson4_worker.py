@@ -1,5 +1,6 @@
 """Lesson 4 — vmsworker: М9's loop over an assignment; the epoch and the
 lease; the restart with the controller stopped; the zombie on one box."""
+import os
 from vms.controller import VmsController
 from vms.reconciler import CONVERGED, LAGGING, STALLED, Reconciler
 from vms.worker import FakeActuator, VmsWorker
@@ -160,14 +161,25 @@ def test_the_zombie_is_fenced_at_the_slot_first():
     assert b.lease_pass() == []
 
 
-def test_the_worker_observes_beside_what_it_records():
-    box, ctl = _box_with_cameras(1)
+def test_the_worker_observes_what_it_holds_recording_or_not():
+    """An event is written by the worker that holds the camera's epoch, into
+    the camera's bucket on this server's resource. Not recording is not a
+    reason; not holding it is. A lost pipeline writes `silent` — the event
+    that cannot have a segment."""
+    from vmsplatform.events import read_bucket
+    box, ctl = _box_with_cameras(2)
     ctl.assign("w-1", ["1"])
-    act = FakeActuator(); w = VmsWorker("w-1", box.vars, box.objects, act, clock=box.clock, wall=box.wall)
-    assert not w.observe(1, "motion")                              # nothing recording yet: nothing to be an event of
+    act = FakeActuator(); w = VmsWorker("w-1", box.vars, box.objects, act, clock=box.clock, wall=box.wall, archive_root=box.archive)
+    assert w.observe(1, "motion") is None                          # no epoch held yet: not mine to observe
     w.reconcile_once()
-    assert w.observe(1, "motion", zone="gate") and act.events == [(1, box.wall(), "motion", {"zone": "gate"})]
-    assert ctl.workers_seen() == {} and box.vars.list("vms/events") == []   # nobody was told; nothing went to the store
+    p = w.observe(1, "motion", zone="gate")
+    assert p and p.startswith(os.path.join(box.archive, "vms", "1", "e1")) and read_bucket(p)[0]["zone"] == "gate"
+    assert w.observe(2, "motion") is None                          # camera 2 is not assigned to me
+    act.running.discard(1); act.dead = [1]                         # the pipeline died
+    act.pump = lambda: [1]
+    w.pump_once()
+    assert [e["kind"] for e in read_bucket(p)] == ["motion", "silent"] and w.reconciler.actual.get(1) is None
+    assert box.vars.list("vms/events") == [] and ctl.workers_seen() == {}    # nobody was told; nothing went to the store
 
 
 def test_a_reassignment_is_not_a_zombie():

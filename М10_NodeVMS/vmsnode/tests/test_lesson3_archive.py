@@ -20,8 +20,8 @@ def write_segment(root, cam, epoch, start, size=1000, mtime=None):
 
 
 def test_parse_and_paths():
-    assert parse("/a/7/e5/20260912T101000Z.mp4", "/a") == (7, 5, utc("2026-09-12T10:10:00"))
-    assert parse("/a/7/e5/manifest.jsonl", "/a") is None and parse("/a/7/20260912T101000Z.mp4", "/a") is None
+    assert parse("/a/vms/7/e5/20260912T101000Z.mp4", "/a") == (7, 5, utc("2026-09-12T10:10:00"))
+    assert parse("/a/vms/7/e5/manifest.jsonl", "/a") is None and parse("/a/7/e5/20260912T101000Z.mp4", "/a") is None
 
 
 def test_promote_is_the_acknowledgement_order():
@@ -87,27 +87,39 @@ def test_retention_is_a_policy_on_the_resource():
         res.promote(write_segment(box.spool, 7, 3, f"2026-10-{day:02d}T10:00:00", mtime=utc(f"2026-10-{day:02d}T10:10:00").timestamp()))
     assert res.retain(7, days=8, now=now) == 2                              # cutoff 12 Oct: the 1st and the 10th go
     left = Manifest(box.archive, 7).read()
-    assert len(left) == 1 and not os.path.exists(os.path.join(box.archive, "7", "e3", "20261001T100000Z.mp4"))
+    assert len(left) == 1 and not os.path.exists(os.path.join(box.archive, "vms", "7", "e3", "20261001T100000Z.mp4"))
     assert res.usage() == 1000
 
 
-def test_events_ride_with_the_segment():
-    """An event is an observation, written by the observer under its epoch,
-    beside what it describes. It is promoted with the segment, counted in the
-    manifest line, shown on the timeline, fenced by the same path, and
-    deleted by the same retention. No controller wrote it; no database holds it."""
-    from vms.archive import append_event, events_path, read_events
+def test_events_are_buckets_on_the_resource_recording_or_not():
+    """The archive's unit is a time span under an epoch, not a media file. A
+    camera that is watched and never recorded has event buckets; a camera that
+    went silent has no segment open, and the event that says so goes into its
+    bucket. Buckets are written in place, indexed when closed, counted onto a
+    recorded span when one overlaps, fenced by the epoch, rebuilt by repair,
+    retained by their own policy. No controller wrote any of it."""
+    from vms.archive import event_log
+    from vmsplatform.events import parse_bucket, read_bucket
     box = Box(); res = ArchiveResource(box.spool, box.archive)
     t0 = utc("2026-09-12T10:00:00").timestamp()
-    p = write_segment(box.spool, 7, 3, "2026-09-12T10:00:00", mtime=t0 + 600)
-    append_event(p, t0 + 12.5, "motion", zone="gate")                          # the worker, while the segment is open
-    append_event(p, t0 + 40.0, "person", score=0.91)
-    seg = res.promote(p)
-    assert seg.events == 2 and not os.path.exists(events_path(p))              # promoted with it: gone from the spool
-    assert read_events(box.archive, seg) == [{"t": t0 + 12.5, "kind": "motion", "zone": "gate"},
-                                             {"t": t0 + 40.0, "kind": "person", "score": 0.91}]
-    assert Manifest(box.archive, 7).timeline(t0, t0 + 600)[0]["events"] == 2  # the timeline says how many without opening it
-    os.remove(os.path.join(box.archive, "7", "manifest.jsonl"))
-    assert res.repair() == {"added": 1, "dropped": 0} and Manifest(box.archive, 7).read()[0].events == 2   # rebuilt from the files
-    assert res.retain(7, days=1, now=t0 + 3 * 86400) == 1
-    assert not os.path.exists(events_path(os.path.join(box.archive, seg.path)))   # retention takes both
+    log = event_log(box.archive, 7, 3)                                          # the worker holds epoch 3 for camera 7
+    p = log.append(t0 + 12.5, "motion", zone="gate")                            # not recording: still an event
+    assert parse_bucket(p, box.archive) == ("vms", "7", 3, t0) and read_bucket(p)[0]["zone"] == "gate"
+    log.append(t0 + 40.0, "silent")                                             # the event with no segment, by definition
+    p2 = log.append(t0 + 700.0, "person", score=0.9)                            # the next bucket: rolled by the clock
+    for f in (p, p2): os.utime(f, (t0 + 1250, t0 + 1250))                       # quiet for the grace (the test's clock is not the disk's)
+    assert Manifest(box.archive, 7).buckets() == []                             # durable already; not yet indexed
+    assert [b.events for b in res.close_buckets(now=t0 + 1300)] == [2, 1]      # both spans over and quiet: indexed
+    assert res.close_buckets(now=t0 + 1300) == []                               # idempotent
+    tl = Manifest(box.archive, 7).timeline(t0, t0 + 1200, current_epoch=4)
+    assert [(x["media"], x["events"], x["fenced"]) for x in tl] == [(None, 2, True), (None, 1, True)]   # watched, not recorded; fenced
+    # now the camera IS recorded for the second span: the events count onto the media
+    seg = res.promote(write_segment(box.spool, 7, 4, "2026-09-12T10:10:00", mtime=t0 + 1200))
+    log4 = event_log(box.archive, 7, 4); p4 = log4.append(t0 + 650.0, "motion"); os.utime(p4, (t0 + 1900, t0 + 1900)); res.close_buckets(now=t0 + 2000)
+    tl = Manifest(box.archive, 7).timeline(t0 + 600, t0 + 1200, current_epoch=4)
+    assert [(x["media"] is not None, x["epoch"], x["events"], x["fenced"]) for x in tl] == [(False, 3, 1, True), (True, 4, 1, False)]
+    # repair rebuilds both kinds from the files; retention keeps events longer than media
+    os.remove(Manifest(box.archive, 7).path)
+    assert res.repair() == {"added": 4, "dropped": 0}
+    assert res.retain(7, days=1, now=t0 + 3 * 86400, events_days=30) == 1 and len(Manifest(box.archive, 7).buckets()) == 3
+    assert res.retain(7, days=1, now=t0 + 40 * 86400, events_days=30) == 3 and not os.path.exists(p)

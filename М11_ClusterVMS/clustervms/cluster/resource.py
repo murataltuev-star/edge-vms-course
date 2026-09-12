@@ -9,10 +9,12 @@ over HTTP so a timeline can be assembled across servers without a shared
 filesystem. Footage is served the same way — a range of a file — and it
 is the only reader path there is: nothing copies footage between servers.
 
-    vms/resources/<server>/heartbeat   {server, ts, url, usage, cameras: [ids with footage here]}
-    GET <url>/manifest/<cam>           the manifest's lines
+    vms/resources/<server>/heartbeat   {server, ts, url, usage, cameras: [ids with footage or events here],
+                                        units: {subsystem: [unit, ...]} — every subsystem's buckets on this server}
+    GET <url>/manifest/<cam>           the VMS manifest's lines (media and closed event buckets)
+    GET <url>/buckets/<sub>/<unit>     any subsystem's closed event buckets, from the files (no manifest needed)
     GET <url>/segment/<path>           the bytes, Range honoured
-    GET <url>/events/<path>            the segment's events file (М10: <start>Z.events.jsonl beside the .mp4)
+    GET <url>/events/<path>            one event bucket
 """
 from __future__ import annotations
 
@@ -24,6 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from vms.archive import ArchiveResource, Manifest
 from vms.config import row
+from vmsplatform.events import buckets_under, subsystems_under
 
 
 class ResourceHeartbeat:
@@ -31,14 +34,11 @@ class ResourceHeartbeat:
         self.res, self.objects, self.server, self.url, self.wall, self.prefix = resource, objects, server, url, wall, prefix
 
     def cameras_here(self) -> list[int]:
-        try:
-            return sorted(int(d) for d in os.listdir(self.res.root) if d.isdigit())
-        except FileNotFoundError:
-            return []
+        return self.res.cameras()
 
     def once(self) -> dict:
         hb = {"server": self.server, "ts": self.wall(), "url": self.url, "usage": self.res.usage(),
-              "cameras": self.cameras_here()}
+              "cameras": self.cameras_here(), "units": subsystems_under(self.res.root)}
         self.objects.put(f"{self.prefix}/resources/{self.server}/heartbeat", json.dumps(hb).encode())
         return hb
 
@@ -61,14 +61,25 @@ class ResourcePolicy:
     def __init__(self, resource: ArchiveResource, vars_, wall=time.time, prefix: str = "vms"):
         self.res, self.vars, self.wall, self.prefix = resource, vars_, wall, prefix
 
-    def once(self) -> dict:
+    def once(self, other_subsystems_days: float = 365.0) -> dict:
         rep = self.res.repair()
+        closed = len(self.res.close_buckets(self.wall(), bucket_seconds=self.res.bucket_seconds))
         removed = 0
-        for cam in sorted(int(d) for d in os.listdir(self.res.root) if d.isdigit()):
+        for cam in self.res.cameras():
             items, _ = self.vars.get(f"{self.prefix}/cameras/{cam}")
-            days = row(items)["retention_days"] if items else 30
-            removed += self.res.retain(cam, days, self.wall())
-        return {**rep, "removed": removed}
+            r = row(items) if items else {"retention_days": 30, "events_retention_days": 365}
+            removed += self.res.retain(cam, r["retention_days"], self.wall(), r["events_retention_days"])
+        # other subsystems' buckets: their own policy is <sub>/retention_days in the store, else a year
+        for sub, units in subsystems_under(self.res.root).items():
+            if sub == "vms":
+                continue
+            items, _ = self.vars.get(f"{sub}/retention_days")
+            days = float(items["days"]) if items and "days" in items else other_subsystems_days
+            for unit in units:
+                for b in buckets_under(self.res.root, sub, unit, self.res.bucket_seconds):
+                    if b.end < self.wall() - days * 86400:
+                        os.remove(os.path.join(self.res.root, b.path)); removed += 1
+        return {**rep, "closed": closed, "removed": removed}
 
 
 def serve(resource: ArchiveResource, host: str = "0.0.0.0", port: int = 8090) -> ThreadingHTTPServer:
@@ -81,6 +92,11 @@ def serve(resource: ArchiveResource, host: str = "0.0.0.0", port: int = 8090) ->
             if self.path.startswith("/manifest/"):
                 cam = int(self.path.rsplit("/", 1)[1])
                 body = "".join(s.line() + "\n" for s in Manifest(root, cam).read()).encode()
+                self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers()
+                self.wfile.write(body); return
+            if self.path.startswith("/buckets/"):
+                _, _, sub, unit = self.path.split("/", 3)
+                body = "".join(b.line() + "\n" for b in buckets_under(root, sub, unit, resource.bucket_seconds)).encode()
                 self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers()
                 self.wfile.write(body); return
             if self.path.startswith("/events/"):

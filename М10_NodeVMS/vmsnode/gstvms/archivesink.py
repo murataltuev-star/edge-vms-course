@@ -19,7 +19,7 @@ import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import GObject, Gst  # noqa: E402
 
-from vms.archive import ArchiveResource, append_event, segment_path  # noqa: E402
+from vms.archive import ArchiveResource, segment_path  # noqa: E402
 
 Gst.init(None)
 
@@ -60,15 +60,7 @@ class ArchiveSink(Gst.Bin):
         start = datetime.now(timezone.utc).replace(microsecond=0)
         p = segment_path(self.props_["spool"], self.props_["camera"], self.props_["epoch"], start)
         os.makedirs(os.path.dirname(p), exist_ok=True)
-        self.current = p                               # what an event written now is an event OF
         return p
-
-    def event(self, t: float, kind: str, **fields) -> bool:
-        """An observation about the open segment: one line beside it, promoted with it."""
-        if getattr(self, "current", None) is None:
-            return False
-        append_event(self.current, t, kind, **fields)
-        return True
 
     def do_handle_message(self, msg):
         """splitmuxsink-fragment-closed: the acknowledgement point."""

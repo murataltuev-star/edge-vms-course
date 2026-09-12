@@ -20,6 +20,7 @@ from vmsplatform.contract import Subsystem, Worker
 from vmsplatform.objects import ObjectStore
 from vmsplatform.variables import Variables
 
+from .archive import event_log
 from .config import row
 from .reconciler import CONVERGED, Reconciler
 
@@ -36,7 +37,6 @@ class FakeActuator:
         self.calls: list[tuple[str, int]] = []
         self.running: set[int] = set()
         self.epochs: dict[int, int] = {}
-        self.events: list = []
 
     def __call__(self, verb: str, cam: dict) -> bool:
         cid = cam["id"]
@@ -55,11 +55,6 @@ class FakeActuator:
     def pump(self) -> list[int]:
         return []
 
-    def event(self, cid: int, t: float, kind: str, **fields) -> bool:
-        if cid not in self.running:
-            return False
-        self.events.append((cid, t, kind, fields)); return True
-
     def stop_all(self) -> None:
         self.running.clear()
 
@@ -71,9 +66,13 @@ class VmsWorker(Worker):
 
     def __init__(self, name: str | None, vars_: Variables, objects: ObjectStore, actuator=None,
                  lease_ttl: float = 30.0, lease_margin: float = 5.0, clock=time.monotonic, wall=time.time,
-                 server: str | None = None, capacity: int = 50, instance: str | None = None, slot_ttl: float = 45.0):
+                 server: str | None = None, capacity: int = 50, instance: str | None = None, slot_ttl: float = 45.0,
+                 archive_root: str | None = None, bucket_seconds: int = 600):
         super().__init__(VMS, None, vars_, objects, lease_ttl, lease_margin, clock, wall, instance, slot_ttl)
         self.claim_slot(prefer=name)
+        self.archive_root = archive_root or os.environ.get("ARCHIVE", "/data/archive")   # this server's resource
+        self.bucket_seconds = bucket_seconds
+        self.observed: list[tuple[int, float, str]] = []
         self.capacity = capacity          # cameras this process can carry: М9 Lesson 7's B + n·I, measured on its server
         self.actuator = actuator or FakeActuator()
         self.rows: list[dict] = []
@@ -160,14 +159,22 @@ class VmsWorker(Worker):
         self.actuator.stop_all()
         self.reconciler.clear()
 
-    def observe(self, cid: int, kind: str, **fields) -> bool:
-        """An event: written by this worker, now, beside the segment it is
-        recording for `cid`, under the epoch it holds. Nothing else is told."""
-        return self.actuator.event(cid, self.wall(), kind, **fields)
+    def observe(self, cid: int, kind: str, **fields) -> str | None:
+        """An event: written by this worker, now, into the camera's bucket on
+        this server's resource, under the epoch this worker holds for it —
+        recording or not. A camera it holds no epoch for is not its to
+        observe. Nothing else is told."""
+        epoch = self.epochs.get(str(cid))
+        if epoch is None or not self.recording_allowed:
+            return None
+        t = self.wall()
+        self.observed.append((cid, t, kind))
+        return event_log(self.archive_root, cid, epoch, self.bucket_seconds).append(t, kind, **fields)
 
     def pump_once(self) -> None:
         for cid in self.actuator.pump():
             self.reconciler.lost(cid, self.now())
+            self.observe(cid, "silent")                 # the event with no segment open, by definition
 
     def status(self) -> list[dict]:
         st = self.reconciler.status()
