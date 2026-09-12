@@ -135,6 +135,8 @@ PUT  /cameras/1   {"worker": "w-9"}  -> 400                           refused
 GET  /cameras                        -> rows from heartbeats: phase running, server srv-1, age
 GET  /where/1                        -> {"worker": "w-1"}
 GET  /timeline/7?from&to             -> the manifest, fenced segments marked
+POST /marks {"cam": 1, "note": …}   -> 201 {subsystem: console, unit: <host:pid>, bucket: console/<host:pid>/e1/…}
+                                        the operator's observation is the CONSOLE's event, never a worker's (Lesson 4, Step 3a)
 GET  /metrics                        -> vms_epoch_conflicts, vms_workers_live, vms_worker_headroom{worker="w-1"} 49,
                                         vms_headroom, vms_worker_load{worker="w-1"} 0.020, vms_cameras_recording 1   the autoscaler scrapes this
 ```

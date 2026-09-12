@@ -5,6 +5,8 @@ writes go through the controller, the only writer.
     GET  /where/<id>              which worker — from the stored placement
     GET  /timeline/<id>?from&to   segments from the archive resource's manifest, fenced ones marked
     POST /cameras                 create (Idempotency-Key required)
+    POST /marks                   an operator's observation {cam, note} — the CONSOLE's event, into console/<instance>/…
+                                  on this box's resource (never a worker's bucket; the index joins on `cam`)
     PUT  /cameras/<id>            update — refuses placement and controller-owned fields
     GET  /metrics                 vms_epoch_conflicts, vms_workers_live, vms_worker_headroom (the autoscaler's), vms_cameras_recording
 """
@@ -15,12 +17,20 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
+import os
+import socket
+
+from vmsplatform.events import EventLog
+
 from .archive import ArchiveResource, Manifest
 from .controller import Refused, VmsController
 
 
-def make_handler(ctl: VmsController, archive: ArchiveResource | None):
+def make_handler(ctl: VmsController, archive: ArchiveResource | None, wall=None):
     seen: dict[str, tuple[int, dict]] = {}
+    instance = f"{socket.gethostname()}:{os.getpid()}"
+    marks = EventLog(archive.root, "console", instance, 1) if archive else None    # the console's own log: one writer, so epoch 1
+    wall = wall or ctl.wall
 
     class H(BaseHTTPRequestHandler):
         def _send(self, status, body):
@@ -71,6 +81,20 @@ def make_handler(ctl: VmsController, archive: ArchiveResource | None):
             return key
 
         def do_POST(self):
+            if self.path == "/marks":
+                key = self._idem()
+                if key is None:
+                    return
+                if marks is None:
+                    resp = (503, {"detail": "no resource on this box to write marks into"})
+                else:
+                    b = self._body(); user = self.headers.get("X-User", "operator")
+                    if "cam" not in b:
+                        resp = (400, {"detail": "a mark names a camera"})
+                    else:
+                        path = marks.append(wall(), "mark", cam=int(b["cam"]), user=user, note=str(b.get("note", "")))
+                        resp = (201, {"subsystem": "console", "unit": instance, "bucket": os.path.relpath(path, archive.root)})
+                seen[key] = resp; return self._send(*resp)
             if self.path != "/cameras":
                 return self._send(404, {"detail": "no such route"})
             key = self._idem()
@@ -103,7 +127,7 @@ def make_handler(ctl: VmsController, archive: ArchiveResource | None):
     return H
 
 
-def serve(ctl: VmsController, archive: ArchiveResource | None, host: str = "127.0.0.1", port: int = 8080) -> ThreadingHTTPServer:
-    srv = ThreadingHTTPServer((host, port), make_handler(ctl, archive))
+def serve(ctl: VmsController, archive: ArchiveResource | None, host: str = "127.0.0.1", port: int = 8080, wall=None) -> ThreadingHTTPServer:
+    srv = ThreadingHTTPServer((host, port), make_handler(ctl, archive, wall))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv

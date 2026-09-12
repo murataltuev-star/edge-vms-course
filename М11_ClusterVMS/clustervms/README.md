@@ -13,7 +13,7 @@ clustervms/
     resource.py      L3  the archive resource as a system job: its heartbeat, its manifests, footage and event files served, its policy (repair, then retain)
     eventindex.py    L3  the cluster's event "database", which is a cache: SQLite over every subsystem's buckets on every resource, rebuildable, honest about a silent server; joins subsystems on a `cam` field
     timeline.py      L3  one camera across two resources; the unreachable one named; *unavailable*, never *lost*
-    console.py       L5  the cluster console, standard library: /cameras /where /timeline /resources /unplaceable /metrics
+    console.py       L5  the cluster console, standard library: /cameras /where /timeline /resources /unplaceable /events /metrics; /marks into the console's own bucket
     publish.py, configio.py   the first design's Node-shaped snapshot — kept only because М12's fixture reads it; goes with М12's rewrite
     __main__.py      python3 -m cluster worker | controller | resource   (the controller job also runs the eventindex beside the console)
   deploy/

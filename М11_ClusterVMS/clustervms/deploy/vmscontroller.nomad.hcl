@@ -7,6 +7,10 @@ job "vmscontroller" {
 
   group "vmscontroller" {
     count = 1
+    constraint {                                     # the console writes operator marks into THIS server's resource
+      attribute = "${meta.archive}"
+      operator  = "is_set"
+    }
     network {
       mode = "host"
       port "console" { static = 8080 }
@@ -18,9 +22,11 @@ job "vmscontroller" {
         image        = "localhost/clustervms:latest"
         network_mode = "host"
         args         = ["python3", "-m", "cluster", "controller"]
+        volumes      = ["/data/archive:/data/archive"]
       }
       env {
         OBJECTS      = "s3+http://127.0.0.1:9000/vms?region=us-east-1"
+        ARCHIVE      = "/data/archive"
         CONSOLE_PORT = "8080"
         CLUSTER      = "room-a"
       }

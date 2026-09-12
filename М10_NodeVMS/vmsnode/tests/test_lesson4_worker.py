@@ -175,10 +175,14 @@ def test_the_worker_observes_what_it_holds_recording_or_not():
     p = w.observe(1, "motion", zone="gate")
     assert p and p.startswith(os.path.join(box.archive, "vms", "1", "e1")) and read_bucket(p)[0]["zone"] == "gate"
     assert w.observe(2, "motion") is None                          # camera 2 is not assigned to me
-    act.running.discard(1); act.dead = [1]                         # the pipeline died
-    act.pump = lambda: [1]
+    act.post(1, "person", score=0.91)                              # an element posted on the bus...
+    w.pump_once()                                                  # ...and the worker, holding the epoch, made it a line
+    act.dead = [1]                                                 # the pipeline died
     w.pump_once()
-    assert [e["kind"] for e in read_bucket(p)] == ["motion", "silent"] and w.reconciler.actual.get(1) is None
+    assert [e["kind"] for e in read_bucket(p)] == ["motion", "person", "silent"] and w.reconciler.actual.get(1) is None
+    assert read_bucket(p)[1]["score"] == 0.91
+    w.fence("test"); act.post(1, "motion"); w.pump_once()
+    assert len(read_bucket(p)) == 3                                # a fenced instance's bus still posts; observe drops it
     assert box.vars.list("vms/events") == [] and ctl.workers_seen() == {}    # nobody was told; nothing went to the store
 
 

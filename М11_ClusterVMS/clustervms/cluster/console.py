@@ -10,10 +10,14 @@ and no more writes:
     GET /metrics           vms_workers_live, vms_worker_headroom, vms_worker_load, vms_epoch_conflicts,
                            vms_failover_seconds{kind="worst"}, vms_resources_live, vms_cameras_recording
     POST /cameras, PUT /cameras/<id>     through the controller; Idempotency-Key
+    POST /marks {cam, note}              an operator's observation: the console's own bucket, console/<instance>/…, on
+                                         THIS server's resource — never a worker's bucket; the eventindex joins on `cam`
 """
 from __future__ import annotations
 
 import json
+import os
+import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +25,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from vms.controller import Refused
 from vmsplatform.epoch import current_epoch
+from vmsplatform.events import EventLog
 
 from .controller import ClusterController, heartbeats
 from .directory import Directory
@@ -49,10 +54,12 @@ def metrics_text(ctl: ClusterController, worst_failover: float) -> str:
     return "\n".join(lines) + "\n"
 
 
-def make_handler(ctl: ClusterController, reader=None, worst_failover: float = 0.0, index=None):
+def make_handler(ctl: ClusterController, reader=None, worst_failover: float = 0.0, index=None, archive_root: str | None = None):
     reader = reader or ManifestReader()
     directory = Directory(ctl.vars, ttl=5.0)
     seen: dict[str, tuple[int, dict]] = {}
+    instance = f"{socket.gethostname()}:{os.getpid()}"
+    marks = EventLog(archive_root, "console", instance, 1) if archive_root else None
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a): pass
@@ -98,12 +105,22 @@ def make_handler(ctl: ClusterController, reader=None, worst_failover: float = 0.
             self._send(404, {"error": "no such path"})
 
         def do_POST(self):
-            if self.path != "/cameras":
+            if self.path not in ("/cameras", "/marks"):
                 return self._send(404, {})
             key = self.headers.get("Idempotency-Key")
             if not key:
                 return self._send(400, {"error": "Idempotency-Key required"})
             if key in seen:
+                return self._send(*seen[key])
+            if self.path == "/marks":
+                b = self._body()
+                if marks is None:
+                    seen[key] = (503, {"error": "no resource on this server to write marks into"})
+                elif "cam" not in b:
+                    seen[key] = (400, {"error": "a mark names a camera"})
+                else:
+                    p = marks.append(ctl.wall(), "mark", cam=int(b["cam"]), user=self.headers.get("X-User", "operator"), note=str(b.get("note", "")))
+                    seen[key] = (201, {"subsystem": "console", "unit": instance, "bucket": os.path.relpath(p, archive_root)})
                 return self._send(*seen[key])
             try:
                 r = ctl.create_camera(self._body()); pl = ctl.place(r["id"])
@@ -125,7 +142,7 @@ def make_handler(ctl: ClusterController, reader=None, worst_failover: float = 0.
     return H
 
 
-def serve(ctl, host="127.0.0.1", port=8080, reader=None, worst_failover=0.0, index=None) -> ThreadingHTTPServer:
-    srv = ThreadingHTTPServer((host, port), make_handler(ctl, reader, worst_failover, index))
+def serve(ctl, host="127.0.0.1", port=8080, reader=None, worst_failover=0.0, index=None, archive_root=None) -> ThreadingHTTPServer:
+    srv = ThreadingHTTPServer((host, port), make_handler(ctl, reader, worst_failover, index, archive_root))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv

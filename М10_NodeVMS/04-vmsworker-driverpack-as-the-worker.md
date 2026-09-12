@@ -95,6 +95,22 @@ Why per camera and not per worker, as М11 did for the Node: because a **reassig
 
 `lease_pass` renews the slot first and the camera leases second; a slot held by another instance fences everything before any epoch is read. The lease is the other half. `may_write(unit)` is a purely local decision on a monotonic clock — TTL 30, margin 5, the numbers М11 Lesson 4 derived — and a start without a live lease is refused before the actuator is asked. `test_lease_expiry_without_renewal_stops_starts` runs the clock 26 seconds forward, shows `may_write` false, and shows the next start taking a *fresh* epoch and a fresh lease rather than reusing the stale one.
 
+## Step 3a — How an event is fired
+
+Three sources, and they are different kinds of thing. **The pipeline**, which is where nearly all events come from: elements do not call Python, they post messages on the bus — a motion or analytics element posts an *element message*, a `GstStructure` named `motion` or `person` with its fields; `watchdog` posts an error when frames stop. The actuator's per-camera bus watch collects both, and `pump()` returns them as `(dead, posted)`:
+
+```python
+bus.connect("message::element", lambda b, m, c=cid: self._posted(c, m))   # gstvms/actuator.py
+bus.connect("message::error",   lambda b, m, c=cid: self.dead.append(c))
+
+def pump_once(self):                                                        # vms/worker.py
+    dead, posted = self.actuator.pump()
+    for cid, kind, fields in posted: self.observe(cid, kind, **fields)     # a line, if I hold the epoch
+    for cid in dead:                 self.reconciler.lost(cid, self.now()); self.observe(cid, "silent")
+```
+
+The element never knows about buckets, epochs or files; it posts what it saw, and the worker — the process holding the camera's epoch — turns it into a line. That keeps М9's per-frame rule: detection runs inside the pipeline in C, and Python touches an event, not a frame. **The worker itself** is the second source, for what no element posts: `silent` on a lost pipeline, above. **An operator** is the third — and a mark from the console is *not* this worker's event and must not reach into it (there is no RPC to workers): it is the console's own observation, in the console's own bucket (Lesson 5, Step 6). `test_the_worker_observes_what_it_holds_recording_or_not` runs all of it with the fake actuator's `post()`, and ends with the fence at the source: a fenced instance's bus still posts, and `observe` drops it.
+
 ## Step 4 — The heartbeat
 
 ```json
@@ -181,6 +197,7 @@ Which means a vendor SDK that segfaults inside a pipeline takes the loop with it
 - The heartbeat carries the status snapshot; nobody calls the worker.
 - The controller is never on the recovery path — a restart reads and records.
 - A lost lease is a zombie if the camera is still mine, a reassignment if it is not.
+- Events are fired by the bus: an element posts, `pump()` drains, `observe()` writes — if the worker still holds the epoch.
 - One supervisor; crash isolation by external state, and only that.
 
 ## Exercises

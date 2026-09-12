@@ -37,6 +37,8 @@ class FakeActuator:
         self.calls: list[tuple[str, int]] = []
         self.running: set[int] = set()
         self.epochs: dict[int, int] = {}
+        self.dead: list[int] = []
+        self.posted: list[tuple[int, str, dict]] = []
 
     def __call__(self, verb: str, cam: dict) -> bool:
         cid = cam["id"]
@@ -52,8 +54,17 @@ class FakeActuator:
         self.epochs[cid] = cam.get("epoch", 0)
         return True
 
-    def pump(self) -> list[int]:
-        return []
+    def pump(self) -> tuple[list[int], list[tuple[int, str, dict]]]:
+        """(dead, posted). Tests push into `dead` and `posted` directly."""
+        dead, self.dead = self.dead, []
+        posted, self.posted = self.posted, []
+        for cid in dead:
+            self.running.discard(cid)
+        return dead, posted
+
+    def post(self, cid: int, kind: str, **fields) -> None:
+        """What an element would post on the bus."""
+        self.posted.append((cid, kind, fields))
 
     def stop_all(self) -> None:
         self.running.clear()
@@ -172,7 +183,12 @@ class VmsWorker(Worker):
         return event_log(self.archive_root, cid, epoch, self.bucket_seconds).append(t, kind, **fields)
 
     def pump_once(self) -> None:
-        for cid in self.actuator.pump():
+        """The bus, drained: what elements posted becomes events — if I still
+        hold the epoch — and what died becomes `lost` and a `silent` event."""
+        dead, posted = self.actuator.pump()
+        for cid, kind, fields in posted:
+            self.observe(cid, kind, **fields)
+        for cid in dead:
             self.reconciler.lost(cid, self.now())
             self.observe(cid, "silent")                 # the event with no segment open, by definition
 

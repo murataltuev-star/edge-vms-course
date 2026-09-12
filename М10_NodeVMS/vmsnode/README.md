@@ -15,14 +15,14 @@ vmsnode/
     archive.py                 Lesson 3  the archive resource under vms/<cam>/: spool → promote → manifest; the camera's event buckets; repair; retention per kind
     worker.py                  Lesson 4  vmsworker: N pipelines against an assignment; an epoch per camera; a lease; the heartbeat
     controller.py              Lesson 5  vmscontroller: cameras and placement by CAS; what it refuses; rebalance on request
-    console.py                 Lesson 5  the one-box console, standard library: the read model from heartbeats; writes to the controller
+    console.py                 Lesson 5  the one-box console, standard library: the read model from heartbeats; writes to the controller; operator marks into its own bucket
     config.py                  the schema, as items in the config store
     __main__.py                python3 -m vms worker | controller
   gstvms/                      Track 2 — needs GStreamer
     uri.py                     Lesson 2  driverpack://file/<name> resolved and refused — pure, no GStreamer
     driverpacksrc.py           Lesson 2  the element: looping, PTS rebased across the loop
     archivesink.py             Lesson 3  splitmuxsink into the spool; on fragment-closed, promote
-    actuator.py                Lesson 4  driverpacksrc ! h264parse ! watchdog ! tee ! archivesink, per camera
+    actuator.py                Lesson 4  driverpacksrc ! h264parse ! watchdog ! tee ! archivesink, per camera; the bus drained into (dead, posted)
   deploy/                      systemd: vmscontroller.service, vmsworker@.service, the archive policy on a timer
   tests/                       41 tests, milliseconds, no GStreamer
 ```

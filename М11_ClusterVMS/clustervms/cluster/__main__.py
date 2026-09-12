@@ -54,7 +54,8 @@ def controller() -> None:
                             cluster=os.environ.get("CLUSTER", "cluster-a"))
     index = EventIndex(ResourceReader(), os.environ.get("EVENTINDEX_DB", ":memory:"))    # a cache: rebuilt on every start
     index.rebuild(resources_seen(objects))
-    srv = serve(ctl, os.environ.get("CONSOLE_HOST", "0.0.0.0"), int(os.environ.get("CONSOLE_PORT", "8080")), index=index)
+    srv = serve(ctl, os.environ.get("CONSOLE_HOST", "0.0.0.0"), int(os.environ.get("CONSOLE_PORT", "8080")), index=index,
+                archive_root=archive if os.path.isdir(archive) else None)     # marks go into this server's resource
     while not stop.is_set():
         try:
             ctl.ensure_placed(); ctl.redistribute(); ctl.publish_snapshot()

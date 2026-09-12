@@ -83,7 +83,7 @@ def test_the_snapshot_is_the_only_thing_that_leaves_the_cluster():
 def test_the_console_over_http():
     c = Cluster(); ctl = ClusterController(c.vars, c.objects, wall=c.wall)
     ws = _three_workers(c, ctl)
-    srv = serve(ctl, "127.0.0.1", 0, worst_failover=48.0); port = srv.server_address[1]
+    srv = serve(ctl, "127.0.0.1", 0, worst_failover=48.0, archive_root=c.servers["srv-a"].archive); port = srv.server_address[1]
     base = f"http://127.0.0.1:{port}"
     def call(method, path, body=None, headers=None):
         req = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None, method=method, headers=headers or {})
@@ -101,4 +101,14 @@ def test_the_console_over_http():
     assert 'vms_failover_seconds{kind="worst"} 48.0' in out and "vms_workers_live 3" in out and "vms_cameras_recording 1" in out
     st, out = call("GET", "/resources"); assert st == 200 and json.loads(out) == {}
     st, out = call("GET", "/unplaceable"); assert json.loads(out) == []
+    # an operator's mark: the console's own bucket on srv-a's resource, found by the index on its `cam` field
+    st, out = call("POST", "/marks", {"cam": 1, "note": "check the gate"}, {"Idempotency-Key": "m1", "X-User": "murat"})
+    m = json.loads(out); assert st == 201 and m["bucket"].startswith(f"console/{m['unit']}/e1/")
+    from cluster.resource import ResourceHeartbeat, resources_seen
+    from cluster.eventindex import EventIndex
+    from tests.test_lesson3_events import DirReader
+    ResourceHeartbeat(c.servers["srv-a"].resource, c.objects, "srv-a", "http://srv-a", wall=c.wall).once()
+    idx = EventIndex(DirReader(c), wall=c.wall); idx.rebuild(resources_seen(c.objects))
+    ev = idx.query(0, 1e12, cam=1)["events"]
+    assert [(e["subsystem"], e["kind"], e["user"]) for e in ev] == [("console", "mark", "murat")]
     srv.shutdown()

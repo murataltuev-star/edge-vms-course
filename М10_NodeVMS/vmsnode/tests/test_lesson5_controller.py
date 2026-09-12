@@ -1,6 +1,7 @@
 """Lesson 5 — vmscontroller: the only writer; refusals; placement with its
 property tests; two controllers; the read model; the failure arithmetic."""
 import json
+import os
 import threading
 import urllib.request
 from vms.console import serve
@@ -147,7 +148,9 @@ def test_the_console_over_http():
     box = Box(); ctl = VmsController(box.vars, box.objects, wall=box.wall)
     w = VmsWorker("w-1", box.vars, box.objects, FakeActuator(), clock=box.clock, wall=box.wall, server="srv-1")
     w.heartbeat_once()
-    srv = serve(ctl, None, port=0); port = srv.server_address[1]
+    from vms.archive import ArchiveResource
+    from vmsplatform.events import read_bucket, subsystems_under
+    srv = serve(ctl, ArchiveResource(box.spool, box.archive), port=0, wall=box.wall); port = srv.server_address[1]
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{port}/cameras", data=json.dumps({"name": "gate", "source": "driverpack://file/gate.mp4"}).encode(),
                                      method="POST", headers={"Idempotency-Key": "k1"})
@@ -164,5 +167,14 @@ def test_the_console_over_http():
         assert body["rows"][0]["phase"] == "running" and body["rows"][0]["server"] == "srv-1"
         assert json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/where/1")) == {"worker": "w-1"}
         assert b"vms_cameras_recording 1" in urllib.request.urlopen(f"http://127.0.0.1:{port}/metrics").read()
+        # an operator's mark is the CONSOLE's event: its own bucket, never a worker's
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/marks", data=json.dumps({"cam": 1, "note": "left the bag"}).encode(),
+                                     method="POST", headers={"Idempotency-Key": "k3", "X-User": "murat"})
+        m = json.load(urllib.request.urlopen(req))
+        assert m["subsystem"] == "console" and m["bucket"].startswith(f"console/{m['unit']}/e1/")
+        assert json.load(urllib.request.urlopen(req)) == m                                      # idempotent: one mark
+        ev = read_bucket(os.path.join(box.archive, m["bucket"]))
+        assert ev == [{"t": box.wall(), "kind": "mark", "cam": 1, "user": "murat", "note": "left the bag"}]
+        assert subsystems_under(box.archive) == {"console": [m["unit"]]}                          # not in vms/1/: that bucket has one writer
     finally:
         srv.shutdown(); srv.server_close()
