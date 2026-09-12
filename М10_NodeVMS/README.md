@@ -75,6 +75,8 @@ The course names its temporary things where they appear rather than discovering 
 
 М12 collects them all — four replaced, one promoted. The `valid_until` column in Lesson 1's `grants` table is the mirror image: dead code here, present so that М12 *populates* rather than *migrates*.
 
+**And the AppHost itself is a stand-in of a different kind.** It is the worker's own controller, built in Python because the course has no media worker of its own; in the product that controller lives inside DriverPack, the process that holds the pipeline, and the platform supplies the rest — assignment, fencing tokens, storage, the web tier. What survives the move is the contract this module's tests define: desired persisted and actual derived, `>=` on the revision, backoff with jitter, positions apart from reasons. [`ARCHITECTURE.md` §1.11](../ARCHITECTURE.md) draws the boundary row by row; `nodevms/` is the reference implementation the worker's tests are ported from.
+
 ## Where this goes
 
 Everything in this module holds because there is exactly one box — one writer, one AppHost, a convention where М11 needs a fencing token, and one API surface to protect.

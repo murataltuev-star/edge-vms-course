@@ -64,7 +64,7 @@ A Node owns its own retention policy, so it cannot go stale on that. Entitlement
 
 **On every box** (М9): an A/B root filesystem under RAUC, signed bundles, one-attempt rollback decided by a health check that reaches all the way to *is footage being written*; Podman under Quadlet; and a data partition holding everything that must outlive both an OS update and an application update — container storage, configuration, and the archive.
 
-**Per Node** (М10): one Postgres holding configuration, the archive index and events; one AppHost running the reconcile loop and up to ~50 GStreamer pipelines in one Python process; a `/metrics` endpoint exporting `camera_lag` and `camera_silent_seconds`.
+**Per Node** (М10): one Postgres holding configuration, the archive index and events; one AppHost running the reconcile loop and up to ~50 GStreamer pipelines in one Python process — in the product, the worker's own controller inside DriverPack, see §1.11; a `/metrics` endpoint exporting `camera_lag` and `camera_silent_seconds`.
 
 **Per cluster** (М11): Nomad servers and clients — the cluster *is* a Nomad region; an object store on the cluster's own servers holding each Node's restore point; and the cluster directory, which is nothing more than each Node's Nomad Variable, scanned.
 
@@ -168,6 +168,34 @@ The same software, three placements, and the difference is a number:
 | **Mixed** | at the site, with the domain services in the cloud | the same kilobytes | **the default shape** |
 
 A rented cluster is a cluster. A Node cannot tell where it is running, and М12 Lesson 8 proves it by diffing the artifacts.
+
+---
+
+### 1.11 Platform and VMS: the boundary
+
+Most of what Part 1 describes knows nothing about a camera. A scheduler that places processes by constraint, an object store, a small consistent config store, a signer and an agent that carry trust, a web gateway, an observer — that is a **platform**, and it would host any fleet of stateless shards writing bulk data. The **VMS** is what is specific to video: the worker that holds the pipeline (DriverPack), the detectors, the schema of cameras, sites and grants, and the UI. The boundary decides which team owns what and which invariants travel across it.
+
+The course's **AppHost was a stand-in for the worker's own controller.** It exists because the course had no DriverPack and needed something to supervise pipelines, reconcile them against desired state and report positions — in Python, so the design could be built and tested. It is not the platform's job (Nomad supervises processes, not the threads inside one; nobody but the VMS turns *camera 7, revision 12* into a running pipeline) and it is not a separate process in the product: the thing that holds the source owns everything that happens to the stream, including where its branches go. Row by row:
+
+| AppHost today | Product | Why |
+|---|---|---|
+| start/stop/restart pipelines; backoff with jitter; bus pumping; watchdog | **DriverPack** | only the holder of the source knows a pipeline died |
+| reconcile desired cameras against running pipelines; `>=` on the revision | **DriverPack** | *make the running set equal the assigned set* is the worker's loop |
+| routing — record to storage, tee to live, tee to detectors | **DriverPack** | it directs the stream where needed |
+| positions and conditions per camera; the heartbeat snapshot | **DriverPack** | the only thing that knows the phase; it publishes an object, the platform stores it |
+| retention, disk-full policy, the segment index | **platform** (storage) | lifecycle, quota, listing — nothing about video in it |
+| identity of a shard; config restore; publish-then-point | **platform** (Variables + objects) | generic config distribution for any stateless shard |
+| epoch and lease | **platform** issues; **DriverPack** consumes | fencing is generic to any writer that can have two instances; the worker puts the epoch in the key and refuses a start without a live lease |
+| the per-Node console; playback file serving | **platform** (web tier) | browsers were moved off the Node in М12 Lesson 3; playback reads storage |
+| the data model — cameras, sites, grants | **VMS**, as a schema in platform stores | the platform stores blobs and Variables; what is in them is ours |
+
+What remains of the "controller" is a few dozen lines inside DriverPack that turn *the platform's assignment for this shard* — a Variable naming a config object — into DriverPack's desired set. Not a process, not a layer.
+
+**What crosses the boundary unchanged is the contract, and it is the point of М10 and М11.** DriverPack's controller must satisfy what the course's tests define, because those tests were written against a design rather than a language: desired is persisted and actual is derived (a fresh process rediscovers everything and persists nothing about what it runs); a report can never move desired (`>=`); exponential backoff with jitter, so cameras that failed together do not retry together; positions kept apart from reasons in what it reports; the epoch in every key it writes and a lease gate on every start; local commit first, publish second; the heartbeat carrying its status so nobody has to call it. `nodevms/`, `clustervms/` and `nodevms-go/` are the **reference implementation of that contract** — the thing DriverPack's tests are ported from, the way the Go port's were — and no longer a claim about what the product's process tree looks like.
+
+Two things the boundary must keep explicit. **Crash isolation:** М10 Lesson 5 separated controller from worker partly so that a vendor SDK's segfault would not take the control loop with it; with both in DriverPack it does, and that is acceptable *only because* the state is outside — Nomad restarts the shard, it reloads its assignment, and the lease and epoch make the restart harmless. **The per-frame rule:** DriverPack is C++, so М10 Lesson 3's rule holds by construction; a Python plugin API "for analytics" inside it would bring the argument back. The detector tier exists so that inference never runs in the writer's process.
+
+**Open beside this decision, and not taken:** whether the archive itself moves to a storage tier on the disk-heavy servers (disaggregated storage — writers PUT segments, the gateway reads them, the per-Node Postgres and the re-index sweep disappear) against the current local-disk cluster. It removes М11 Lesson 3's *footage stays on the dead server* and adds a correlated failure domain, twice the east-west traffic and an open-segment problem. It is the next decision record, for М11.
 
 ---
 
@@ -320,6 +348,10 @@ The module's own thesis is the one datacentre monitoring gets for free and this 
 **Grafana** is the sharper case, and it is why the product ships no dashboard.
 
 ---
+
+### Step 14 — The AppHost was a stand-in, and the boundary it stood on
+
+The last question asked of the design was the one an engineer asks first: *why is there a controller process at all, when Nomad supervises processes and DriverPack holds the pipeline?* The answer split. Half of the AppHost — supervision inside a process, the reconcile against desired state, the routing, the reporting — is the worker's and always was; the course built it in Python because it had no worker, and it moves into DriverPack as a contract carried by the tests. The other half — config distribution, fencing tokens, retention, serving people — was never VMS-specific and is the platform's. §1.11 is the row-by-row assignment; the modules keep their invariants and lose a process. The archive's location is the decision that follows from it and is not yet taken.
 
 ## What the sequence teaches
 
