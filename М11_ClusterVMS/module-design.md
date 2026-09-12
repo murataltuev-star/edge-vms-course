@@ -50,6 +50,7 @@ Node 3 reappears on another server with its configuration intact and resumes its
 | Epoch issuer | **A Nomad Variable with check-and-set** | Atomic, monotonic and raft-replicated, so it survives losing a server. Nomad's *variable lock* is the trap: its lock ID is an opaque UUID, not a fencing token. |
 | Lease numbers | **TTL 30 s, margin 5 s, `stop_on_client_after` 25 s, `lost_after` 45 s** | Nomad and the lease arithmetic agree on when a replacement may start; two-writer window ≤ 10 s on a partition, zero on a pause; tolerates a 29 % clock-rate error. Lesson 4 carries the reasoning. |
 | A fenced instance's footage | **Re-indexed with its epoch, never deleted** | It is real footage of the partition minute. The epoch that made it harmless is what makes it identifiable; the console shows it as *recorded by a fenced instance*. |
+| The cluster's shape *(decided 12 September 2026, supersedes the Node-as-recorder-with-its-own-disk)* | **Workers, resources, and one controller — 2c** | **Workers** (1+ per cluster, by workload): DriverPack shards with stable identity, movable, stateless but for a spool; they own the pipeline and its routing. **Resources** (N per cluster): server-bound — the archive on a server's disks, GPU compute for detectors, a NIC facing the camera VLAN — Nomad `system` jobs pinned by what the server has. **One controller**: placement of cameras onto workers, rebalance on request, the shadow report — stateless, correct by CAS, safe at two, **never on the recovery path**. What travels is still only configuration; footage stays on the dead *resource* and recording continues on another. See *Workers, resources, one controller* below. |
 | Orchestrator | **Nomad** | Non-container workloads, Podman kept as the runtime, far smaller operational surface. See [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md). |
 | Failover scope | **Within a cluster. A Node never crosses one** | Two independent reasons, and either alone would decide it: footage lives on the cluster's disks, and **the epoch comes from Nomad's raft, which is per-cluster** — regions share no state, so there is no domain-wide issuer and no need for one. |
 | The restore point | **Cluster-scoped object storage — a backup, not a directory** | Failover needs somewhere off-box to restore configuration from. That is not the same thing as knowing *which Node has camera 7*, which is М12's and does not exist yet here. |
@@ -124,6 +125,36 @@ The third needs no new machinery. The module already has `observed_revision >= r
 
 - **A Node the directory has never seen** — brand new, or its first publish never landed — has nothing to restore. It must **not invent a configuration**: it comes up empty, reports *unconfigured*, and waits for an operator or for М12's enrollment
 - **The archive index does not come back.** It is large and constantly written, so it is never published upward; only the rollup is. After a failover the Node knows *"camera 7 has footage for these ranges, on Server A's storage"* and nothing finer until Server A returns. Playback of old footage is coarse, not lost
+
+---
+
+## Workers, resources, one controller — 2c
+
+The 2a/2b comparison above asked where a Node's *database* lives. The question that arrived after the course was written is one level further: why does a Node exist as a unit at all — a recorder bound to its own disk, with its own Postgres — when the platform underneath places processes by constraint and the thing that holds the pipeline is a media worker with its own controller ([`ARCHITECTURE.md` §1.11](../ARCHITECTURE.md))? Taking that seriously splits the Node into three kinds of thing, and Nomad already has a shape for each.
+
+| | What | Nomad shape | Identity | When it is down |
+|---|---|---|---|---|
+| **Workers** (1+ per cluster, by workload) | DriverPack shards, each with N cameras assigned: they hold the pipeline and route it — closed segments to a storage resource, a tee to the live gateway, a tee to detectors | `service` jobs, movable, placed by constraint and affinity | **stable per shard** — the Node's identity, renamed | Nomad reschedules the shard; the epoch and the lease make the restart harmless; its cameras come with it because the assignment is on its name |
+| **Resources** (N per cluster) | the archive on a server's disks; GPU compute for detectors; a NIC on the camera VLAN | `system` jobs — one per eligible server, pinned by what the server has | **the server's** | *that server's* footage is unavailable, *that server's* detectors stop; nothing moves, because nothing can |
+| **One controller** | placement of new cameras onto workers (and, at the domain, onto clusters); rebalance when an operator asks; the shadow report | one `service` job, `count = 1` — **and safe at two** | none: it is computation over the cluster's stores | no new cameras, no rebalance; recording, failover, live view and editing are unaffected |
+
+Two properties carry the whole design, and each is a sentence the tests already enforce elsewhere:
+
+- **The controller holds no state and is correct by CAS.** It is the placement service of Lesson 5 with a name. Its correctness comes from how it writes, never from there being one of it — the second instance during a reschedule gets a conflict and re-reads. The moment an in-memory assignment table or a session lives in it, the count starts to matter and the cluster has grown the thing М12 spent a module dissolving.
+- **The controller is never on the recovery path.** A worker fails over with nothing above it — exactly М11's result for a Node. Its assignment is on its stable name, so Nomad rescheduling *that shard* is the whole failover; the controller places *new* cameras and moves cameras only when asked. When it is down, the answer to *what stopped* is *nothing that was already running*.
+
+**The archive as a resource** is the change that pays. A worker writes closed segments to a storage resource — its own server's by affinity, any other's when it has moved — and keeps only a local spool for the open segment. When a server dies its footage is unavailable, as it is today, but the worker that moves keeps recording into *another* resource; the per-camera manifest simply spans two. That is the honest middle between the shared-nothing cluster the course built and a full erasure-coded storage tier: no quorum that can stop every camera at once, no doubled east-west traffic in the common case where the worker sits beside its disks, and an EC pool as an option for a customer who wants durability across servers and has the network for it. The epoch stays where it is — in the key. The re-index sweep becomes manifest repair. The per-Node Postgres disappears: a worker's configuration is the object-plus-pointer it already restores from, retention is the storage resource's lifecycle policy, the index is the listing.
+
+**The storage knob, with its arithmetic.**
+
+| Storage resource | Survives | Costs | Fits |
+|---|---|---|---|
+| **per server, unreplicated** (one MinIO in single-drive mode per box) | a dead server's footage is unavailable until it returns; every other camera records on | nothing new: footage locality kept; a manifest that may span resources | the default; every cluster size |
+| **erasure-coded pool across servers** | a dead server's footage is still readable | every recorded byte crosses the LAN (200 cameras × 4 Mbit/s = 800 Mbit/s east-west plus parity — 10 GbE between tiers is a requirement); ≥ 4 drives across servers; **loss of write quorum stops every camera at once** — a correlated failure domain the unreplicated form does not have | a customer who buys durability over locality and has the network |
+
+**Detectors** are the other resource and impose one placement rule: a stream should not cross the LAN twice, so workers carry an *affinity* — not a constraint — for servers that also carry GPUs, and where that cannot hold the detector opens the camera's sub-stream directly, as the live gateway does.
+
+**What each module keeps and loses.** М10 keeps the loop, the state machine and the numbers — they are DriverPack's contract now — and loses the per-Node Postgres and the disk-full policy in its current form (it becomes a bucket quota). М11 Lesson 2 becomes the worker as an allocation; Lesson 3 keeps *only configuration travels* and rewrites *footage stays on the dead server* as *footage stays on the dead resource and recording continues on another*; Lesson 4 is unchanged; Lesson 5 becomes the controller's lesson with its two properties named. М12 does not move — the domain never knew what a camera was. The lessons as written describe the Node; this section is the decision they will be rewritten to, and the tests in `nodevms/` and `clustervms/` are the contract that rewrite must keep.
 
 ---
 
@@ -326,6 +357,8 @@ The lesson that costs almost nothing to build, because **you already built it in
 1. ~~**Is 2a ever right?**~~ — **Decided: no.** The product offers 2b only. 2a stays in Lesson 3 as the cautionary comparison, not as an option.
 2. **Can a task write Variables under workload identity, and can an ACL policy scope it to that Node's own prefix?** *(`clustervms/deploy/verify-bench.sh` tests exactly this, from outside with a policy-only token and from inside the allocation with the task's own; it needs a bench.)* Load-bearing rather than incidental: Node identity and the epoch both live in Variables, and М12's whole one-writer-per-key property rests on Node 3 being unable to write `nodes/node-4`. The Variables documentation does not settle it. **Check before building.**
 3. ~~**How long should a Node wait before concluding its old instance is gone?**~~ — **Decided, with the reasoning in Lesson 4:** TTL 30 s, margin 5 s each side, renewal every ~8 s, `stop_on_client_after` = TTL − margin = 25 s, `lost_after` = TTL + margin = 45 s. Two-writer window ≤ 10 s on a partition, zero on a pause; tolerates a 29 % clock-rate error; failover ≈ 45 s + restore, datasheet *under 90 s worst case*. A fenced instance's footage is **re-indexed with its epoch**, not deleted.
+
+4. **The rewrite to 2c.** Which lessons change first — Lesson 3 (resources) or Lesson 5 (the controller) — and whether `clustervms/` grows a `worker/` package beside `cluster/` or replaces it. The contract is fixed; the order is not.
 
 **Resolved while designing the module:**
 
