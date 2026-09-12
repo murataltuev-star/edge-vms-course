@@ -1,27 +1,30 @@
-# Module 11 — ClusterVMS: A Node That Outlives Its Server
+# Module 11 — ClusterVMS: Workers That Outlive Their Server
 
-[Module 9](../М9_EdgeVMS/README.md) built a Node: a database holding what it should be, and a loop making it so. It ran on one box, and if that box died the cameras stopped — which is the deal an eight-camera shop bought. This module is for the deployment that did not buy it: several servers in one room, and a Node that survives any one of them dying, carrying its configuration, its cameras and its archive identity to whatever hardware it lands on.
+[Module 10](../М10_NodeVMS/module-design.md) built the platform's shape on one box: a **controller** that is the only writer of configuration, a **worker** — DriverPack — running pipelines against its assignment, an **archive resource** on the box's disks, and the platform's two stores underneath. This module runs that shape across several servers and makes it survive any one of them dying: the worker moves and its cameras go with it, the resource stays and its footage with it, and the controller is not consulted — because failover rewrites nothing.
 
-Five lessons in which a server is pulled from the wall and, within a number of seconds you measured, its Node is recording again somewhere else — and when the dead server comes back believing it still owns those cameras, the archive is provably intact.
+Five lessons in which a server is pulled from the wall and, within a number of seconds you measured, its worker is recording again on another server into another resource — with an edit made *during* the failover already there, because configuration never left the cluster's raft — and when the dead server comes back believing its old worker still owns those cameras, the archive is provably intact.
 
 The full design brief is in [`module-design.md`](module-design.md); the orchestrator choice and its licence are in [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md).
 
+> **Where the module stands (12 September 2026).** The design record is rewritten to *workers, resources, one controller* (*2c*). The five lessons below and the code in `clustervms/` were written for the earlier Node model — a recorder with its own Postgres and its own disk — and are being rewritten to the record. Their mechanisms survive unchanged (the epoch by CAS, the lease on a monotonic clock, placement with its property tests, the `disconnect` numbers); what changes is what a Node was: the worker moves, the resource stays, and configuration no longer has to travel at all.
+
 ## The thesis
 
-| | Node | Server |
-|---|---|---|
-| What it is | a VMS instance with its own database and cameras | a box with CPUs and disks |
-| Identity | stable, assigned once | whatever hardware is available |
-| Who decides | an operator, when capacity is bought | Nomad, continuously |
-| Owns camera 7 | **yes, permanently** | never |
+| | Worker | Resource | Controller |
+|---|---|---|---|
+| What it is | DriverPack with N cameras assigned | the archive on a server's disks; a GPU; a camera-VLAN NIC | the only writer of `vms/*` |
+| How many | 1+, by workload | N, one per eligible server | one — and safe at two |
+| Identity | stable, in a Variable, never an allocation index | the server's | none: computation over the stores |
+| Moves? | yes — Nomad reschedules it | **never** | not needed to move anything |
+| When it is down | its cameras pause until it is rescheduled | that server's footage is unavailable, not lost | edits stop; nothing running stops |
 
-> **A Node is a logical thing, not a server.** Because camera 7 belongs to Node 3 rather than to Server A, failover rewrites nothing: Nomad reschedules the allocation and Node 3 carries on being Node 3.
+> **The controller writes, the platform stores, the worker reads its share.** Because camera 7 is assigned to worker `w-3` in the cluster's raft rather than to Server A, failover rewrites nothing: Nomad reschedules `w-3` and it reads the same assignment from the same raft. What was on Server A is a resource, and a resource stays.
 
-The question that leaves is narrower and harder — *what does it take for Node 3's state to be there when it arrives?* — and the answer turns out to be one thing that travels (configuration), one thing that must not (footage), one mechanism to bring it back (a Variable pointing at an object), and one token to keep two instances of the same Node from corrupting what they both believe is theirs (the epoch, in the archive path).
-
-**Cluster is not domain, and they are different sizes.** A cluster is servers close enough to share a network you would bet recording on — one LAN, one room; that boundary is physics. A domain is clusters under one directory and one signer; that boundary is administration. **A Node fails over within its cluster and never across one**, and [М12](../М12_DomainVMS/module-design.md) is where several clusters meet.
+**Cluster is not domain, and they are different sizes.** A cluster is servers close enough to share a network you would bet recording on — one LAN, one room; that boundary is physics. A domain is clusters under one directory and one signer; that boundary is administration. **A worker fails over within its cluster and never across one**, and [М12](../М12_DomainVMS/README.md) is where several clusters meet.
 
 ## Lessons
+
+*As written for the Node model; each row names the mechanism that survives the rewrite.*
 
 | # | Lesson | You'll be able to... |
 |---|---|---|

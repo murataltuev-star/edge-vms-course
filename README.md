@@ -65,7 +65,7 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 | [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 8 lessons |
 | [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback<br>3 · Postgres — the Node's own state<br>4 · AppHost — the loop that acts on it | **Written** · 9 lessons |
 | [**М10** — NodeVMS](./М10_NodeVMS) | The platform's shape on one Node: `driverpacksrc`, `archivesink`, a controller and a worker — the subsystem contract, prototyped without a scheduler | **Designed** · 5 lessons |
-| [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — a Node that outlives its server, inside one cluster<br>4 · The cluster's own directory | **Written** · 5 lessons |
+| [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — workers that outlive their server, resources that stay, one controller<br>4 · The cluster's own directory | **Written** · 5 lessons · design rewritten to *2c*, lessons to follow |
 | [**М12** — DomainVMS](./М12_DomainVMS) | 4 · Several clusters, one directory of directories<br>5 · The domain as its own root: enrollment, lifetimes, identity<br>7 · Its own update server, and clusters it rents for itself | **Written** · 8 lessons |
 | [**М13** — Observability](./М13_Observability) | 6 · Prometheus + logs — collecting what М9–М12 emit, from the domain cluster | **Designed** · 4 lessons |
 | [**М14** — VendorVMS](./М14_VendorVMS) | *Not a layer.* MASA, the licence system, publishing, the hosting business — and what the vendor must never be able to do | **Designed** · 5 lessons |
@@ -124,6 +124,8 @@ The Node rebuilt on the shape М11 arrived at — **workers, resources, one cont
 - [Module design](./М10_NodeVMS/module-design.md) — the three elements, the two processes, where configuration lives, and the contract every subsystem gives the platform
 
 ## М11 — ClusterVMS
+
+*Design record rewritten 12 September 2026 to workers, resources and one controller (*2c*); the five lessons below were written for the Node model and are being rewritten to it.*
 
 Five lessons, built on one decision taken up front: **a Node owns its own configuration.** A Node is not a server — it is a scheduler allocation with stable identity, so when a server dies the Node moves and its cameras go with it. Failover rewrites nothing, because ownership never changed.
 

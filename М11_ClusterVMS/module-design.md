@@ -1,41 +1,38 @@
 # М11_ClusterVMS — Module Design
 
-**A Node that outlives the server recording on it.**
+**Workers that outlive the server running them, resources that do not move, and one controller that is never needed to recover.**
 
-М9 built one Node: a database holding what it should be, and a loop making it so. It ran on one box, and if that box died the cameras stopped. This module runs several servers and makes a Node survive any one of them dying — carrying its configuration, its cameras and its archive identity to whatever hardware it lands on.
+[М10](../М10_NodeVMS/module-design.md) built the platform's shape on one box: a **controller** that is the only writer of configuration, a **worker** — DriverPack — that runs pipelines against its assignment, an **archive resource** on the box's disks, and the platform's two stores underneath, file-backed. This module runs that shape across several servers and makes it survive any one of them dying: the worker moves and its cameras go with it, the resource stays and its footage with it, and the controller is not consulted — because failover rewrites nothing.
 
-The organising decision, taken up front because everything depends on it: **a Node owns its own configuration.** Nomad moves the Node; the cameras go with it; nothing rewrites who owns what. That is what makes failover teachable *here* rather than deferred to a coordinating layer: there is no ownership to reassign, so a dead server is a relocation rather than a decision.
+The organising decision, carried up from М10: **the controller writes, the platform stores, the worker reads its share.** Put a scheduler under that and a dead server is a relocation of a worker, not a decision anyone has to make.
 
-> **Scope note.** These five lessons and [М12](../М12_DomainVMS/module-design.md)'s eight were one module until this split, and the merge that created it had a good reason: *a cluster and the layer above it are one arc, and splitting them meant teaching the two-level idea twice.* That reason still holds, and the split answers it rather than ignoring it — **the two-level idea is introduced here and collected in М12**, which is the same setup-and-collection the course already runs across module boundaries, from М9's AWS credentials to М12's signer. Lesson 2 says out loud that Nomad places *Nodes* and something above will place *cameras*; М12 Lesson 1 is where the third level arrives and the student is asked to name the difference. Taught inside one module, the two levels blur, because both are "scheduling".
+> **What changed since the first ClusterVMS design.** The first version of this module ([its lessons](README.md), written 8 September) moved a *Node* — a recorder with its own Postgres and its own disk — between servers, and had to carry its configuration in a published object, rebuild its archive index by scanning, and fence its zombie with an epoch in a filesystem path. Under *2c* three of those four are simpler and one is unchanged. Configuration is already in the cluster's raft, written by the controller, so nothing has to be published to survive a server (the RPO inside a cluster is **zero**). The archive is a resource that never moves, so nothing is rebuilt — the manifest is on the resource beside the footage. The fencing epoch is unchanged, in the key, now per camera. The lessons as written describe the Node; this record is what they are being rewritten to, and the tests in [`clustervms/`](clustervms/README.md) are the contract the rewrite keeps.
 
-> **Cluster is not domain, and they are different *sizes*.** A **cluster** is servers close enough to share a network you would bet recording on — one LAN, usually one server room. That boundary is set by **physics**. A **domain** is the clusters under one directory, one CA and one set of operators, and that boundary is set by **administration**. A campus is one domain with three clusters; a cloud deployment is one domain with one. This is the fifth pair of words the course keeps apart, after Node/Server/Site, the two orchestrations and the two federations.
->
-> **The rule that follows, and this module is built on it: a Node fails over *within* its cluster and never across one.** Its footage is on that cluster's disks, so relocating the process away from the archive it wrote would gain nothing and lose everything. A whole cluster dying is therefore not a failover — it is a larger event, and [М12](../М12_DomainVMS/module-design.md)'s job is to say clearly what it took with it rather than to heal it.
+> **Cluster is not domain, and they are different *sizes*.** A **cluster** is servers close enough to share a network you would bet recording on — one LAN, usually one server room; that boundary is **physics**. A **domain** is the clusters under one directory, one CA and one set of operators; that boundary is **administration**. The rule that follows: **a worker fails over *within* its cluster and never across one.** Its resources are on that cluster's servers, its epoch comes from that cluster's raft, and [М12](../М12_DomainVMS/module-design.md)'s job when a whole cluster dies is to say what it took, not to heal it.
 
 ---
 
 ## The thesis
 
-**A Node is a logical thing, not a server.** М9's Node — its Postgres, its AppHost, its cameras — becomes a Nomad allocation with stable identity. Nomad decides which server runs it. The Node does not change when that answer changes.
+Three kinds of thing, and Nomad has a shape for each:
 
-| | Node | Server |
-|---|---|---|
-| What it is | a VMS instance with its own database and cameras | a box with CPUs and disks |
-| Identity | stable, assigned once | whatever hardware is available |
-| Who decides | an operator, when capacity is bought | Nomad, continuously |
-| Owns camera 7 | **yes, permanently** | never |
+| | What | Nomad shape | Identity | When it is down |
+|---|---|---|---|---|
+| **Workers** (1+ per cluster, by workload) | `vmsworker`: DriverPack with N cameras assigned; holds the pipelines and routes them — closed segments to an archive resource, a tee to the live gateway, a tee to detectors | `service` jobs, movable, placed by constraint and affinity | **stable per worker** — a name in a Variable, never an allocation index | Nomad reschedules it; the epoch and the lease make the restart harmless; its cameras come with it because the assignment is on its name |
+| **Resources** (N per cluster) | the archive on a server's disks; GPU compute for detectors; a NIC on the camera VLAN | `system` jobs — one per eligible server, pinned by what the server has | **the server's** | *that server's* footage is unavailable, *that server's* detectors stop; nothing moves, because nothing can |
+| **One controller** | `vmscontroller`: the only writer of `vms/*` — cameras, assignment of cameras to workers, rebalance on request | one `service` job, `count = 1`, **safe at two** | none: computation over the cluster's stores | no edits, no new cameras, no rebalance; recording, failover and live view unaffected |
 
-Because camera 7 belongs to Node N rather than to Server A, **failover rewrites nothing.** Nomad reschedules allocation N onto Server B and Node N carries on being Node N. The question this module actually has to answer is narrower and harder: **what does it take for Node N's state to be there when it arrives?**
+Because camera 7 is assigned to worker `w-3` rather than to Server A, **failover rewrites nothing**: Nomad reschedules `w-3` onto Server B and `w-3` reads its assignment from the same raft it read it from before. The question the module actually answers is narrower: **what is on Server A that `w-3` needed, and what happens to it?**
 
 ### The demo it is built backwards from
 
-Four Nodes across four servers, two hundred cameras. Then:
+Three servers, two workers, two hundred cameras. Then:
 
 ```
-# pull the power on the server running Node 3
+# pull the power on the server running w-3
 ```
 
-Node 3 reappears on another server with its configuration intact and resumes its fifty cameras. Footage recorded before the failure stays on the dead server's disks and the console says so. When the dead server returns, its old instance of Node 3 tries to keep writing — **and the archive is intact, provably.**
+`w-3` reappears on another server within a number of seconds you measured, reads its assignment, takes a new epoch for each of its cameras, and records into the archive resource on *its new* server. Footage recorded before the failure stays on the dead server's resource and the console says so — *unavailable*, not lost. Edits made during the failover went through the controller into raft and are simply there when `w-3` returns. When the dead server comes back, its old instance of `w-3` tries to keep writing — **and the archive is intact, provably**: its segments carry the old epoch, the manifest names both, and `vms_epoch_conflicts` moved from zero.
 
 ---
 
@@ -43,343 +40,238 @@ Node 3 reappears on another server with its configuration intact and resumes its
 
 | Decision | Choice | Why |
 |---|---|---|
-| Camera ownership | **The Node owns it, permanently** | Failover moves the Node, so nothing rewrites ownership — a dead server is a relocation, not a decision. |
-| Node identity | **Stable, carried in a Nomad Variable — never the allocation index** | Variables are built for exactly this and survive rescheduling. The allocation index has had documented uniqueness bugs: fine for a label, never for correctness. |
-| Configuration authority | **The Node, replicating one way upward** | Configuration stays next to the software using it, and survives the domain layer being down. |
-| Fencing | **At the archive, not at the controller** | You cannot stop a zombie from writing. You can make its writes land where nobody reads. |
-| Epoch issuer | **A Nomad Variable with check-and-set** | Atomic, monotonic and raft-replicated, so it survives losing a server. Nomad's *variable lock* is the trap: its lock ID is an opaque UUID, not a fencing token. |
-| Lease numbers | **TTL 30 s, margin 5 s, `stop_on_client_after` 25 s, `lost_after` 45 s** | Nomad and the lease arithmetic agree on when a replacement may start; two-writer window ≤ 10 s on a partition, zero on a pause; tolerates a 29 % clock-rate error. Lesson 4 carries the reasoning. |
-| A fenced instance's footage | **Re-indexed with its epoch, never deleted** | It is real footage of the partition minute. The epoch that made it harmless is what makes it identifiable; the console shows it as *recorded by a fenced instance*. |
-| The cluster's shape *(decided 12 September 2026, supersedes the Node-as-recorder-with-its-own-disk)* | **Workers, resources, and one controller — 2c** | **Workers** (1+ per cluster, by workload): DriverPack shards with stable identity, movable, stateless but for a spool; they own the pipeline and its routing. **Resources** (N per cluster): server-bound — the archive on a server's disks, GPU compute for detectors, a NIC facing the camera VLAN — Nomad `system` jobs pinned by what the server has. **One controller**: placement of cameras onto workers, rebalance on request, the shadow report — stateless, correct by CAS, safe at two, **never on the recovery path**. What travels is still only configuration; footage stays on the dead *resource* and recording continues on another. See *Workers, resources, one controller* below. |
-| Orchestrator | **Nomad** | Non-container workloads, Podman kept as the runtime, far smaller operational surface. See [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md). |
-| Failover scope | **Within a cluster. A Node never crosses one** | Two independent reasons, and either alone would decide it: footage lives on the cluster's disks, and **the epoch comes from Nomad's raft, which is per-cluster** — regions share no state, so there is no domain-wide issuer and no need for one. |
-| The restore point | **Cluster-scoped object storage — a backup, not a directory** | Failover needs somewhere off-box to restore configuration from. That is not the same thing as knowing *which Node has camera 7*, which is М12's and does not exist yet here. |
-| **Minimum version** | **Nomad ≥ 1.8.0. Target 1.10.x LTS or 2.0.x** | The `disconnect` block Lesson 4 is built on arrived in **1.8.0**; before that there is only `max_client_disconnect`/`stop_after_client_disconnect` and **no `reconcile` strategies at all**. Those predecessors were then *removed* in 1.10.0, so writing against 1.7.x teaches syntax that no longer exists. 1.7.x is also EOL with an allocation-directory-escape CVE fixed only in Enterprise. |
-| Language of the controller | **Designed in Python, shippable in Go — both exist, both pass the same tests** | [`clustervms-go/`](./clustervms-go/README.md) ports the whole module with the 29 tests unchanged in meaning; a Node in either language restores from the other's publication. Measured: 7.1 MB vs 28.5 MB at idle, within 2× on the work. The win is memory and the artifact, not throughput — М9 Lesson 9's argument, confirmed on a whole module (Lesson 5, *The module in Go, measured*). |
-| Single-server deployments | **No orchestrator at all** | М9's Quadlet stack is better on one box, and Lesson 1 makes students argue that rather than assert it. |
+| The cluster's shape | **Workers, resources, one controller — 2c** *(12 September 2026)* | The Node was a recorder bound to its disk with its own database. Split by what moves and what cannot: workers move, resources do not, the controller is not needed to move anything. [ARCHITECTURE §1.11](../ARCHITECTURE.md) has the row-by-row assignment. |
+| Camera ownership | **An assignment on a worker's stable name**, written by the controller, read by the worker | Failover moves the worker; the assignment is in raft under its name; nothing is rewritten. |
+| Worker identity | **Stable, carried in a Nomad Variable — never the allocation index** | Variables survive rescheduling. The allocation index has had documented uniqueness bugs: fine for a label, never for correctness. |
+| Configuration authority | **The controller, and only the controller, by CAS into the cluster's Variables** | One writer per key, one level up. Edits are consistent because the store is one raft; the controller's outage stops edits and nothing else. М12's domain reads; it never writes into a cluster. |
+| What travels on failover | **Nothing.** The assignment and the camera rows are already replicated to every server by raft | The first design published a configuration object on every change and measured its RPO. Under 2c the RPO inside a cluster is zero by construction. What М12 still publishes upward is a *snapshot* for the domain's read model, and that has an RPO — the domain's, not the cluster's. |
+| The archive | **A resource: server-bound, unreplicated by default, with a manifest beside the footage** | Footage locality kept; no quorum that can stop every camera at once; the manifest is the index and needs no rebuild. An erasure-coded pool is the option for a customer who buys durability over locality and has the network (*the storage knob* below). |
+| Fencing | **At the resource, not at the controller: an epoch per camera in every key, issued by CAS; a lease per worker on a monotonic clock** | You cannot stop a zombie from writing; you can make its writes land where nobody reads and be identifiable afterwards. Per camera, because a reassignment is the one legitimate two-writer window and the epoch must separate those too. |
+| Epoch issuer | **A Nomad Variable with check-and-set** | Atomic, monotonic, raft-replicated. Nomad's *variable lock* is the trap: its lock ID is an opaque UUID, not a fencing token. |
+| Lease numbers | **TTL 30 s, margin 5 s, `stop_on_client_after` 25 s, `lost_after` 45 s** | Nomad and the lease arithmetic agree on when a replacement may start; two-writer window ≤ 10 s on a partition, zero on a pause; tolerates a 29 % clock-rate error. Lesson 4 carries the reasoning, unchanged. |
+| A fenced instance's footage | **Kept, with its epoch in the key; the manifest marks it *recorded by a fenced instance*** | Real footage of the partition minute; the epoch that made it harmless makes it identifiable. |
+| The controller's two properties | **Stateless and correct by CAS; never on the recovery path** | Safe at two instances during a reschedule; a worker restarts without asking it. The moment it holds state or a worker needs it to restart, the cluster has grown the thing М12 spent a module dissolving. |
+| Orchestrator | **Nomad** | Non-container workloads (`exec2`, `virt`), Podman kept as the runtime, `system` jobs for resources, a far smaller surface. See [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md). |
+| Minimum version | **Nomad ≥ 1.8.0; target 1.10.x LTS or 2.0.x** | The `disconnect` block arrived in 1.8.0 and its predecessors were removed in 1.10.0. |
+| Failover scope | **Within a cluster. A worker never crosses one** | Its resources are on the cluster's servers and its epoch comes from the cluster's raft — two independent reasons landing on one boundary. |
+| Language | **Designed in Python, shipped in Go and C++** | The platform pieces and the controller port to Go as [`clustervms-go/`](clustervms-go/README.md) already showed (7.1 MB vs 28.5 MB at idle); the worker is DriverPack's C++. The contract is what both keep. |
+| Single-server deployments | **М10's shape with `systemd` instead of Nomad** | One box has nothing to schedule; the same controller, worker and resource run as units. Lesson 1 makes students argue it. |
 
-The decisions about the layer *above* these Nodes — what a directory holds, how it is stored, and who may call it — are [М12's](../М12_DomainVMS/module-design.md).
+The layer above — which cluster a camera goes to, the directory of directories, who may call the API — is [М12's](../М12_DomainVMS/module-design.md), and nothing here is allowed to contradict it.
 
 ---
 
 ## Prerequisites
 
-- **М9 entire.** What it built on one box is a Node. This module runs several and moves them between servers.
-- **М9 Lesson 4** — Quadlet. Lesson 2 maps those units onto a scheduler, which is a translation rather than a rewrite.
-- **М8 Lesson 2** — signals. `kill -STOP` is the module's most important teaching device.
-- **М9's process-model record** — capacity, shard sizing, and why the orchestrator must not own camera lifecycle.
+- **М10 entire.** The controller, the worker, the resource and the platform's two stores on one box; the subsystem contract. This module changes the implementation of the stores and adds a scheduler; it changes nothing in the contract.
+- **М9 Lessons 1–4** — the appliance: Quadlet units become jobs; the spool's discipline becomes the archive's.
+- **М9 Lessons 6–8** — the loop, the failures, the numbers; they are the worker's tests.
+- **М8 Lesson 2** — signals. `kill -STOP` is still the module's most important teaching device.
 
 ---
 
 ## What must outlive a server
 
-Part A's real subject, and the thing that makes failover more than a demo. Node N's data sits on Server A's disk. Nomad moves N to Server B. What comes with it?
+Worker `w-3` runs on Server A. Server A dies. Nomad places `w-3` on Server B. What was on Server A, and what happens to each thing?
 
-| | On the dead server | Recoverable? |
+| On Server A | Under the Node model | Under 2c |
 |---|---|---|
-| Footage | stays | **No — and it does not need to.** The past stays where it was written; a replacement records the future |
-| Archive index | stays | **Yes** — rebuild by scanning segments |
-| Events | stays | Yes, or accept the loss; they are observations |
-| **Configuration** | stays | **No. It is the source of truth, and losing it loses the Node** |
+| **Configuration** — cameras, assignment | in the Node's Postgres; published upward; restored from an object with an RPO | **in raft already** — the controller wrote it there; `w-3` reads it on Server B. Nothing travels; the RPO is zero |
+| **Footage** | on the dead disk; stays; the replacement records the future | **on the dead resource; stays; unavailable until the server returns** — the console says *unavailable*, never *lost*. `w-3` records into Server B's resource from its first segment |
+| **The index** | in the dead Postgres; rebuilt by scanning segments when the server returns | **the manifest, on the resource beside its footage** — it returns with the server; nothing to rebuild. A camera's timeline spans two resources and the console merges two manifests |
+| **The open segment** | in the spool; lost up to one segment length | in the spool; lost up to one segment length — unchanged, and the number is the segment length (М9 Lesson 4) |
+| **Events** | in the dead Postgres | on the event stream (М13), or expendable |
+| **Identity and the epoch** | in Variables | in Variables — unchanged |
 
-So exactly one thing must travel, and it is the smallest: **the Node's configuration.** Two ways, and the choice is a real product decision:
+So the answer to *what must travel* is **nothing**, and the answer to *what is lost* is **the open segment and access to old footage until the server returns.** That second thing is the honest cost of unreplicated resources, and it is a knob:
 
-| | **2a — shared storage** | **2b — local storage, replicated** |
-|---|---|---|
-| Mechanism | the Node's database on a CSI volume | local disk; configuration streamed one way to the domain, pulled back on start |
-| Fencing | **the storage does it** — exclusive attachment means the old instance cannot write | needs a token issuer |
-| **Automatic failover** | **No — see below** | **Yes** |
-| Cost | a SAN or NAS: expensive, and a shared failure domain | a replication path, and a token issuer to build |
-| Fits | a datacentre, with an operator on call | **an appliance, which is this course's target** |
+### The storage knob
 
-**2a does not fail over unattended, and this is worth checking before designing around it.** [Nomad issue #12118](https://github.com/hashicorp/nomad/issues/12118) — still open — reports that when a client holding a CSI volume dies, **the volume stays attached to the dead node.** Rescheduling fails with *"volume is already published on another node"*, Nomad's volume watcher cannot force-detach, and the documented workaround is detaching manually through the storage provider's console.
-
-So shared storage buys fencing and **loses** the automatic recovery it was adopted for. That inverts the usual advice: 2a is not the grown-up option that appliances cannot afford — for a box nobody visits it is the *wrong* option, because the failure it is meant to survive ends with a human logging into a SAN console at 3am.
-
-**The course teaches 2b**, and shows 2a as a cautionary comparison rather than an aspiration.
-
-### The directory is each Node's off-box backup
-
-That is the mental model, and it explains the whole arrangement in one line: **a Node publishes its own configuration upward whenever it changes; the directory stores the latest revision per Node and never writes back.**
-
-- **One-way, because a backup does not write back.** There is no merge, no conflict, no election
-- **The domain may be down during normal operation**, because you do not need a backup in order to *run*
-- **It is required to fail over**, because that is a restore
-- **And it has a recovery point objective (RPO)** — the publication interval, and therefore the most recent configuration change an outage may lose — which is a number the product states rather than a surprise it discovers
-
-### The acknowledgement problem
-
-Here is the gap that framing exposes, and it is the honest cost of the availability this design buys. **What is the operator told when they save a camera?**
-
-If the Node acknowledges on local commit and dies before publishing, the operator was told *saved* and the change is gone.
-
-| | Cost |
-|---|---|
-| Acknowledge only after publishing | Configuration edits now require the directory — the offline-edit advantage is destroyed |
-| Acknowledge on local commit, say nothing | Silent data loss on failover |
-| **Acknowledge on local commit, and show durability** | The operator sees *saved · not yet replicated* until it lands |
-
-The third needs no new machinery. The module already has `observed_revision >= revision` and a directory that knows how far behind each Node is; the console shows the same thing for configuration that it shows for everything else, and a Node that has been unable to publish for N minutes raises a condition.
-
-### Two gaps that stay open by design
-
-- **A Node the directory has never seen** — brand new, or its first publish never landed — has nothing to restore. It must **not invent a configuration**: it comes up empty, reports *unconfigured*, and waits for an operator or for М12's enrollment
-- **The archive index does not come back.** It is large and constantly written, so it is never published upward; only the rollup is. After a failover the Node knows *"camera 7 has footage for these ranges, on Server A's storage"* and nothing finer until Server A returns. Playback of old footage is coarse, not lost
-
----
-
-## Workers, resources, one controller — 2c
-
-The 2a/2b comparison above asked where a Node's *database* lives. The question that arrived after the course was written is one level further: why does a Node exist as a unit at all — a recorder bound to its own disk, with its own Postgres — when the platform underneath places processes by constraint and the thing that holds the pipeline is a media worker with its own controller ([`ARCHITECTURE.md` §1.11](../ARCHITECTURE.md))? Taking that seriously splits the Node into three kinds of thing, and Nomad already has a shape for each.
-
-| | What | Nomad shape | Identity | When it is down |
-|---|---|---|---|---|
-| **Workers** (1+ per cluster, by workload) | DriverPack shards, each with N cameras assigned: they hold the pipeline and route it — closed segments to a storage resource, a tee to the live gateway, a tee to detectors | `service` jobs, movable, placed by constraint and affinity | **stable per shard** — the Node's identity, renamed | Nomad reschedules the shard; the epoch and the lease make the restart harmless; its cameras come with it because the assignment is on its name |
-| **Resources** (N per cluster) | the archive on a server's disks; GPU compute for detectors; a NIC on the camera VLAN | `system` jobs — one per eligible server, pinned by what the server has | **the server's** | *that server's* footage is unavailable, *that server's* detectors stop; nothing moves, because nothing can |
-| **One controller** | placement of new cameras onto workers (and, at the domain, onto clusters); rebalance when an operator asks; the shadow report | one `service` job, `count = 1` — **and safe at two** | none: it is computation over the cluster's stores | no new cameras, no rebalance; recording, failover, live view and editing are unaffected |
-
-Two properties carry the whole design, and each is a sentence the tests already enforce elsewhere:
-
-- **The controller holds no state and is correct by CAS.** It is the placement service of Lesson 5 with a name. Its correctness comes from how it writes, never from there being one of it — the second instance during a reschedule gets a conflict and re-reads. The moment an in-memory assignment table or a session lives in it, the count starts to matter and the cluster has grown the thing М12 spent a module dissolving.
-- **The controller is never on the recovery path.** A worker fails over with nothing above it — exactly М11's result for a Node. Its assignment is on its stable name, so Nomad rescheduling *that shard* is the whole failover; the controller places *new* cameras and moves cameras only when asked. When it is down, the answer to *what stopped* is *nothing that was already running*.
-
-**The archive as a resource** is the change that pays. A worker writes closed segments to a storage resource — its own server's by affinity, any other's when it has moved — and keeps only a local spool for the open segment. When a server dies its footage is unavailable, as it is today, but the worker that moves keeps recording into *another* resource; the per-camera manifest simply spans two. That is the honest middle between the shared-nothing cluster the course built and a full erasure-coded storage tier: no quorum that can stop every camera at once, no doubled east-west traffic in the common case where the worker sits beside its disks, and an EC pool as an option for a customer who wants durability across servers and has the network for it. The epoch stays where it is — in the key. The re-index sweep becomes manifest repair. The per-Node Postgres disappears: a worker's configuration is the object-plus-pointer it already restores from, retention is the storage resource's lifecycle policy, the index is the listing.
-
-**The storage knob, with its arithmetic.**
-
-| Storage resource | Survives | Costs | Fits |
+| Archive resource | Survives | Costs | Fits |
 |---|---|---|---|
-| **per server, unreplicated** (one MinIO in single-drive mode per box) | a dead server's footage is unavailable until it returns; every other camera records on | nothing new: footage locality kept; a manifest that may span resources | the default; every cluster size |
-| **erasure-coded pool across servers** | a dead server's footage is still readable | every recorded byte crosses the LAN (200 cameras × 4 Mbit/s = 800 Mbit/s east-west plus parity — 10 GbE between tiers is a requirement); ≥ 4 drives across servers; **loss of write quorum stops every camera at once** — a correlated failure domain the unreplicated form does not have | a customer who buys durability over locality and has the network |
+| **per server, unreplicated** (one MinIO in single-drive mode, or a directory, per box) | a dead server's footage is unavailable until it returns; every other camera records on | nothing new: footage locality kept; a manifest that may span resources | **the default**, every cluster size |
+| **erasure-coded pool across servers** | a dead server's footage is still readable | every recorded byte crosses the LAN — 200 cameras × 4 Mbit/s = 800 Mbit/s east-west plus parity, so 10 GbE between tiers is a requirement; ≥ 4 drives across servers; **loss of write quorum stops every camera at once** — a correlated failure domain the unreplicated form does not have | a customer who buys durability over locality and has the network |
 
-**Detectors** are the other resource and impose one placement rule: a stream should not cross the LAN twice, so workers carry an *affinity* — not a constraint — for servers that also carry GPUs, and where that cannot hold the detector opens the camera's sub-stream directly, as the live gateway does.
+### Why the resource is not a volume that follows the worker
 
-**What each module keeps and loses.** М9 keeps the loop, the state machine and the numbers — they are DriverPack's contract now — and loses the per-Node Postgres and the disk-full policy in its current form (it becomes a bucket quota). М11 Lesson 2 becomes the worker as an allocation; Lesson 3 keeps *only configuration travels* and rewrites *footage stays on the dead server* as *footage stays on the dead resource and recording continues on another*; Lesson 4 is unchanged; Lesson 5 becomes the controller's lesson with its two properties named. М12 does not move — the domain never knew what a camera was. The lessons as written describe the Node; this section is the decision they will be rewritten to, and the tests in `nodevms/` and `clustervms/` are the contract that rewrite must keep.
+The tempting shortcut is a CSI volume: attach the archive to whichever server runs `w-3`, and failover carries the disk. [Nomad issue #12118](https://github.com/hashicorp/nomad/issues/12118) — still open — is why not: when a client holding a CSI volume dies, the volume stays attached to it, the rescheduled allocation fails to place, and the documented workaround is a human at the storage provider's console. Shared storage buys fencing and loses the unattended recovery it was adopted for. A resource that *stays* has no such problem, because nothing tries to move it.
+
+### The acknowledgement problem, dissolved
+
+The first design had to explain what the operator is told when they save a camera, because the Node acknowledged on local commit and published later. Under 2c the controller acknowledges **after the CAS commit into raft**, which is replicated to every server before it returns. Inside the cluster there is no *saved · not yet replicated* — the write is either in the cluster's raft or it was refused. The condition survives one level up: М12's read model is built from snapshots the workers publish, and *that* copy is stale by the heartbeat interval, which the console prints on every row. The RPO moved from the cluster to the domain, and shrank to a display age.
+
+### What stays open by design
+
+- **A worker with no assignment** comes up idle and reports *unassigned*. It invents nothing; the controller assigns to it when there is work.
+- **Old footage on a dead resource is unavailable, not lost.** Playback of the ranges on Server A's manifest waits for Server A; the console says which ranges and which server.
 
 ---
 
 ## The zombie writer
 
-The correctness core, and here the story is sharper than the usual telling, because **both writers are the same Node.**
+The correctness core, unchanged in mechanism and sharper in scope: **both writers are the same worker, and the resource is what refuses the stale one.**
 
-Node N runs on Server A, writing camera 7's archive. Server A is partitioned — not dead, still reaching its cameras and its disks. Nomad concludes N is lost and starts N′ on Server B. Both are Node 3. Both hold N's configuration. Both believe they own camera 7.
+`w-3` runs on Server A, writing camera 7. Server A is partitioned — not dead, still reaching its cameras and its disks. Nomad concludes `w-3` is lost and starts `w-3′` on Server B. Both are `w-3`. Both read the same assignment. Both believe they own camera 7.
 
-**Nothing can tell dead from partitioned from paused.** That is not a gap to close with a better heartbeat; it is the fundamental limitation, and the design must be correct without resolving it.
+**Nothing can tell dead from partitioned from paused.** That is not a gap to close with a better heartbeat; the design must be correct without resolving it.
 
 ### Why this cannot be solved by agreement
 
-Some systems tolerate two nodes briefly believing they own the same object, because the data model reconciles — last-write-wins, CRDTs, quorum reads. That option is not available here:
-
 > **Two writers to one video stream cannot be merged. There is no reconciliation function for footage.**
 
-Which is why the epoch has to be a fencing token from a **single issuer**, rather than a value each Node computes for itself from what it believes about the cluster.
+So the epoch must be a fencing token from a **single issuer**, not a value each instance computes from what it believes about the cluster.
 
 ### Why a lock is not enough
 
-Kleppmann's argument applies directly: a lock service cannot prevent a client whose lease expired during a pause from making unsafe changes, because it has no visibility into what the client does. The fix is a **fencing token**, and the essential part is *where it is checked* — **the resource must reject the stale token**, not the lock service.
+Kleppmann's argument applies directly: a lock service cannot prevent a client whose lease expired during a pause from making unsafe changes, because it has no visibility into what the client does. The fix is a **fencing token**, and the essential part is *where it is checked*: **the resource must reject the stale token**, not the lock service.
 
 ### The VMS version, which is unusually clean
 
-Make the epoch part of the archive's identity.
+Make the epoch part of the key:
 
 ```
-archive/node-3/epoch-000005/cam-7/seg-00042.mkv   <- the old instance
-archive/node-3/epoch-000006/cam-7/seg-00000.mkv   <- the live one
+archive/cam-7/e000005/20260912T101000Z.mp4    <- the old instance of w-3
+archive/cam-7/e000006/20260912T101000Z.mp4    <- the live one, on another resource
 ```
 
-The old instance cannot corrupt the new one's segments because **it cannot name them.** It writes valid files into a path the index no longer references — and, because the epoch is in the path, those files are identifiable afterwards: the sweep **re-indexes them with their epoch** as footage *recorded by a fenced instance*, and retention treats them like any other.
+The old instance cannot corrupt the new one's segments because **it cannot name them.** It writes valid files under an epoch the manifest marks as fenced — identifiable afterwards, kept, shown as *recorded by a fenced instance*. Per camera rather than per worker, because the same window opens on a *reassignment*: the controller moves camera 7 from `w-3` to `w-4`, and for a few seconds both may write — into different epochs, harmlessly.
 
 > **You cannot stop a zombie from writing. You can only make its writes harmless.**
 
-This is also the justification for the rule М9 introduced without one: **on restart, never resume the previous segment — open a new one.**
-
 ### Clocks
 
-Lease expiry must not depend on wall-clock time; Redlock's flaw was exactly this, and system clocks jump under NTP correction.
+Lease expiry must not depend on wall-clock time. The holder measures its lease with a **monotonic** clock; it **stops writing at TTL − margin**; a replacement **starts at TTL + margin**; safety depends on the two margins and on relative clock *rates*, never on two servers agreeing what time it is. The holder stopping is a purely local decision — which is precisely why it is the part that can be trusted.
 
-- The holder measures its lease with a **monotonic** clock, never `gettimeofday`
-- The holder **stops writing at TTL − margin**; a replacement **starts at TTL + margin**
-- Safety depends on the two margins and on relative clock *rates*, never on two servers agreeing what time it is
+### Where the token comes from
 
-The holder stopping is a purely local decision requiring no coordination, which is precisely why it is the part that can be trusted.
+**Not a Nomad variable lock.** Its lock ID is an opaque UUID with no monotonic index — exactly the lock Kleppmann's argument is about, and the most instructive wrong answer in the module.
 
-### Where the token actually comes from
+**A Nomad Variable with check-and-set.** `PUT var vms/epoch/cam-7 {6} cas=8123` → 200 if nobody else wrote, 409 otherwise. Atomic, single-issuer, monotonic, replicated to every server. And it adds no coupling: failover already requires Nomad, because Nomad is what reschedules the worker.
 
-The epoch has to come from **one issuer**, and the obvious candidates are worth walking, because the wrong one looks right.
+**Why this beats a sequence in a database** — and why there is no database. A sequence reissues numbers after a restore from backup, and the recovery procedure corrupts the archive. Raft cannot lose the counter without losing the cluster, and if the cluster is gone there is nothing to fail over.
 
-**Not a Nomad variable lock.** Nomad has a lock primitive — acquire, renew, release, TTL between ten seconds and twenty-four hours — and it is exactly what a student will reach for. But **the lock ID is an opaque UUID: there is no monotonically increasing index.** That is precisely the lock Kleppmann's argument is about. It would reintroduce the zombie writer while appearing to have solved it, which makes it the most instructive wrong answer in the module.
-
-**A Nomad Variable with check-and-set.** The Variables API takes a `cas` parameter compared against the variable's `ModifyIndex` and returns **409** on conflict:
-
-```
-GET  var domain/epoch        → { value: 41, ModifyIndex: 8123 }
-PUT  var domain/epoch {42}  cas=8123
-       200 → nobody else wrote      409 → re-read and retry
-```
-
-Atomic, single-issuer, monotonic. Simpler still: `ModifyIndex` is itself raft-assigned and monotonic, so a write of anything yields a usable epoch — fencing needs *increase*, not density.
-
-**Why this beats a sequence in a database.** A sequence works right up until the database is restored from a backup, at which point it reissues numbers already written into archive paths — silent corruption produced by the recovery procedure itself. This is a large part of why the domain ended up with no database at all. Nomad's raft is replicated to every server; you cannot lose the counter without losing the cluster, and if the cluster is gone there are no allocations to fail over. **And it adds no coupling**: failover already requires Nomad, because Nomad is what reschedules the allocation.
-
-Which generalises into the rule the whole module stores things by — **three stores, chosen by shape rather than by habit:**
+Which generalises into the rule the module stores things by, now with the third store named honestly:
 
 | | Holds | Shape | Why not one of the others |
 |---|---|---|---|
-| **Postgres**, per Node | configuration, archive index, events | large, frequent, **queried** | the only one of the three that can answer a question |
-| **Nomad Variables**, per Node and per domain | identity, the epoch, the directory list | small, rare, **must be consistent** | raft is memory-resident and replicated to every server, so it must stay small |
-| **Object storage**, per cluster | each Node's published configuration — the restore point | large, rare, **never queried** | it is a blob nobody but its author parses, and durability is the whole requirement |
+| **Nomad Variables** | worker identity and assignment, camera rows, the epoch per camera, placement | small, rare, **must be consistent** — one raft | memory-resident and replicated to every server, so it must stay small; a thousand camera rows are a few hundred kilobytes and fit |
+| **The object store**, per cluster | worker heartbeats with their status snapshot; configuration snapshots for the domain's read model | frequent or large, **never queried by key** | it is a blob nobody but its author parses |
+| **The archive resource**, per server | footage and its manifest | large, constantly written, read as a range | it does not move, and that is the point |
 
-> **Small and consistent goes in the scheduler's store. Large and queryable goes in a database. Large and opaque goes in an object store.** The mistake this module started out making was assuming the third case needed the second.
+> **Small and consistent goes in the scheduler's store. Large and opaque goes in an object store. Bulk that is read as a range stays on the server that wrote it.** The database that held all three in М9 held them because it was the only store.
 
 ---
+
+## The controller
+
+The placement service of the first design, with a name, two properties and one more job.
+
+**It is the only writer of `vms/*`.** Cameras (`vms/cameras/<id>`), assignment (`vms/workers/<worker>`), the placement revision. The console's write API is its client; М12's domain reads its rows and never writes them. Its ACL policy is `deploy/vmscontroller-policy.hcl`: write on `vms/*`, read on everything else — and a worker's policy is read on `vms/*`, write on its own heartbeat prefix in the object store and on `vms/epoch/*` (by CAS, when it starts a camera).
+
+**Placement onto workers is by measured capacity**, from М9 Lesson 7's `B + n·I` — the probe is why this is observed rather than guessed — under label constraints (a camera on an isolated VLAN is reachable from the workers on servers that see it). **The stability rule, with a property test:** *adding a worker moves nothing.* Every camera lands on exactly one worker; no constraint violated; the tidy rebalance that every invariant lets through is the test that fails first. **Store the placement, do not derive it**: at 3 am *why is camera 812 on w-3* is a row with a reason and a timestamp. **Rebalance is explicit** — budgeted, observable, interruptible, with a dead band — and it is the one two-writer operation in the module, which is why each move takes a new epoch.
+
+**Its two properties**, restated because everything depends on them: it is **stateless and correct by CAS**, so `count = 1` is a preference and not a correctness requirement; it is **never on the recovery path**, so a worker that restarts on a new server reads its assignment and asks nobody. When the controller is down, the console can still show every camera (from heartbeats), a worker can still fail over, and the only thing an operator cannot do is change something.
+
+**The second subsystem shows it is a shape, not a special case.** Detectors are `detectorcontroller` and `detectorworker` over the same platform: a config prefix `det/*`, an assignment per worker, a heartbeat, and a resource — GPU compute — that pins the worker by affinity. The platform's job files differ in a name and a prefix. Lesson 5 builds enough of it to prove that, and М12's gateway is the third.
+
+---
+
 ## Lessons
 
-*Five lessons. Several Nodes, scheduled — and the hard part is the data, not the scheduling.*
+*Five lessons. Several servers, one scheduler — and the hard part is still what stays, not what moves.*
 
 ### Lesson 1 — When one box isn't enough
 
 - What actually forces a second server: camera count, storage throughput, retention, availability
-- **Why an orchestrator is the wrong answer for a single appliance.** Students should leave able to argue this, not assert it. On one box the scheduler has nothing to schedule — "place N workers" is a systemd template unit. Nomad's production guidance suggests 4–8+ cores and 16–32 GB+ for *servers* and says nothing about single-node deployments. And HashiCorp publishes a support note on orphaned Podman containers after an agent restart, which is a poor trade for no scheduling benefit
-- Nomad's model: **servers** accept jobs and place work, **clients** register and execute it; raft per region, three or five servers
-- Build a cluster: three servers, two clients
-- **Break container-per-camera on purpose.** Run [`shard-memory-probe.py`](../М9_EdgeVMS/reference/shard-memory-probe.py), measure the per-process baseline against the per-pipeline increment, and derive the shard size. Teach **proportional set size (PSS)** versus **resident set size (RSS)** — summing RSS across processes double-counts every shared library page, because it counts each shared page once per process
+- **Why an orchestrator is the wrong answer for a single appliance** — М10's controller, worker and resource run as `systemd` units on one box; "place N workers" is a template unit; Nomad's own production guidance sizes *servers* and says nothing about single-node deployments
+- Nomad's model: servers accept jobs and place work, clients execute it; raft per region; three or five servers
+- **The platform's stores become Nomad's.** М10's file-backed Variables become Nomad Variables with the same `ModifyIndex` and CAS; the object directory becomes MinIO; nothing in `vms/` changes — that is the test
+- Build a cluster: three servers, two clients; run [`shard-memory-probe.py`](../М9_EdgeVMS/reference/shard-memory-probe.py) and derive the worker's camera budget
 
-**Deliverable:** a working cluster, a measured shard size, and a written justification for why this deployment needed one.
-
----
-
-### Lesson 2 — The Node as an allocation
-
-- Jobspec structure: `job` → `group` → `task`, written in HCL
-- **The Podman task driver** — the same images and runtime as М9 Lesson 4. Translating a Quadlet unit into a Nomad task is a mapping, not a rewrite
-- The other drivers and why a VMS cares: **`exec2`** for a native process needing device access, `virt` for a VM. Kubernetes cannot do this at all
-- **`exec2` is not built into Nomad**, which is easy to get wrong: it is a separate official plugin downloaded onto each client host into the configured plugin directory, and it requires Linux with **Landlock LSM and cgroups v2**. Beta in 1.8.0, GA in 1.9.0. On an appliance that is one more thing the image must carry and the OS must support — a real constraint on М9's base distribution, not a footnote
-- **Node identity: where it comes from, and where it must not.** The Node must be the same Node after it moves. Nomad's *allocation index* looks like the answer and has had documented uniqueness bugs — two simultaneously-running allocations sharing an index, accepted and later fixed. Fine for a metrics label; **never for something archive correctness depends on**
-- **Nomad Variables are the right mechanism** — an encrypted, namespaced, ACL'd key-value store the scheduler delivers to a task. A Node reads *which Node am I, where is the directory, what is my epoch* from there. It is exactly what Variables are for, and it is why identity survives rescheduling without living on any disk
-- **And why configuration does *not* go there.** Variables cap at **64 KiB per entry** — originally 16 KiB, raised since, and capped at all because, in HashiCorp's own words, the limit exists *"to reduce the potential performance impact of Variables on our raft store."* That is the maintainers stating this module's own reason: the raft store is memory-resident and replicated to every server, so it is the wrong place for anything that grows. A thousand cameras of settings do not fit, and a key-value store cannot answer *which cameras have retention over 30 days* anyway
-- **What does fit is the pointer.** A Node's Variable holds its identity, its camera ids, and *where its configuration object is and at which revision* — hundreds of bytes, not megabytes. Lesson 5 points out that this **already is** the cluster's directory
-- Storage reality: recordings stay local. **Do not put video bulk on replicated storage**
-- Placement constraints: cameras are not uniformly reachable from every server
-
-**Deliverable:** М9's Node running as a Nomad job with the behaviour it had under Quadlet — and a Node identity that survives being rescheduled.
+**Deliverable:** a working cluster, М10's tests green against Nomad's stores instead of files, a measured per-worker budget, and a written justification for why this deployment needed a scheduler.
 
 ---
 
-### Lesson 3 — Making a Node's state outlive its server
+### Lesson 2 — Workers, resources and the controller as jobs
 
-The lesson the failover demo depends on, and the one most courses skip.
+- Jobspec structure; the Podman task driver; `exec2` and `virt`, and what `exec2` demands of the OS (Landlock, cgroups v2; a plugin the image must carry)
+- **Three shapes**: the worker as a `service` job with a stable name in a Variable; the archive as a `system` job pinned to servers with disks (`meta.archive`); the controller as a `service` job with `count = 1`
+- **Identity: where it comes from and where it must not.** The allocation index has had uniqueness bugs — a label, never correctness. A worker reads *which worker am I* from its Variable and *what am I assigned* from `vms/workers/<name>`
+- **What goes in Variables and what does not.** Camera rows do (small, consistent, one writer). Footage, heartbeats and snapshots do not (the 64 KiB cap exists *"to reduce the potential performance impact of Variables on our raft store"* — the maintainers stating the rule)
+- Placement constraints and affinities: cameras are not uniformly reachable; workers prefer the servers that carry their resources
+- **The ACL that makes one-writer-per-key true**: the controller writes `vms/*`; a worker writes its epochs and nothing else; `deploy/verify-bench.sh` proves both
 
-- **What must travel and what must not**, from the table above: configuration travels, footage stays, the index is rebuilt, events are expendable
-- **2a — shared storage, and why it is a trap here.** A Container Storage Interface (CSI) volume looks like the grown-up answer: exclusive attachment even fences for you. But Nomad cannot detach a volume from a dead client, so the allocation will not place and a human has to intervene at the storage provider. Students should read the open issue rather than take this on trust
-- **2b — the directory as an off-box backup**, which the course builds
-
-#### The rehydration sequence
-
-Walk it explicitly, because "it pulls its configuration back" hides every interesting decision:
-
-```
-Server A dies
-  └─ Nomad reschedules Node 3's allocation → Server B
-       1. empty Postgres; migrations run
-       2. read its own Nomad Variable — "I am Node 3; my configuration
-          is object node-3/rev-812, and these are my camera ids"
-       3. fetch that object from the CLUSTER's object store
-       4. restore it; check the revision against the Variable
-       5. request a new epoch
-       6. begin recording into epoch-N+1
-```
-
-- **Step 2 is why identity cannot live on disk.** The disk is on the dead server
-- **Step 4 is where the RPO becomes visible.** The revision that comes back may be behind the one the operator last saw acknowledged
-- **Steps 2 and 3 are why something off-box must be reachable to fail over**, even though nothing off-box is needed to *run*. Both live **inside this cluster** — Nomad's own store and an object store on these same servers — which is why failover survives the domain, and everything above it, being unreachable. **М12 does not have to exist for this lesson to work**, and that is the cleanest evidence that a cluster is a product on its own
-
-#### The mechanism, and what not to build
-
-**Not Postgres logical replication.** There is nothing at the domain to replicate *into*. A Node writes its configuration to the object store itself and then updates its own Variable to name the new revision — in that order, so a Variable never points at an object that is not there. The report channel from Lesson 5 carries status, not bulk.
-
-- **The acknowledgement rule**, from the section above: acknowledge on local commit, and show *saved · not yet replicated* until the directory confirms. Never acknowledge a write whose durability you cannot vouch for, and never block the write on it either
-- **A Node the directory has never seen** comes up *unconfigured*, and does not invent anything
-- Rebuilding the archive index by scanning segments, and how long that takes at scale
-- What the console must show while a Node's old footage is unreachable
-
-**Deliverable:** two proofs. First, kill a Node and bring it back on another server with its configuration intact. Then **measure the RPO**: edit a camera, kill the Node in the window before it publishes, and show exactly what the operator was told and what actually survived — then reduce the window and show the number move.
+**Deliverable:** М10's controller, worker and resource running as three jobs with the behaviour they had under `systemd`, a worker identity that survives being rescheduled, and the ACL proven from inside an allocation.
 
 ---
 
-### Lesson 4 — Failover, and the two instances of one Node
+### Lesson 3 — What stays on the server, and what does not
 
-> **The two numbers this lesson has to export.** `node_failover_seconds` — power pulled to recording resumed — is the product's **RTO**, and it is meaningless as an average: report the worst case, because the customer's question is *how long could my site be dark*. And `node_epoch_conflicts` counts how often a stale instance was fenced at the archive; on a healthy system it is zero forever, which makes it exactly the kind of counter people forget to alarm on. **A metric that is always zero is worth more than one that is always noisy** — the day it moves, something the design said was impossible has happened.
+- The table above: configuration is already in raft; footage stays on the resource; the manifest returns with it; the open segment is the loss
+- **Why the resource is not a volume that follows the worker** — read issue #12118 rather than take it on trust
+- **The storage knob**: per-server by default, an EC pool by choice; the 800 Mbit/s arithmetic and the quorum that stops every camera
+- **The acknowledgement problem, dissolved**: the controller acknowledges after the CAS commit; the RPO inside the cluster is zero; what remains is the domain's read model and its display age
+- A camera's timeline across two resources: merging manifests, and what the console shows while one resource is unreachable
+- A worker with no assignment invents nothing
 
-- **Restart versus reschedule.** Restart retries on the same server; reschedule places on a different one. Service jobs default to unlimited attempts
-- **The `disconnect` block, and why its default is wrong for a VMS.** By default a client missing heartbeats has its allocations marked lost and replaced *while the client keeps running its tasks* — so a partitioned server keeps recording while a replacement starts elsewhere. `lost_after`, `replace`, `stop_on_client_after`, and the four `reconcile` strategies. The exercise is the argument: for a recorder, is two servers recording the same camera for a minute better or worse than neither?
-- **Fencing**, from the section above: the epoch in the archive path, monotonic clocks, and the two margins
-- **Where the epoch comes from, and the wrong answer first.** Have students reach for Nomad's variable lock, then read the API and find the lock ID is an opaque UUID with no monotonic index — the exact lock Kleppmann warns about. Then build the right one: a Nomad Variable with `cas`, which is atomic, monotonic and survives losing the server that issued the last epoch
-- **Planned failover.** Draining a client before an OS update, and returning it to service — the same mechanism, with a human choosing the moment. This is where М9's two update planes meet the scheduler
-- What does not fail over: the footage
-
-**Deliverable:** pull the power on a server; report how long until recording resumed and how many seconds were lost. Then restore it, let the old instance wake up, and prove the archive is intact and its output orphaned.
+**Deliverable:** kill the server under `w-3`; show it recording on another server into another resource within the measured time, with the edit made *during* the failover present when it returns; show old footage as *unavailable* with the server named; bring the server back and play across the boundary.
 
 ---
-### Lesson 5 — The cluster directory, and where a camera goes
 
-The lesson that costs almost nothing to build, because **you already built it in Lesson 2 and called it something else.**
+### Lesson 4 — Failover, and the two instances of one worker
 
-- **Scanning your Nodes' Variables answers *where is camera 7*.** Each Node's Variable already carries its camera ids. Tens of entries, read in milliseconds, cached by the console. That is a directory, and noticing it is the lesson's first move
-- **Why it is a directory and not a database:** small, one writer per key enforced by a Nomad ACL, and never queried by anything but an exact scan. The same three properties that made the configuration store a database make this one not
-- **And it can be *strongly consistent*, because it is one raft.** Say this out loud, because it is the single thing М12 cannot have: inside a cluster there is one Nomad raft, so *where is camera 7* has one answer and it is current. Across clusters there is no raft at all
-- **Placement onto Nodes: capacity, measured.** [`shard-memory-probe.py`](../М9_EdgeVMS/reference/shard-memory-probe.py) from М9 is why this is observed rather than guessed. Constraints are labels — a camera on an isolated VLAN is reachable from some Nodes and not others
-- **The stability rule, with a property test:** *adding a Node moves nothing.* Then the tests that follow from it — every camera lands on exactly one Node, no constraint violated
-- **Why not consistent hashing.** Cameras are not uniform (4K at 8 Mbps beside 720p at 1); constraints break the ring; and it is not inspectable — at 3am *"why is camera 812 on Node 3"* should be a row with a reason and a timestamp, not a hash to recompute
-- **Store the placement; do not derive it.** Rebalance between Nodes is explicit: **budgeted** at N moves per minute, observable, interruptible — and it is the one two-writer operation in this module, which is why it needs the epoch you just built
-- **What placement here does *not* decide: which cluster.** This cluster is the only one that exists so far, and М12 adds the level above
+> **The two numbers this lesson exports.** `vms_failover_seconds` — power pulled to recording resumed — is the product's RTO, reported as the worst case. `vms_epoch_conflicts` counts a stale instance fenced at the resource; zero forever on a healthy cluster, alarmed on anyway.
 
-**Deliverable:** *where is camera 7* answered from the cluster in one scan, and a placement function with property tests — including the one that fails the first time somebody adds a tidy-looking rebalance.
+- Restart versus reschedule; the `disconnect` block and why its default is wrong for a recorder — `lost_after`, `replace`, `stop_on_client_after`, the four `reconcile` strategies
+- **Fencing at the resource**: the epoch per camera in the key, monotonic clocks, the two margins; the numbers this course ships (30 / 5 / 25 / 45) and why
+- **Where the epoch comes from, and the wrong answer first**: the variable lock's opaque UUID, then a Variable with `cas`
+- **The reassignment window** is the same window: the controller moves a camera and two workers may write for seconds — into different epochs
+- Planned failover: draining a client before an OS update — М9's two update planes meet the scheduler
+- What does not fail over: the resource
+
+**Deliverable:** pull the power on a server; report the worst-case failover time over three runs and the seconds lost. Restore it, let the old instance wake, and prove the archive intact and its output fenced — then do the same with a reassignment instead of a failure.
+
+---
+
+### Lesson 5 — The controller
+
+- The only writer: cameras and assignment by CAS; the console's write API as its client; what it refuses
+- **Placement by measured capacity** under label constraints; the stability rule as a property test; the tidy rebalance that breaks it; why not consistent hashing
+- **Store the placement, do not derive it**; rebalance budgeted, observable, interruptible, with a dead band — and an epoch per move
+- **Two controllers at once**, and why nothing breaks; **the controller stopped**, and what still works (everything already running)
+- **The cluster directory is the assignment.** `vms/workers/*` scanned answers *where is camera 7* in one raft, consistently — М12 aggregates several of these and cannot be consistent
+- **The second subsystem**: `detectorworker` over the same platform, with a GPU resource and an affinity; the diff between the two subsystems' job files
+
+**Deliverable:** *where is camera 7* answered from the cluster in one scan; the placement property tests; two controllers racing to place forty cameras and agreeing on all of them; and a detector worker placed by the same code with a different prefix.
 
 ---
 
 ## Verification plan
 
-**Track 1 — verified in the authoring sandbox.** More of this module than its subject matter suggests:
+**Track 1 — in the authoring sandbox.** The controller's placement and assignment with two racing writers; the worker's reconcile loop over an assignment with a fake actuator (М9's tests); the lease and the epoch issuer's CAS; the manifest merge across two resources; the acknowledgement change (an edit lands in the store or is refused, never *pending*); the second subsystem through the same platform code. `clustervms/` and `clustervms-go/` already carry the fencing, lease, publish and placement tests; the rewrite moves them under `vms/` and `platform/` from М10 and keeps their meaning.
 
-- **Placement is a pure function** — property tests are the natural fit, and they run with no cluster at all
-
-- **Fencing is fully testable with a filesystem and no cameras at all.** `kill -STOP`, restart the Node elsewhere, `kill -CONT`, assert on the directory tree. The correctness property has nothing to do with video
-- The lease state machine, the epoch issuer's check-and-set behaviour, and revision handling
-- The rehydration sequence against a fake directory, in the style of М8 Lessons 5–8
-- **The Go port**, with the same suite (30 tests, race-detector clean), the cross-language restore in both directions, and `measure.sh` — all run in the sandbox (Go 1.24.7, Python 3.11); the Postgres adapter `pgstore.go` was type-checked against pgx's signatures only, the module proxy being unreachable there
-
-**Track 2 — needs the real bench.** All of the scheduling: cluster formation, `nomad job validate`, Nomad Pack rendering, CSI attach and detach, and the power-pull exercise. Plus anything with real GStreamer and real cameras. Each lesson carries an explicit *expected output* block so a deviation is recognisable rather than mysterious.
+**Track 2 — needs the bench** (three VMs, Nomad ≥ 1.8.0, Podman, MinIO): cluster formation, `nomad job validate` for the three job shapes, the `system` job pinned to servers with `meta.archive`, the ACL from inside an allocation (`deploy/verify-bench.sh`), draining, the `disconnect` block, and the power pull with the failover drill (`deploy/failover-drill.sh`).
 
 ---
 
 ## Open questions
 
-1. ~~**Is 2a ever right?**~~ — **Decided: no.** The product offers 2b only. 2a stays in Lesson 3 as the cautionary comparison, not as an option.
-2. **Can a task write Variables under workload identity, and can an ACL policy scope it to that Node's own prefix?** *(`clustervms/deploy/verify-bench.sh` tests exactly this, from outside with a policy-only token and from inside the allocation with the task's own; it needs a bench.)* Load-bearing rather than incidental: Node identity and the epoch both live in Variables, and М12's whole one-writer-per-key property rests on Node 3 being unable to write `nodes/node-4`. The Variables documentation does not settle it. **Check before building.**
-3. ~~**How long should a Node wait before concluding its old instance is gone?**~~ — **Decided, with the reasoning in Lesson 4:** TTL 30 s, margin 5 s each side, renewal every ~8 s, `stop_on_client_after` = TTL − margin = 25 s, `lost_after` = TTL + margin = 45 s. Two-writer window ≤ 10 s on a partition, zero on a pause; tolerates a 29 % clock-rate error; failover ≈ 45 s + restore, datasheet *under 90 s worst case*. A fenced instance's footage is **re-indexed with its epoch**, not deleted.
-
-4. **The rewrite to 2c.** Which lessons change first — Lesson 3 (resources) or Lesson 5 (the controller) — and whether `clustervms/` grows a `worker/` package beside `cluster/` or replaces it. The contract is fixed; the order is not.
-
-**Resolved while designing the module:**
-
-- ~~How is Node identity issued?~~ — a **Nomad Variable**, which is what Variables are for. Never the allocation index, which has had uniqueness bugs
-- ~~Is shared storage the better product answer?~~ — no, and for a reason worth checking rather than assuming: Nomad cannot detach a CSI volume from a dead client, so 2a needs a human before it can fail over
+1. ~~Is 2a ever right?~~ — **No.** The resource stays; a CSI volume that follows the worker is #12118.
+2. **Can a task write Variables under workload identity, scoped by ACL to its own prefix?** `verify-bench.sh` tests it; needs the bench. Load-bearing: the controller's monopoly on `vms/*` and a worker's on its own epochs rest on it.
+3. ~~How long before a worker's old instance is assumed gone?~~ — **Decided:** 30 / 5 / 25 / 45, reasoning in Lesson 4.
+4. **The rewrite order.** М10's `platform/` and `vms/` first; then `clustervms/` becomes the Nomad implementations of `platform/` plus the controller's placement, and the lessons follow this record. Which lesson is rewritten first — 3 (resources) or 5 (the controller) — is open; the contract is not.
+5. **Who changes the worker count.** The operator, or the controller through Nomad's API when the assigned load exceeds the per-worker budget. Inherited from М10; decided here, because here is where there is a scheduler to ask.
 
 ---
 
 ## Sources
 
-- [Nomad architecture](https://developer.hashicorp.com/nomad/docs/architecture) — servers and clients, raft, regions
-- [Nomad task drivers](https://developer.hashicorp.com/nomad/plugins/drivers) — Podman, `exec2`, `virt`
-- [Nomad `disconnect` block](https://developer.hashicorp.com/nomad/docs/job-specification/disconnect) — `lost_after`, `replace`, `stop_on_client_after`, and the four `reconcile` strategies
-- [Nomad rescheduling](https://developer.hashicorp.com/nomad/docs/job-declare/failure/reschedule) — restart versus reschedule
-- [Nomad production requirements](https://developer.hashicorp.com/nomad/docs/deploy/production/requirements) — server sizing, and the absence of single-node guidance
-- [`NOMAD_ALLOC_INDEX` uniqueness bug](https://github.com/hashicorp/nomad/issues/10727) — two simultaneously-running allocations sharing an index; accepted and later fixed. Also [#4264](https://github.com/hashicorp/nomad/issues/4264) and [#11628](https://github.com/hashicorp/nomad/issues/11628) on consistency
-- [Nomad CSI volumes do not recover from client failure without human intervention](https://github.com/hashicorp/nomad/issues/12118) — open; the volume stays attached to the dead node and must be detached manually
-- [Nomad Variables HTTP API](https://developer.hashicorp.com/nomad/api-docs/variables/variables) — the `cas` parameter compared against `ModifyIndex`, 409 on conflict, and the 64 KiB item limit
-- [Nomad Variable Locks](https://developer.hashicorp.com/nomad/api-docs/variables/locks) — acquire/renew/release with a TTL, and an **opaque lock ID rather than a fencing token**
-- [Nomad Pack](https://developer.hashicorp.com/nomad/tools/nomad-pack) · [Nomad LICENSE](https://raw.githubusercontent.com/hashicorp/nomad/main/LICENSE)
-- [How to do distributed locking](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html) — fencing tokens, and why lease expiry must not depend on wall-clock time
-- [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md) · [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md)
+- [Nomad architecture](https://developer.hashicorp.com/nomad/docs/architecture) · [task drivers](https://developer.hashicorp.com/nomad/plugins/drivers) · [`system` jobs](https://developer.hashicorp.com/nomad/docs/job-specification/job#type) · [affinity](https://developer.hashicorp.com/nomad/docs/job-specification/affinity)
+- [Nomad `disconnect` block](https://developer.hashicorp.com/nomad/docs/job-specification/disconnect) · [rescheduling](https://developer.hashicorp.com/nomad/docs/job-declare/failure/reschedule)
+- [`NOMAD_ALLOC_INDEX` uniqueness bug](https://github.com/hashicorp/nomad/issues/10727) · [#4264](https://github.com/hashicorp/nomad/issues/4264) · [#11628](https://github.com/hashicorp/nomad/issues/11628)
+- [CSI volumes do not recover from client failure without human intervention](https://github.com/hashicorp/nomad/issues/12118)
+- [Nomad Variables HTTP API](https://developer.hashicorp.com/nomad/api-docs/variables/variables) — `cas` against `ModifyIndex`, 409 on conflict, the 64 KiB item limit · [Variable Locks](https://developer.hashicorp.com/nomad/api-docs/variables/locks) — an opaque lock ID rather than a fencing token
+- [How to do distributed locking](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html)
+- [`kubernetes-vs-nomad.md`](kubernetes-vs-nomad.md) · [`apphost-and-process-model.md`](../М9_EdgeVMS/apphost-and-process-model.md) · [М10's design](../М10_NodeVMS/module-design.md) · [ARCHITECTURE §1.11](../ARCHITECTURE.md)
 
-*Written 5 September 2026. Split from the combined DomainVMS module on 7 September 2026. Lessons 1–5 written 8 September; the Track 1 items above run in [`reference/`](reference/README.md), and every number the lessons print came out of them.*
+*Written 5 September 2026 for the Node model; lessons written 8 September. Rewritten 12 September 2026 to workers, resources and one controller (*2c*), after the fold of the first NodeVMS into М9 and the new М10 design. The lessons and the code still describe the Node until they are rewritten to this record.*

@@ -116,7 +116,7 @@ The module that rebuilds the Node on the decision М11 arrived at last — **wor
 - **No sharding on one Node**, and the open question of where configuration lives answered: the controller writes it, the platform stores it, the worker reads its share
 - **KVS retired; the archive is ours**: segments on the spool, closed segments promoted to the archive resource, the epoch in the path, a manifest instead of an index
 
-### М11 — ClusterVMS: a Node that outlives its server · 5 lessons · [written](./М11_ClusterVMS/README.md)
+### М11 — ClusterVMS: workers that outlive their server · 5 lessons · [written](./М11_ClusterVMS/README.md) · [design rewritten to 2c](./М11_ClusterVMS/module-design.md)
 
 The only module where getting it wrong corrupts customer data rather than merely stopping a service. М9's loop works on one box; this is one cluster — servers on one network you would bet recording on — and a Node that survives any of them dying.
 

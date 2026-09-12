@@ -6,7 +6,7 @@ Terms the course uses precisely, and acronyms it would otherwise leave unexplain
 
 | Term | Meaning here |
 |---|---|
-| **Node** | A VMS instance — its own database, its own cameras, its own archive index. М9 builds one. From М11 it is a scheduler allocation with stable identity that **moves between servers**, carrying its cameras with it. **A Node is not a server.** |
+| **Node** | Under the first design: a VMS instance with its own database, cameras and archive index — М9 Lessons 5–9 build one. Under *2c* (М10, М11): **a box running the platform's stores plus one or more subsystems**, each a controller and its workers; the recorder that was the Node is now a *worker*, its disk a *resource*. |
 | **Worker** | A DriverPack shard with N cameras assigned — holds the pipeline and routes it; stable identity, movable between servers, stateless but for a spool. What the Node becomes under М11's decision *2c*. 1+ per cluster, by workload. |
 | **Resource** | Something bound to a server: the archive on its disks, GPU compute for detectors, a NIC on the camera VLAN. A Nomad `system` job pinned by what the server has; N per cluster; when it dies nothing moves because nothing can. |
 | **Controller** (cluster) | The one job per cluster that places cameras onto workers and rebalances on request. Stateless — computation over Variables and objects — correct by CAS, safe at two, and never on the recovery path: when it is down, nothing already running stops. Not to be confused with the retired *domain controller*, which held state. |
