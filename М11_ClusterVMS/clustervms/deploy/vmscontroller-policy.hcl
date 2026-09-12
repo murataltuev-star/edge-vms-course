@@ -3,6 +3,8 @@
 namespace "default" {
   variables {
     path "vms/*"        { capabilities = ["write", "read", "list", "destroy"] }
+    path "objects/vms/snapshot" { capabilities = ["write", "read"] }
+    path "objects/*"    { capabilities = ["read", "list"] }
     path "*"            { capabilities = ["read", "list"] }
   }
 }

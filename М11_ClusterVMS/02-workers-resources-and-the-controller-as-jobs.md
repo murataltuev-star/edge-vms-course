@@ -122,12 +122,12 @@ And the case the test also covers, because it is the one people get wrong: **a c
 
 ## Step 5 — What goes in Variables, and what does not
 
-| In Variables (raft) | In the object store | On the resource |
+| In Variables (raft), as configuration | In Variables, as objects (`objects/…`) | On the resource |
 |---|---|---|
-| camera rows, placement, assignment, slots, the epoch per camera | heartbeats (every ten seconds, per worker and per resource); the snapshot for М12 | footage and its manifest |
-| small, rare, must be consistent — one writer per prefix | frequent or large; never queried by key | large, written constantly, read as a range; does not move |
+| camera rows, placement, assignment, slots, the epoch per camera | heartbeats (every ten seconds, per worker and per resource); the snapshot for М12 | footage, its manifest, every subsystem's event buckets — and, with the knob on, a peer's copies |
+| small, rare, must be consistent — one writer per prefix | frequent, never queried by key, and *small enough*: a dozen 10 KB heartbeats every ten seconds | large, written constantly, read as a range; does not move |
 
-The 64 KiB cap on a Variable exists, in the maintainers' words, *to reduce the potential performance impact of Variables on our raft store* — the store is memory-resident and replicated to every server. A thousand camera rows are a few hundred kilobytes across a thousand keys and fit. A heartbeat every ten seconds from twelve workers is a hundred thousand raft writes a day for something nobody queries by key; it goes to MinIO. The rule М11's first design wrote still holds, with the third store named honestly: **small and consistent goes in the scheduler's store; large and opaque goes in an object store; bulk read as a range stays on the server that wrote it.**
+The 64 KiB cap on a Variable exists, in the maintainers' words, *to reduce the potential performance impact of Variables on our raft store* — the store is memory-resident and replicated to every server. A thousand camera rows are a few hundred kilobytes across a thousand keys and fit. So do the heartbeats: twelve workers and three resources every ten seconds is 1.5 writes a second of ten kilobytes each, a hundred thousand writes a day that a raft designed for scheduling decisions does not notice — which is why the first design's MinIO is gone from this module. The object store stays as a *contract* (`VariablesObjectStore` here; `s3.py` when a cluster outgrows this, or is rented), and the rule reads: **small and consistent goes in the scheduler's store; frequent-but-small goes there too, as objects; bulk read as a range stays on the server that wrote it.** What would bring a second store back is volume — a hundred workers, or heartbeats carrying thumbnails — and the code would not change to take it.
 
 ## Step 6 — The ACL, from inside an allocation
 
@@ -169,7 +169,7 @@ own=200 other=403 — one writer per key holds
 - A name is a slot claimed by CAS; `NOMAD_ALLOC_INDEX` is the preference; the duplicate-index bug is harmless.
 - Nomad places; the Autoscaler moves `count` from `vms_worker_load`; the controller never asks.
 - Scale-in releases a slot and the controller redistributes; a crash releases nothing and the controller waits.
-- Raft holds what is small and consistent; MinIO what is frequent; the resource what is bulk.
+- Raft holds what is small and consistent, and the heartbeats as objects; the resource holds bulk; there is no MinIO on this cluster.
 - One writer per key is a policy bound to a job's identity, proven from inside the allocation.
 
 ## Exercises

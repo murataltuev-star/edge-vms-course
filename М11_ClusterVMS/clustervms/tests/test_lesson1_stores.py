@@ -51,3 +51,22 @@ def test_m10s_base_classes_run_on_the_cluster_stores_unchanged():
     assert list(ctl.workers_seen()) == ["w-1"] and ctl.workers_seen()["w-1"].extra["server"] == "srv-a"
     ctl.assign("w-1", ["1"]); assert w.assignment().units == ["1"]
     assert w.take_epoch("1") == 1 and w.may_write("1")
+
+
+def test_the_object_store_on_this_cluster_is_variables():
+    """Heartbeats and the snapshot are ~10 KB every ten seconds from a dozen
+    processes: not the volume the keep-raft-small rule was about. The contract
+    is the point — nothing in vms/ knows which store it is talking to."""
+    from cluster.objectstore import VariablesObjectStore
+    from vmsplatform.contract import Controller, Subsystem, Worker
+    v = FakeVariables(); objects = VariablesObjectStore(v.as_writer("vmsworker", ["objects/*", "vms/epoch/*", "vms/slots/*"]))
+    sub = Subsystem("vms"); c = Cluster()
+    w = Worker(sub, "w-1", v, objects, clock=c.clock, wall=c.wall)
+    w.heartbeat([{"id": 7, "phase": "running"}], server="srv-a")
+    assert v.list("objects/") == ["objects/vms/w-1/heartbeat"] and objects.list("vms/") == ["vms/w-1/heartbeat"]
+    ctl = Controller(sub, v, objects, wall=c.wall)
+    assert ctl.workers_seen()["w-1"].extra["server"] == "srv-a"
+    try:
+        VariablesObjectStore(v.as_writer("vmsworker", ["vms/epoch/*"])).put("vms/w-2/heartbeat", b"{}"); assert False
+    except Forbidden:
+        pass                                                                    # the ACL comes with the token, as for every Variable

@@ -1,7 +1,8 @@
 """python3 -m cluster worker | controller | resource | eventindex — the jobs.
 
     NOMAD_ADDR, NOMAD_TOKEN            the task's own workload identity (Variables)
-    OBJECTS=s3+http://minio:9000/vms   the object store (heartbeats, snapshots); file:///path on a bench
+    OBJECTS=variables://objects        the object store — heartbeats and the snapshot — as Variables (the default);
+                                       s3+http://… when a cluster is large enough to want MinIO; file:///path on a bench
     NOMAD_ALLOC_INDEX                  worker: the slot to claim; NOMAD_NODE_NAME the server; NOMAD_META_labels
     SPOOL, ARCHIVE                     worker and resource: the same disks on the same server
     RESOURCE_URL                       resource: how the console reaches this server's manifests
@@ -25,7 +26,7 @@ logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(asctime
 stop = threading.Event()
 for s in (signal.SIGTERM, signal.SIGINT):
     signal.signal(s, lambda *_: stop.set())
-objects = open_store(os.environ.get("OBJECTS", "file:///data/objects"))
+objects = open_store(os.environ.get("OBJECTS", "variables://objects"))
 spool, archive = os.environ.get("SPOOL", "/data/spool"), os.environ.get("ARCHIVE", "/data/archive")
 
 
@@ -52,7 +53,7 @@ def controller() -> None:
     from cluster.resource import resources_seen
     ctl = ClusterController(NomadVariables(), objects, capacity=int(os.environ.get("CAPACITY", "50")),
                             cluster=os.environ.get("CLUSTER", "cluster-a"))
-    index = EventIndex(ResourceReader(), os.environ.get("EVENTINDEX_DB", ":memory:"))    # a cache: rebuilt on every start
+    index = EventIndex(ResourceReader(), os.environ.get("EVENTINDEX_DB", ":memory:"))     # a cache: rebuilt on every start
     index.rebuild(resources_seen(objects))
     srv = serve(ctl, os.environ.get("CONSOLE_HOST", "0.0.0.0"), int(os.environ.get("CONSOLE_PORT", "8080")), index=index,
                 archive_root=archive if os.path.isdir(archive) else None)     # marks go into this server's resource
@@ -73,7 +74,8 @@ def resource() -> None:
     server = os.environ.get("NOMAD_NODE_NAME") or os.uname().nodename
     url = os.environ.get("RESOURCE_URL", f"http://{server}:8090")
     srv = serve(res, "0.0.0.0", int(os.environ.get("RESOURCE_PORT", "8090")))
-    hb, policy = ResourceHeartbeat(res, objects, server, url), ResourcePolicy(res, NomadVariables())
+    hb, policy = ResourceHeartbeat(res, objects, server, url), ResourcePolicy(res, NomadVariables(), objects=objects, server=server)
+    hb.once(); logging.info("restore: %s", policy.restore())    # back with an empty disk? pull my buckets from my peer first
     last_policy = 0.0
     while not stop.is_set():
         try:

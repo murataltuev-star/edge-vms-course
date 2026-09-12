@@ -6,12 +6,12 @@
 clustervms/
   cluster/
     variables.py     L1  Nomad Variables over HTTP with the task's own token (ModifyIndex, cas, 409, 403) — and the fake with the promised semantics
-    objectstore.py   L1  MinIO / S3 (s3.py: SigV4, verified against Amazon's worked examples), HTTP, or a directory — put/get/list
+    objectstore.py   L1  the object-store contract: Variables under objects/… on this cluster (heartbeats, the snapshot); S3 (s3.py, SigV4) when rented or outgrown; a directory in tests
     worker.py        L2  the worker as an allocation: the slot from NOMAD_ALLOC_INDEX, the server and its labels from the environment, capacity and headroom in the heartbeat
     controller.py    L5  the controller as a job: placement under label constraints with the server in the reason; `unplaceable`; the snapshot for М12; vms_failover_seconds from the heartbeats
     directory.py     L5  where is camera 7 — one scan of vms/workers/*
-    resource.py      L3  the archive resource as a system job: its heartbeat, its manifests, footage and event files served, its policy (repair, then retain)
-    eventindex.py    L3  the cluster's event "database", which is a cache: SQLite over every subsystem's buckets on every resource, rebuildable, honest about a silent server; joins subsystems on a `cam` field
+    resource.py      L3  the archive resource as a system job: its heartbeat, its manifests, footage and event files served, its policy (repair, close, retain — and mirror to the next resource, with the knob on; restore, on return)
+    eventindex.py    L3  the cluster's event "database", which is a cache: SQLite over every subsystem's buckets on every resource, rebuildable, honest about a silent server, reads a silent server's buckets from the peer that holds copies; joins subsystems on a `cam` field
     timeline.py      L3  one camera across two resources; the unreachable one named; *unavailable*, never *lost*
     console.py       L5  the cluster console, standard library: /cameras /where /timeline /resources /unplaceable /events /metrics; /marks into the console's own bucket
     publish.py, configio.py   the first design's Node-shaped snapshot — kept only because М12's fixture reads it; goes with М12's rewrite
@@ -22,12 +22,11 @@ clustervms/
     vmscontroller.nomad.hcl    L2  service, count = 1 — safe at two
     vmsarchive.nomad.hcl       L2  system, on meta.archive — the resource
     autoscaler.nomad.hcl       L2  the Nomad Autoscaler (MPL-2.0): the fourth job, and the only thing that changes count
-    vmsworker-policy.hcl, vmscontroller-policy.hcl   L2  one writer per key: vms/* for the controller; vms/epoch/* and vms/slots/* for a worker
-    minio.nomad.hcl            L1  the object store on the cluster's own servers
+    vmsworker-policy.hcl, vmscontroller-policy.hcl, vmsarchive-policy.hcl   L2  one writer per key: vms/* for the controller; vms/epoch/*, vms/slots/* and its heartbeat for a worker; its heartbeat for a resource
     verify-bench.sh            the six checks that need a real cluster, PASS/FAIL — including the ACL from inside an allocation and a scale drill
     failover-drill.sh          L4  the power pull, measured: three runs, worst case kept, the old instance's conflicts counted
     Containerfile              the image: vmsnode + cluster, three entrypoints
-  tests/                       27 tests, no Nomad, no MinIO, no GStreamer, milliseconds: python3 tests/run.py
+  tests/                       29 tests, no Nomad, no GStreamer, milliseconds: python3 tests/run.py
 ```
 
 ## What a cluster adds, and what it does not
@@ -35,7 +34,7 @@ clustervms/
 | | М10, one box | М11, a cluster | Where |
 |---|---|---|---|
 | The config store | files with `ModifyIndex` and CAS | Nomad Variables — the same two promises, kept by raft | `variables.py` |
-| The object store | a directory | MinIO, SigV4 | `objectstore.py`, `s3.py` |
+| The object store | a directory | Variables under `objects/…` — a dozen 10 KB heartbeats every ten seconds is not a raft load; MinIO/S3 only when a cluster outgrows this or is rented | `objectstore.py`, `s3.py` |
 | A worker's name | `systemd`'s `%i` | `w-<NOMAD_ALLOC_INDEX>`, claimed by CAS — the index is the preference, the Variable the proof | `worker.py` |
 | Who decides how many workers | the operator starts units | Nomad runs `count`; the Autoscaler moves it from `vms_worker_load`; **never the controller** | `deploy/vmsworker.nomad.hcl` |
 | Placement | most free capacity | most free capacity **among workers whose server can reach the camera** (`labels`) | `controller.py` |
@@ -55,4 +54,4 @@ clustervms/
 
 ## Verified where
 
-The 27 tests ran in the authoring sandbox (Python 3.11) and on the author's machine (3.10), on fakes that implement what Nomad's and S3's documentation promise. `deploy/verify-bench.sh` and `deploy/failover-drill.sh` are what proves the promises against real Nomad: the ACL from inside an allocation, the four jobspecs validating, the scale drill, and the power pull with the worst case kept. `clustervms-go/` is the Go port of the *first* design and stays as its measurement record; its 2c port follows this package.
+The 29 tests ran in the authoring sandbox (Python 3.11) and on the author's machine (3.10), on fakes that implement what Nomad's and S3's documentation promise. `deploy/verify-bench.sh` and `deploy/failover-drill.sh` are what proves the promises against real Nomad: the ACL from inside an allocation, the four jobspecs validating, the scale drill, and the power pull with the worst case kept. `clustervms-go/` is the Go port of the *first* design and stays as its measurement record; its 2c port follows this package.

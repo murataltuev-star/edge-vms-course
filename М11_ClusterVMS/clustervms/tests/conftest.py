@@ -29,10 +29,10 @@ class Clock:
 
 class Server:
     """A box in the cluster: a name, labels, an archive resource on its disks."""
-    def __init__(self, root: str, name: str, labels: str = ""):
+    def __init__(self, root: str, name: str, labels: str = "", wall=None):
         self.name, self.labels = name, labels
         self.spool, self.archive = os.path.join(root, name, "spool"), os.path.join(root, name, "archive")
-        self.resource = ArchiveResource(self.spool, self.archive)
+        self.resource = ArchiveResource(self.spool, self.archive, wall=wall)
 
 
 class Cluster:
@@ -42,7 +42,7 @@ class Cluster:
         self.vars = FakeVariables()
         self.objects = FsObjectStore(os.path.join(self.root, "objects"))
         self.clock, self.wall = Clock(), Clock(1_757_500_000.0)
-        self.servers = {n: Server(self.root, n, l) for n, l in servers}
+        self.servers = {n: Server(self.root, n, l, self.wall) for n, l in servers}
         self.allocs = 0
 
     def env(self, index: int, server: str, alloc: str | None = None) -> dict:

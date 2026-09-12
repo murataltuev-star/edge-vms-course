@@ -100,8 +100,9 @@ def test_events_are_buckets_on_the_resource_recording_or_not():
     retained by their own policy. No controller wrote any of it."""
     from vms.archive import event_log
     from vmsplatform.events import parse_bucket, read_bucket
-    box = Box(); res = ArchiveResource(box.spool, box.archive)
+    box = Box(); res = ArchiveResource(box.spool, box.archive, wall=lambda: box.wall())
     t0 = utc("2026-09-12T10:00:00").timestamp()
+    box.wall.t = t0 + 2000                                                     # the resource's clock: every bucket below is over
     log = event_log(box.archive, 7, 3)                                          # the worker holds epoch 3 for camera 7
     p = log.append(t0 + 12.5, "motion", zone="gate")                            # not recording: still an event
     assert parse_bucket(p, box.archive) == ("vms", "7", 3, t0) and read_bucket(p)[0]["zone"] == "gate"

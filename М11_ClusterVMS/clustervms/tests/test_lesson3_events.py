@@ -7,15 +7,16 @@ camera 7's bucket."""
 import os
 from datetime import datetime, timezone
 from cluster.eventindex import EventIndex
-from cluster.resource import ResourceHeartbeat, ResourcePolicy, resources_seen
+from cluster.resource import ResourceHeartbeat, ResourcePolicy, peers_of, resources_seen
 from vms.archive import Manifest, event_log, segment_path
-from vmsplatform.events import EventLog, buckets_under, read_bucket
+from vmsplatform.events import EventLog, buckets_under, read_bucket, subsystems_under
 from tests.conftest import Cluster
 
 B = 600
 
 
 class DirReader:
+    """The index's reader and the resources' peer client, against directories instead of HTTP."""
     def __init__(self, c): self.c = c
     def _srv(self, url):
         s = self.c.servers[url.rsplit("/", 1)[1]]
@@ -23,6 +24,18 @@ class DirReader:
         return s
     def buckets(self, url, sub, unit): return buckets_under(self._srv(url).archive, sub, unit, B)
     def events(self, url, b): return read_bucket(os.path.join(self._srv(url).archive, b.path))
+    # the mirror, as the index reads it
+    def mirrored(self, url, server):
+        from cluster.resource import mirrored_buckets
+        return mirrored_buckets(self._srv(url).archive, server, B)
+    def mirrored_events(self, url, server, b): return read_bucket(os.path.join(self._srv(url).archive, ".mirror", server, b.path))
+    # the mirror, as a resource writes and restores it (PeerClient's three calls)
+    def put(self, url, server, path, data):
+        dest = os.path.join(self._srv(url).archive, ".mirror", server, path)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "wb") as f: f.write(data)
+    def get(self, url, server, path):
+        with open(os.path.join(self._srv(url).archive, ".mirror", server, path), "rb") as f: return f.read()
 
 
 def _media(c, server, cam, epoch, start):
@@ -57,7 +70,7 @@ def test_events_are_indexed_across_resources_and_subsystems_and_the_index_is_a_c
     assert resources_seen(c.objects)["srv-c"]["units"] == {"counter": ["a"], "det": ["d-12"]}
     idx = EventIndex(DirReader(c), wall=c.wall)
     rep = idx.rebuild(resources_seen(c.objects))
-    assert rep == {"added": 5, "unreachable": [], "segments": 4} and idx.state == "live"
+    assert rep == {"added": 5, "unreachable": [], "from_mirror": [], "segments": 4} and idx.state == "live"
     q = idx.query(t, t + 3600, cam=7, current_epochs={("vms", "7"): 4})
     assert [(e["subsystem"], e["unit"], e["kind"], e["server"], e["epoch"], e["fenced"]) for e in q["events"]] == [
         ("vms", "7", "motion", "srv-a", 3, True), ("det", "d-12", "person", "srv-c", 1, False),
@@ -103,3 +116,48 @@ def test_the_resource_policy_closes_buckets_and_retains_per_subsystem():
     rep = ResourcePolicy(srv.resource, c.vars, wall=c.wall).once()
     assert rep["added"] == 2 and rep["closed"] == 0 and rep["removed"] == 2 and os.path.exists(p2)   # repair indexed them first; close had nothing left and not os.path.exists(p1) and not os.path.exists(p3)
     assert len(Manifest(srv.archive, 1).buckets()) == 1
+
+
+def test_the_events_knob_is_a_peer_copy_and_the_owner_restores():
+    """The storage knob's events row, as a copy between resources — no store in
+    between. Off: a silent server's events are unavailable by name. On: each
+    resource copied its CLOSED buckets to the next live resource after it, and
+    a fresh index answers completely from the peer, saying so. Back with an
+    empty disk, the owner pulls its buckets home; nobody else ever writes them."""
+    from cluster.resource import MIRROR_KEY, mirrored_buckets
+    import shutil
+    assert peers_of("srv-a", ["srv-a", "srv-b", "srv-c"], 1) == ["srv-b"] and peers_of("srv-c", ["srv-a", "srv-b", "srv-c"], 1) == ["srv-a"]
+    assert peers_of("srv-b", ["srv-a", "srv-b", "srv-c"], 2) == ["srv-c", "srv-a"] and peers_of("srv-a", ["srv-a"], 1) == []
+    c = Cluster(); t = c.wall() - 7200; rd = DirReader(c)
+    _observe(c, "srv-a", "vms", "7", 3, t + 12, "motion", zone="gate")
+    _observe(c, "srv-a", "det", "d-12", 1, t + 30, "person", cam=7)
+    _observe(c, "srv-a", "vms", "7", 3, t + 6800, "motion")                      # in the OPEN bucket: not closed, not mirrored
+    _observe(c, "srv-b", "vms", "8", 1, t + 20, "motion")
+    hbs = _heartbeats(c)
+    pol = {s: ResourcePolicy(c.servers[s].resource, c.vars, wall=c.wall, objects=c.objects, server=s, peers=rd) for s in c.servers}
+    assert pol["srv-a"].once()["enabled"] is False and mirrored_buckets(c.servers["srv-b"].archive, "srv-a") == []   # knob off: nothing leaves
+    c.vars.put(MIRROR_KEY, {"enabled": "true", "copies": "1"})                                       # the knob: one Variable
+    r = pol["srv-a"].once(); assert (r["mirrored"], r["peers"]) == (2, ["srv-b"])                    # a -> b, closed buckets only
+    r = pol["srv-b"].once(); assert (r["mirrored"], r["peers"]) == (1, ["srv-c"])                    # b -> c
+    assert pol["srv-a"].once()["mirrored"] == 0                                                      # exactly once: the peer said what it holds
+    for hb in hbs.values(): hb.once()
+    assert resources_seen(c.objects)["srv-b"]["mirrors"] == {"srv-a": 2} and resources_seen(c.objects)["srv-c"]["mirrors"] == {"srv-b": 1}
+    assert [b.path for b in mirrored_buckets(c.servers["srv-b"].archive, "srv-a")][0].startswith("det/d-12/e1/")   # the ORIGINAL path, under .mirror/srv-a/
+    assert "srv-b" not in subsystems_under(c.servers["srv-b"].archive).get(".mirror", []) and ".mirror" not in subsystems_under(c.servers["srv-b"].archive)
+    # srv-a dies
+    c.wall.advance(60); hbs["srv-b"].once(); hbs["srv-c"].once()
+    idx = EventIndex(rd, wall=c.wall)                                                                # a fresh index after its own failover
+    rep = idx.rebuild(resources_seen(c.objects))
+    assert rep["unreachable"] == [] and rep["from_mirror"] == ["srv-a"] and rep["added"] == 3 and idx.state == "live; srv-a from mirror"
+    ev = idx.query(t, t + 7200, cam=7)["events"]
+    assert [(e["subsystem"], e["kind"], e["server"]) for e in ev] == [("vms", "motion", "srv-a"), ("det", "person", "srv-a")]   # complete; the open bucket is the RPO
+    # srv-a returns — with a REPLACED, empty disk
+    shutil.rmtree(c.servers["srv-a"].archive); os.makedirs(c.servers["srv-a"].archive)
+    hbs["srv-a"].once()
+    r = pol["srv-a"].restore()
+    assert r["pulled"] == 2 and r["added"] == 1                                                      # its two closed buckets are home; the vms manifest line rebuilt
+    assert [b.path for b in buckets_under(c.servers["srv-a"].archive, "vms", "7", B)] == [ev[0]["bucket"]]
+    hbs["srv-a"].once()
+    rep = idx.tail(resources_seen(c.objects))
+    assert rep["added"] == 0 and rep["from_mirror"] == [] and idx.state == "live"                    # seen already; the resource is the source again
+    assert c.objects.list("vms/mirror") == []                                                        # no store in between, ever

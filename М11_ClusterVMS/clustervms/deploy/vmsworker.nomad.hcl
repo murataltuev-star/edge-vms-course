@@ -49,16 +49,8 @@ job "vmsworker" {
         volumes      = ["/data/spool:/data/spool", "/data/archive:/data/archive", "/data/media:/data/media"]
       }
       env {
-        OBJECTS   = "s3+http://127.0.0.1:9000/vms?region=us-east-1"
+        OBJECTS   = "variables://objects"          # heartbeats and the snapshot as Variables; no MinIO on this cluster
         CAPACITY  = "50"                             # this server's number; per node class in a product
-      }
-      template {                                     # the object store's credentials from a Variable, never the image
-        data        = <<EOT
-{{ with nomadVar "vms/objects" }}AWS_ACCESS_KEY_ID={{ .access_key }}
-AWS_SECRET_ACCESS_KEY={{ .secret_key }}{{ end }}
-EOT
-        destination = "secrets/objects.env"
-        env         = true
       }
       resources { cpu = 2000  memory = 2048 }        # B + n·I, rounded up
     }

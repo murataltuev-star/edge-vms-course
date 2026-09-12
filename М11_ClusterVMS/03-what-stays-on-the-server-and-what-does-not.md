@@ -10,7 +10,7 @@ The first ClusterVMS design spent a whole lesson on making a Node's state outliv
 
 What *was* on the server is footage, and this lesson is honest about it. Footage stays on the resource, the resource stays with its disks, and while the server is down that footage is **unavailable** — a state with a server's name in it — and not lost. The manifest beside it returns when the disks do, and nothing is rebuilt.
 
-> **What you can verify without hardware.** `tests/test_lesson3_resources.py`: the edit during the failover, the timeline across two resources with one silent, the resource's policy running with neither worker nor controller, and a worker with no assignment inventing nothing; `tests/test_lesson3_events.py`: events indexed across resources and subsystems, a detector's event found by its `cam` field, the index rebuilt to the same answer, a silent resource named, the resource's policy per subsystem. The power pull itself is Lesson 4's and needs the bench.
+> **What you can verify without hardware.** `tests/test_lesson3_resources.py`: the edit during the failover, the timeline across two resources with one silent, the resource's policy running with neither worker nor controller, and a worker with no assignment inventing nothing; `tests/test_lesson3_events.py`: events indexed across resources and subsystems, a detector's event found by its `cam` field, the index rebuilt to the same answer, a silent resource named, the resource's policy per subsystem, the mirror knob keeping the index complete. The power pull itself is Lesson 4's and needs the bench.
 
 ## Prerequisites
 
@@ -67,6 +67,7 @@ The tempting shortcut: a CSI volume attached to whichever server runs `w-1`, so 
 | Archive resource | Survives | Costs | Fits |
 |---|---|---|---|
 | **per server, unreplicated** — a directory per box, `vmsarchive` pinned to it | a dead server's footage is unavailable until it returns; every other camera records on | nothing new: locality kept; a manifest that may span resources | **the default**, every cluster size |
+| **events mirrored to a peer** — `vms/mirror {enabled: true, copies: 1}`: each resource copies its *closed* buckets to the next live resource after it, under `.mirror/<its name>/` on the peer's disks (Step 5a) | a dead server's events are still searchable from its peer; its footage is not; a server back with an empty disk pulls its buckets home | kilobytes per unit per span, once; an RPO of one bucket plus the policy interval, on observations; lose two servers and one server's events are gone — the cluster's own threshold | a customer who searches events across the site more than they play footage |
 | **erasure-coded pool across servers** | a dead server's footage is still readable | every recorded byte crosses the LAN — 200 cameras × 4 Mbit/s = 800 Mbit/s east-west plus parity, so 10 GbE between tiers; ≥ 4 drives across servers; **loss of write quorum stops every camera at once** | a customer who buys durability over locality and has the network |
 
 The second row's last cost is the one to say out loud: the unreplicated form has no failure that stops *every* camera. The pool does.
@@ -81,7 +82,7 @@ GET http://10.0.0.11:8090/manifest/7          the lines
 GET http://10.0.0.11:8090/segment/7/e3/…mp4   the bytes, Range honoured — the only path footage ever takes
 ```
 
-`cluster/resource.py`: a heartbeat every ten seconds into the object store — which cameras have footage here, how much — and a small HTTP server over the archive directory. `resources_seen()` is the console's list of resources, with a state: live, or silent past `lost_after`. And the policy from М10 runs here as the job's ten-minute pass, `repair()` then `retain()` per camera from the row in Variables — `test_the_resource_policy_needs_neither_worker_nor_controller` deletes a file behind the manifest's back and shows `{'added': 0, 'dropped': 1, 'removed': 1}` with nobody else involved.
+`cluster/resource.py`: a heartbeat every ten seconds — which cameras have footage here, which subsystems have buckets, whose copies it keeps, how much disk — and a small HTTP server over the archive directory. `resources_seen()` is the console's list of resources, with a state: live, or silent past `lost_after`. And the policy from М10 runs here as the job's ten-minute pass, `repair()` then `retain()` per camera from the row in Variables — `test_the_resource_policy_needs_neither_worker_nor_controller` deletes a file behind the manifest's back and shows `{'added': 0, 'dropped': 1, 'removed': 1}` with nobody else involved.
 
 ## Step 5 — One camera, two resources, one unreachable
 
@@ -120,13 +121,23 @@ An operator's mark is the third kind of writer: `POST /marks` on the console wri
 
 `test_events_are_indexed_across_resources_and_subsystems_and_the_index_is_a_cache`, `test_a_dead_resource_makes_the_answer_incomplete_by_name_not_wrong`, and `test_the_resource_policy_closes_buckets_and_retains_per_subsystem` — the resource's pass closes buckets, retains the VMS's by each camera's `events_retention_days` and another subsystem's by `<sub>/retention_days` in the store or a year. The second test's last line is the rule: `vars.list("vms/events") == []` — no controller wrote an event, nothing went to raft, nothing went to the object store. An index that fails over rebuilds in seconds for a day of events and says *catching up* meanwhile, rather than answering short.
 
-**Why not one eventcontroller writing a replicated database on two servers** — the obvious design, and the module's own rules say no twice. A single writer of all events is a serialization point on the hot path and a process on the recovery path of something that happens continuously; controllers write desired state, and observations are written by whoever observed them. And a database replicated across *two* servers with automatic promotion is the zombie writer one layer down: two is the number that cannot have a quorum, and a promotion is a decision made on a silence. If a customer needs event search to survive a dead server without waiting for it, the storage knob has an events row: mirror the bucket files — a few kilobytes per unit per span, nothing like footage's 800 Mbit/s — to MinIO in erasure-coded mode across the three servers, asynchronously; the index reads MinIO and is complete while srv-a is down, at an RPO of the mirror lag on observations. When there are *consumers* — a SIEM, a rules engine, a cloud uplink — events become a stream and NATS JetStream (Apache-2.0, R=3) is the on-prem transport with the index as one more consumer; nothing here prevents adding it.
+**Why not one eventcontroller writing a replicated database on two servers** — the obvious design, and the module's own rules say no twice. A single writer of all events is a serialization point on the hot path and a process on the recovery path of something that happens continuously; controllers write desired state, and observations are written by whoever observed them. And a database replicated across *two* servers with automatic promotion is the zombie writer one layer down: two is the number that cannot have a quorum, and a promotion is a decision made on a silence. If a customer needs event search to survive a dead server without waiting for it, the storage knob has an events row, and it is one Variable: `vms/mirror {enabled: true, copies: 1}`. No store sits in between — the first draft of this step mirrored to MinIO, and the honest question *why not just copy the events to another server* had no good answer. So the resource's policy pass grows a fourth verb, `mirror()`: every *closed* bucket on this server, any subsystem, is `PUT` to the next live resource after it in sorted order — srv-a to srv-b, srv-b to srv-c, srv-c to srv-a — which keeps it under `.mirror/srv-a/<original path>` on its own disks, outside its subsystem tree, and lists what it holds in its heartbeat (`mirrors: {"srv-a": 412}`). Nobody assigns peers; the rule is the assignment, and `copies: 2` means the next two. The peer says what it already has, so each bucket is copied once, by the server that owns it: one writer per key, still. The index, finding srv-a silent, asks the live resources that list `srv-a` in `mirrors`, inserts the rows under the *real* server, and says where it read them:
+
+```
+knob off:  srv-a silent -> unreachable: ['srv-a']          state: "live; srv-a unreachable"
+knob on:   pol[srv-a].once() -> mirrored: 2, peers: [srv-b]   closed buckets only; the open one is the RPO
+           srv-a silent -> from_mirror: ['srv-a'], added 3   state: "live; srv-a from mirror"
+           srv-a back with an EMPTY disk: restore() -> pulled 2, manifest rebuilt      the owner brings its buckets home
+           tail -> added 0, state "live"                     the resource is the source again
+```
+
+`test_the_events_knob_is_a_peer_copy_and_the_owner_restores`. Two things to hold onto. The mirror is never the source while the resource answers, and nothing but the owner ever copies a bucket back — `restore()` runs on the returning server, first thing, and only fills what it lacks. And the threshold is the cluster's own: lose two of three servers and one server's events are gone, which is also when Nomad's raft stops, so the knob adds no new failure domain. The RPO is one bucket length plus the policy interval, on observations; a customer who wants it smaller shortens `bucket_seconds`, not anything about footage. When there are *consumers* — a SIEM, a rules engine, a cloud uplink — events become a stream and NATS JetStream (Apache-2.0, R=3) is the on-prem transport with the index as one more consumer; nothing here prevents adding it.
 
 ## Step 6 — Where the acknowledgement problem went
 
 The first design had to explain what the operator is told when they save a camera, because the Node acknowledged on local commit and published later. Under 2c the controller acknowledges **after the CAS commit into raft**, which is replicated before it returns. The problem does not exist inside the cluster.
 
-It survives one level up. М12's read model is built from the snapshot the controller publishes to the object store (`vms/snapshot`, Lesson 5) and from the workers' heartbeats, and *that* copy is stale by the interval — which is why every row the domain's console shows carries an age. The RPO moved from the cluster to the domain and shrank to a display age.
+It survives one level up. М12's read model is built from the snapshot the controller publishes as an object (`objects/vms/snapshot`, a Variable here — Lesson 5) and from the workers' heartbeats, and *that* copy is stale by the interval — which is why every row the domain's console shows carries an age. The RPO moved from the cluster to the domain and shrank to a display age.
 
 ### Two things that stay open by design
 
@@ -162,7 +173,7 @@ It survives one level up. М12's read model is built from the snapshot the contr
 
 1. Reintroduce the first design's `publish_once` on the controller and measure what it adds — writes per edit, objects per day — for a benefit you should be able to name and cannot.
 2. Set `lost_after` for resources to 5 s and run the timeline test with a heartbeat delayed by 6 s. What does the operator see, and is it wrong?
-3. Serve manifests through the object store instead of HTTP from the resource: what breaks when the server is down, and what breaks when it is *up*?
+3. Mirror events to MinIO in erasure-coded mode instead of to a peer. List what the cluster now runs that it did not, and find the failure in which the store is up and the copy is still unreadable.
 4. Compute the storage knob's east-west traffic for your camera count and bitrate, and write the sentence you would say to the customer who asks for "replication".
 5. A resource's disk is replaced with an empty one. Walk through what the console shows, what `repair()` does, and what the manifest can and cannot recover.
 

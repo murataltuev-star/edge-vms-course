@@ -149,8 +149,10 @@ class ArchiveResource:
     """One server's archive. `promote()` is what archivesink calls on
     fragment-closed; `repair()` is what М11 called the re-index sweep."""
 
-    def __init__(self, spool_root: str, archive_root: str, bucket_seconds: int = 600):
+    def __init__(self, spool_root: str, archive_root: str, bucket_seconds: int = 600, wall=None):
+        import time
         self.spool, self.root, self.bucket_seconds = spool_root, archive_root, bucket_seconds
+        self.wall = wall or time.time
         os.makedirs(self.spool, exist_ok=True)
         os.makedirs(self.root, exist_ok=True)
 
@@ -234,9 +236,10 @@ class ArchiveResource:
                 if rel not in present:
                     del lines[rel]
                     dropped += 1
-            # event buckets: every file on disk is a line; a line whose file is gone is dropped
+            # event buckets: every CLOSED bucket on disk is a line (an open one is still being written);
+            # a line whose file is gone is dropped
             known = {b.path: b for b in man.buckets()}
-            on_disk = {b.path: b for b in buckets_under(self.root, SUB, str(cam), self.bucket_seconds)}
+            on_disk = {b.path: b for b in buckets_under(self.root, SUB, str(cam), self.bucket_seconds) if b.end <= self.wall()}
             added += sum(1 for pth in on_disk if pth not in known)
             dropped += sum(1 for pth in known if pth not in on_disk)
             man.rewrite(list(lines.values()), list(on_disk.values()))

@@ -25,18 +25,10 @@ job "vmscontroller" {
         volumes      = ["/data/archive:/data/archive"]
       }
       env {
-        OBJECTS      = "s3+http://127.0.0.1:9000/vms?region=us-east-1"
+        OBJECTS   = "variables://objects"          # heartbeats and the snapshot as Variables; no MinIO on this cluster
         ARCHIVE      = "/data/archive"
         CONSOLE_PORT = "8080"
         CLUSTER      = "room-a"
-      }
-      template {
-        data        = <<EOT
-{{ with nomadVar "vms/objects" }}AWS_ACCESS_KEY_ID={{ .access_key }}
-AWS_SECRET_ACCESS_KEY={{ .secret_key }}{{ end }}
-EOT
-        destination = "secrets/objects.env"
-        env         = true
       }
       service {                                      # what the autoscaler and М12's read model scrape
         name = "vms-console"

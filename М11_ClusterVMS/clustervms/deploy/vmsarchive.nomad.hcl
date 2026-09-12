@@ -27,16 +27,12 @@ job "vmsarchive" {
         volumes      = ["/data/spool:/data/spool", "/data/archive:/data/archive"]
       }
       env {
-        OBJECTS      = "s3+http://127.0.0.1:9000/vms?region=us-east-1"
-        RESOURCE_URL = "http://${attr.unique.network.ip-address}:8090"
+        OBJECTS      = "variables://objects"       # its heartbeat as a Variable; no MinIO on this cluster
+        RESOURCE_URL = "http://${attr.unique.network.ip-address}:8090"   # where peers PUT mirrors and the index reads buckets
       }
-      template {
-        data        = <<EOT
-{{ with nomadVar "vms/objects" }}AWS_ACCESS_KEY_ID={{ .access_key }}
-AWS_SECRET_ACCESS_KEY={{ .secret_key }}{{ end }}
-EOT
-        destination = "secrets/objects.env"
-        env         = true
+      service {                                    # peers find each other here; verify-bench uses it
+        name = "vmsarchive"
+        port = "manifests"
       }
       resources { cpu = 200  memory = 256 }
     }

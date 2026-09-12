@@ -6,7 +6,7 @@
 
 ## Why this lesson exists
 
-М10 ended with the platform's shape on one box: a controller that is the only writer, a worker that is DriverPack, an archive resource, and two stores underneath — a directory of JSON files with a `ModifyIndex`, and a directory of objects. Every test in that module passed against files. This module's first claim is that **nothing in `vms/` changes** when the files become a raft and the directory becomes MinIO, and the first thing to do is prove it, because everything after depends on it.
+М10 ended with the platform's shape on one box: a controller that is the only writer, a worker that is DriverPack, an archive resource, and two stores underneath — a directory of JSON files with a `ModifyIndex`, and a directory of objects. Every test in that module passed against files. This module's first claim is that **nothing in `vms/` changes** when the files become a raft — both of them: the config store as Variables, and the object store as Variables too, at this size — and the first thing to do is prove it, because everything after depends on it.
 
 The second claim is about restraint. The instinct after a few years near Kubernetes is that a scheduler is simply how things are run now. On one box it is a second supervisor over the same processes, memory taken from page cache, and a new way to orphan a container. The scheduler arrives with the second server, because that is when there is first a decision to make — *which* server — and this lesson makes you write down what forced that decision before you touch `nomad agent`.
 
@@ -104,7 +104,7 @@ nomad node status            # three clients, ready; -verbose shows the podman d
 nomad acl bootstrap          # once; keep the management token somewhere that is not a lesson
 ```
 
-Then MinIO, as a `system` job on the same three boxes — [`deploy/minio.nomad.hcl`](clustervms/deploy/minio.nomad.hcl) — and one Variable, `vms/objects`, holding the bucket's credentials for the jobs' templates. Note what MinIO is *for* in this module: heartbeats and one snapshot for the domain. Never footage. The archive is a resource on each server's own disks and does not enter the object store.
+And that is the whole of the cluster's storage layer: raft, and each server's disks. The object store М10's contract names — heartbeats, and one snapshot for the domain — is *also* Variables here, under `objects/…` (Step 5), because a dozen ten-kilobyte heartbeats every ten seconds is not a load a raft notices, and a second store with its own quorum, credentials and client is a cost the appliance does not need to pay for it. Footage and events are on the servers' own disks, as resources (Lesson 3).
 
 ## Step 5 — The platform's stores become Nomad's
 
@@ -117,6 +117,8 @@ PUT  /v1/var/vms/cameras/7  (a worker's token) -> 403: the ACL, Lesson 2
 ```
 
 And `FakeVariables` is the same contract in memory with exactly the semantics the docs promise — a raft-assigned `ModifyIndex`, `cas` succeeding only on a match, 409 otherwise, a 403 for a writer outside its prefixes. The tests run against the fake in milliseconds; `verify-bench.sh` checks the promises against real Nomad.
+
+The object store is the same store seen through the other contract: `VariablesObjectStore` implements М10's `put/get/list` as Variables under `objects/<key>`, so a worker's heartbeat is `objects/vms/w-1/heartbeat {data: …}` and the ACL that comes with its token covers it like any other Variable. `test_the_object_store_on_this_cluster_is_variables` runs М10's `Worker.heartbeat` and `Controller.workers_seen` over it unchanged. The contract is the point: when a cluster is large enough that its heartbeats are a raft load, `open_store("s3+http://…")` is the same three calls against MinIO or S3 (`s3.py`, SigV4 verified against Amazon's worked examples) — which is also the adapter a rented cluster uses in М12 — and `vms/` does not change.
 
 Then the test that says nothing else changed:
 
@@ -155,7 +157,7 @@ Report PSS, not RSS — fifty processes share `libgstreamer`, and RSS counts it 
 | The cluster forms, then splits after a reboot | `data_dir` is on the rootfs slot of an A/B box and the update replaced it. Raft on `/data`. |
 | `nomad var put` works from the operator's shell and 403s from a job | ACLs are on and no policy is bound to the job yet — correct; Lesson 2 binds them. |
 | `FakeVariables` passes and Nomad returns 409 on every write | The code reads once and writes many times with the first index. `Controller.write` re-reads on conflict; use it. |
-| MinIO refuses the jobs' PUTs | The `vms/objects` Variable is missing or the bucket does not exist. The template renders empty credentials rather than failing. |
+| A worker's heartbeat returns 403 | Its policy lacks `objects/vms/*` — the object store is Variables here, and the ACL applies to it like everything else. |
 
 ## Recap
 
@@ -163,7 +165,7 @@ Report PSS, not RSS — fifty processes share `libgstreamer`, and RSS counts it 
 - One server, no orchestrator; the scheduler arrives with the second server.
 - A region is one raft; three servers, never two.
 - `data_dir` on `/data`; `meta.labels` and `meta.archive`; ACLs on day one.
-- Nomad Variables are М10's config store with the same two promises; MinIO is the object store; `vms/` does not notice.
+- Nomad Variables are М10's config store with the same two promises, and — at this size — its object store too, under `objects/…`; `vms/` does not notice either.
 - A worker's capacity is measured on its server and is the worker's number.
 
 ## Exercises

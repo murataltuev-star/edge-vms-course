@@ -72,7 +72,7 @@ def test_the_resource_policy_needs_neither_worker_nor_controller():
     _segment(srv, 1, 1, t - 3 * 86400); _segment(srv, 1, 1, t - 3600)
     os.remove(os.path.join(srv.archive, Manifest(srv.archive, 1).read()[1].path))   # a file gone behind the manifest's back
     rep = ResourcePolicy(srv.resource, c.vars, wall=c.wall).once()
-    assert rep == {"added": 0, "dropped": 1, "closed": 0, "removed": 1} and Manifest(srv.archive, 1).read() == []
+    assert rep == {"added": 0, "dropped": 1, "closed": 0, "removed": 1, "enabled": False, "mirrored": 0, "peers": []} and Manifest(srv.archive, 1).read() == []
 
 
 def test_a_worker_with_no_assignment_invents_nothing():

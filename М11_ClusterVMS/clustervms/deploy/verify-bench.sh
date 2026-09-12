@@ -39,10 +39,13 @@ done
 # 4 — policy semantics with a token that carries ONLY the worker's policy
 nomad acl policy apply -description vmsworker vmsworker "$HERE/vmsworker-policy.hcl" >/dev/null 2>&1
 nomad acl policy apply -description vmscontroller vmscontroller "$HERE/vmscontroller-policy.hcl" >/dev/null 2>&1
+nomad acl policy apply -description vmsarchive vmsarchive "$HERE/vmsarchive-policy.hcl" >/dev/null 2>&1
 tok="$(nomad acl token create -type client -policy vmsworker -ttl 10m -json 2>/dev/null | python3 -c 'import sys,json;print(json.load(sys.stdin)["SecretID"])')"
 if [ -n "$tok" ]; then
   NOMAD_TOKEN="$tok" nomad var put -force vms/epoch/verify epoch=1 >/dev/null 2>&1 && ok "worker token writes vms/epoch/*" || bad "worker token cannot write its epochs"
   NOMAD_TOKEN="$tok" nomad var put -force vms/slots/w-verify holder=probe >/dev/null 2>&1 && ok "worker token writes vms/slots/*" || bad "worker token cannot claim a slot"
+  NOMAD_TOKEN="$tok" nomad var put -force objects/vms/w-verify/heartbeat data='{}' >/dev/null 2>&1 && ok "worker token writes its heartbeat object" || bad "worker token cannot write objects/vms/*"
+  nomad var purge objects/vms/w-verify/heartbeat >/dev/null 2>&1
   if NOMAD_TOKEN="$tok" nomad var put -force vms/cameras/verify name=tampered >/dev/null 2>&1; then bad "worker token wrote vms/cameras/* — one writer per key is NOT enforced"; else ok "worker token refused on vms/cameras/* (403)"; fi
   nomad var purge vms/epoch/verify >/dev/null 2>&1; nomad var purge vms/slots/w-verify >/dev/null 2>&1
 else
@@ -66,6 +69,15 @@ if [ -n "$alloc" ]; then
   nomad var purge vms/epoch/verify >/dev/null 2>&1
 else
   bad "no running allocation of vmsworker to test the workload-identity token inside (run the job first)"
+fi
+
+# 5a — the mirror is resource to resource: a peer accepts a PUT and lists it; nothing went through a store
+res="$(nomad service info -json vmsarchive 2>/dev/null | python3 -c 'import sys,json;a=json.load(sys.stdin);print(f"{a[0][\"Address\"]}:{a[0][\"Port\"]}" if a else "")' 2>/dev/null)"
+if [ -n "$res" ]; then
+  curl -s -o /dev/null -w "%{http_code}" -X PUT --data-binary '{"t":0,"kind":"probe"}' "http://$res/mirror/srv-verify/vms/0/e1/19700101T000000Z.events.jsonl" | grep -q 204 \
+    && curl -s "http://$res/mirrored/srv-verify" | grep -q '"path"' && ok "mirror: a peer took a copy and lists it" || bad "mirror: PUT/GET on the resource failed"
+else
+  bad "no vmsarchive service registered to test the mirror against"
 fi
 
 # 6 — scale out, then in: the slot claimed, then released; the controller asked for neither

@@ -1,6 +1,17 @@
 """The cluster's object store — М10's `vmsplatform.objects.ObjectStore`
-contract on MinIO or S3: heartbeats (frequent, never queried by key) and the
-snapshots the domain's read model is built from.
+contract, which holds three small things: worker heartbeats, resource
+heartbeats, and the snapshot the domain's read model is built from.
+
+On a cluster of this size the implementation is `VariablesObjectStore`:
+objects as Nomad Variables under `objects/…`. A heartbeat is ~10 KB every
+ten seconds from a dozen workers and three resources — a couple of raft
+writes a second — which is not the volume the "keep raft small" rule was
+about, and it removes a whole store (MinIO, its quorum, its credentials)
+from the cluster. The contract is the point: `vms/` and `vmsplatform/` do
+not know which one they are talking to. When a cluster grows to where its
+heartbeats are a raft load, `open_store("s3+http://…")` is the same three
+calls against MinIO or S3 (`s3.py`), and that is also the adapter a rented
+cluster uses (М12 Lesson 8). Footage never goes to any of these.
 
 Two adapters with one contract. `HttpObjectStore` PUTs and GETs against any
 endpoint that accepts plain HTTP object semantics (MinIO with a bucket
@@ -79,6 +90,34 @@ class FsObjectStore:
         return sorted(out)
 
 
+class VariablesObjectStore:
+    """Objects as Variables: `<prefix>/<key>` -> {data: <utf-8 text>}. Keys are
+    the platform's (`vms/w-1/heartbeat`); the store is whatever Variables
+    the caller holds, with the ACL that comes with its token."""
+
+    def __init__(self, vars_, prefix: str = "objects"):
+        self.vars, self.prefix = vars_, prefix.strip("/")
+
+    def _path(self, key: str) -> str:
+        if ".." in key or key.startswith("/"):
+            raise ValueError(key)
+        return f"{self.prefix}/{key}"
+
+    def put(self, key: str, data: bytes) -> None:
+        self.vars.put(self._path(key), {"data": data.decode("utf-8")})       # no cas: the last heartbeat wins, as it should
+
+    def get(self, key: str) -> bytes | None:
+        items, _ = self.vars.get(self._path(key))
+        return items["data"].encode("utf-8") if items and "data" in items else None
+
+    def list(self, prefix: str) -> list[str]:
+        base = f"{self.prefix}/"
+        return sorted(p[len(base):] for p in self.vars.list(base + prefix))
+
+    def delete(self, key: str) -> None:
+        self.vars.delete(self._path(key))
+
+
 def open_store(url: str) -> ObjectStore:
     """file:///path · http(s)://host/bucket (anonymous) · s3+http(s)://host/bucket?region=r (SigV4,
     credentials from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY — on a Node, from its Variable)."""
@@ -92,4 +131,7 @@ def open_store(url: str) -> ObjectStore:
         return HttpObjectStore(url)
     if url.startswith("file://"):
         return FsObjectStore(url[len("file://"):])
+    if url.startswith("variables://"):
+        from .variables import NomadVariables
+        return VariablesObjectStore(NomadVariables(), url[len("variables://"):] or "objects")
     return FsObjectStore(url)

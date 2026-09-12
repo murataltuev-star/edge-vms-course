@@ -6,6 +6,7 @@ namespace "default" {
   variables {
     path "vms/epoch/*"  { capabilities = ["write", "read", "list"] }
     path "vms/slots/*"  { capabilities = ["write", "read", "list"] }
+    path "objects/vms/*" { capabilities = ["write", "read", "list"] }   # its heartbeat, as an object-as-Variable
     path "vms/*"        { capabilities = ["read", "list"] }
   }
 }
