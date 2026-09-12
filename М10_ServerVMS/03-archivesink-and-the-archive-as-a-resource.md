@@ -1,6 +1,6 @@
 # Lesson 3 — `archivesink`, and the Archive as a Resource
 
-**Module:** NodeVMS — the platform's shape on one Node (Module 10)
+**Module:** ServerVMS — the platform's shape on one server (Module 10)
 **You will build:** a sink element that writes segments into the spool and promotes them into an archive resource with the epoch in every path and a manifest beside the footage — then kill it mid-segment, rebuild the manifest from the files, and apply retention as a policy.
 **Time:** ~150 minutes.
 

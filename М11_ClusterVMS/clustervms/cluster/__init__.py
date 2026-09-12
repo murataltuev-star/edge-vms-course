@@ -1,6 +1,6 @@
 """ClusterVMS — М11. М10's platform shape across several servers.
 
-Built ON М10's `vmsnode/` (imported, not copied): the same `vmsplatform`
+Built ON М10's `vmsserver/` (imported, not copied): the same `vmsplatform`
 contract and the same `vms/` controller, worker and archive resource. This
 package supplies what a cluster adds and nothing else:
 
@@ -18,9 +18,9 @@ import os
 import sys
 
 _here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for cand in (os.environ.get("VMSNODE_PATH", ""),
-             os.path.join(_here, "vmsnode"),
-             os.path.join(os.path.dirname(os.path.dirname(_here)), "М10_NodeVMS", "vmsnode")):
+for cand in (os.environ.get("VMSSERVER_PATH", ""),
+             os.path.join(_here, "vmsserver"),
+             os.path.join(os.path.dirname(os.path.dirname(_here)), "М10_ServerVMS", "vmsserver")):
     if cand and os.path.isdir(cand) and cand not in sys.path:
         sys.path.append(cand)          # append, not insert: our own tests/ must win
         break

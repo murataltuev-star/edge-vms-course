@@ -1,5 +1,5 @@
 # deploy/Containerfile — localhost/clustervms:latest
-# Build from the COURSE ROOT: М10's vmsnode plus this package. One image,
+# Build from the COURSE ROOT: М10's vmsserver plus this package. One image,
 # three entrypoints: python3 -m cluster worker | controller | resource.
 #   podman build -f М11_ClusterVMS/clustervms/deploy/Containerfile -t localhost/clustervms:latest .
 FROM docker.io/library/debian:bookworm-slim
@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gir1.2-gst-plugins-base-1.0 curl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY М10_NodeVMS/vmsnode vmsnode
+COPY М10_ServerVMS/vmsserver vmsserver
 COPY М11_ClusterVMS/clustervms/cluster cluster
-ENV VMSNODE_PATH=/app/vmsnode PYTHONPATH=/app/vmsnode
+ENV VMSSERVER_PATH=/app/vmsserver PYTHONPATH=/app/vmsserver
 CMD ["python3", "-m", "cluster", "worker"]

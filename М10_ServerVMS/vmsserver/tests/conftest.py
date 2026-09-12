@@ -21,7 +21,7 @@ class Clock:
 class Box:
     """The platform on one box, plus the two directories the archive resource needs."""
     def __init__(self):
-        self.root = tempfile.mkdtemp(prefix="vmsnode-")
+        self.root = tempfile.mkdtemp(prefix="vmsserver-")
         self.vars = FileVariables(os.path.join(self.root, "config"))
         self.objects = FsObjectStore(os.path.join(self.root, "objects"))
         self.spool = os.path.join(self.root, "spool")

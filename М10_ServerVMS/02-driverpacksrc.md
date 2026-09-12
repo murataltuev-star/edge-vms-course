@@ -1,6 +1,6 @@
 # Lesson 2 — `driverpacksrc`
 
-**Module:** NodeVMS — the platform's shape on one Node (Module 10)
+**Module:** ServerVMS — the platform's shape on one server (Module 10)
 **You will build:** a GStreamer source element that plays a file as if it were a camera — `driverpack://file/<name>` — looping, paced by its own timestamps, with PTS rebased across the loop so the pipeline's running time never goes backwards.
 **Time:** ~120 minutes.
 

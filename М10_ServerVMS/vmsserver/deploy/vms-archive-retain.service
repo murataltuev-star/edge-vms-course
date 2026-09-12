@@ -5,7 +5,7 @@ Description=VMS archive resource — the policy pass: repair, close event bucket
 [Service]
 Type=oneshot
 Environment=PLATFORM_DIR=/data/platform SPOOL=/data/spool ARCHIVE=/data/archive
-WorkingDirectory=/opt/vmsnode
+WorkingDirectory=/opt/vmsserver
 ExecStart=/usr/bin/python3 -c "import os,time; from vms.archive import ArchiveResource; from vmsplatform.variables import FileVariables; from vms.config import row; \
 r=ArchiveResource(os.environ['SPOOL'],os.environ['ARCHIVE']); v=FileVariables(os.path.join(os.environ['PLATFORM_DIR'],'config')); \
 print('repair', r.repair()); print('closed', len(r.close_buckets(time.time()))); \

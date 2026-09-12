@@ -14,14 +14,14 @@ Everything below is the long version of that sentence.
 
 ## Part 1 — The system as it stands
 
-### 1.1 Five words, kept apart
+### 1.1 Four words, kept apart — and one retired
 
-The design uses five nouns precisely, and most of its early mistakes were the result of two of them being confused.
+The design uses four nouns precisely, and most of its early mistakes were the result of two of them being confused. A fifth, *Node*, was retired on 12 September 2026 when М10 dissolved the process it named.
 
 | Word | What it is | Its boundary is set by | Who names it |
 |---|---|---|---|
-| **Server** | a box with CPUs and disks | purchase | nobody — the scheduler uses it |
-| **Node** | a VMS instance: its own Postgres, its own cameras, its own archive. A Nomad allocation with stable identity | an operator, when capacity is bought | the scheduler places it |
+| **Server** | a box with CPUs and disks — and everything on it: a replica of the cluster's stores, the platform's *resource* job on its disks, the *workers* the scheduler placed there (М10 ServerVMS) | purchase | nobody — the scheduler uses it |
+| ~~**Node**~~ | *retired.* М9's recorder — a process with its own Postgres, cameras and archive index, distinct from the box. Its work is a *worker* (moves) and a *resource* (stays); their sum on a box is the *server*. Kept in М9 as history; М12's text still uses it until its rewrite | — | — |
 | **Cluster** | servers close enough to share a network you would bet recording on — one LAN, usually one server room | **physics** | an installer |
 | **Domain** | the clusters under one directory, one signer and one set of operators — one customer installation | **administration** | the customer |
 | **Site** | where cameras physically are | the building | **the operator — the only one of the five they name** |
@@ -40,7 +40,7 @@ And one rule that both of those rest on:
 | Layer | Built in | What it knows | Where truth lives | What can disagree |
 |---|---|---|---|---|
 | **The box** | М9 EdgeVMS | what it *is* | the image that booted | nothing — a box is whatever was flashed onto it |
-| **The Node** | М9 NodeVMS | what it *should be* | a Postgres on the box | desired state and actual state, inside one process |
+| **The Node** (М9; retired) | М9 NodeVMS | what it *should be* | a Postgres on the box | desired state and actual state, inside one process |
 | **The cluster** | М11 ClusterVMS | what it should be, *on whichever server survived* | each Node, unchanged when a server dies | **two instances of the same Node** |
 | **The domain** | М12 DomainVMS | what it should be, *and which cluster holds it* | each Node, with a directory across clusters | Nodes, with the directory — and the directory with itself, because it cannot be consistent |
 | **Seeing it** | М13 Observability | whether any of the above is true right now | — | *broken* versus *unreachable* |

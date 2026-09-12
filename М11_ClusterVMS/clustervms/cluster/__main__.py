@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 
-import cluster  # noqa: F401  — puts М10's vmsnode on sys.path
+import cluster  # noqa: F401  — puts М10's vmsserver on sys.path
 
 from cluster.objectstore import open_store
 from cluster.variables import NomadVariables

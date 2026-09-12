@@ -11,7 +11,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import cluster  # noqa: E402,F401  — puts М10's vmsnode on sys.path
+import cluster  # noqa: E402,F401  — puts М10's vmsserver on sys.path
 
 from cluster.configio import decode, encode  # noqa: E402
 from cluster.objectstore import FsObjectStore  # noqa: E402

@@ -1,6 +1,6 @@
 # Lesson 4 — `vmsworker`: DriverPack as the Worker
 
-**Module:** NodeVMS — the platform's shape on one Node (Module 10)
+**Module:** ServerVMS — the platform's shape on one server (Module 10)
 **You will build:** the worker — one process, N pipelines, М9's loop running over an *assignment* instead of a table, an epoch per camera taken by CAS, a lease, a heartbeat carrying its status — and prove it restarts with the controller stopped and fences itself when it is the zombie.
 **Time:** ~150 minutes.
 

@@ -1,9 +1,9 @@
-# vmsnode — М10, whole: the platform's shape on one box
+# vmsserver — М10, whole: the platform's shape on one box
 
 The five lessons as one runnable package. No scheduler, no KVS, no database: two stores on disk, a controller that is the only writer, a worker that is DriverPack, an archive that is a resource — and a second, trivial subsystem that proves the platform knows nothing about video.
 
 ```
-vmsnode/
+vmsserver/
   vmsplatform/                 the platform (named so because Python owns `platform`)
     variables.py               Lesson 1  a config store with ModifyIndex and check-and-set, as files; one writer per prefix
     objects.py                 Lesson 1  an object store: a directory

@@ -30,8 +30,8 @@ That rule was chosen for archive locality, and it turns out to put the fencing e
 
 | | What it is | Who decides |
 |---|---|---|
-| **Node** | a box running the platform's stores plus one or more subsystems — a controller and its workers — and the resources on its disks (М10). In М11 the *worker* is the scheduler allocation that **moves between servers**, claiming its name by CAS; the resource stays | an operator, when capacity is bought |
-| **Server** | a box with CPUs and disks. Runs whichever Nodes the scheduler puts on it | the scheduler, continuously |
+| ~~**Node**~~ | *retired (12 September 2026).* М9's recorder — a process with its own database and disk, distinct from the box. Under М10's shape nothing on a server needs a fifth word: the platform's stores, a **resource** on its disks, and the **workers** the scheduler placed there. М9 Lessons 5–9 keep the word as history | — |
+| **Server** | a box with CPUs and disks: a replica of the cluster's stores, a **resource** (the platform's job on its disks), and whichever **workers** the scheduler places there | the scheduler, continuously |
 | **Site** | where cameras physically are. The only one of the three an operator names | the customer's building |
 
 **A Node is not a server**, and М9 builds exactly one without ever needing the distinction. It matters from М11 onward, where a server dying moves a *worker* — whose cameras are assigned to its name in the cluster's raft — rather than reassigning cameras, which is why failover rewrites nothing; what stays on the server is a *resource*.
@@ -64,8 +64,8 @@ A shipped edge VMS is seven layers deep. One module per layer, each ending with 
 |---|---|---|
 | [**М8** — Cloud VMS](./М8_KVS_VMS) | The product itself, against a cloud archive | **Complete** · 8 lessons |
 | [**М9** — EdgeVMS](./М9_EdgeVMS) | 1 · RAUC — OS, atomic, rollback<br>3 · Postgres — the Node's own state<br>4 · AppHost — the loop that acts on it | **Written** · 9 lessons |
-| [**М10** — NodeVMS](./М10_NodeVMS) | The platform's shape on one Node: `driverpacksrc`, `archivesink`, a controller and a worker — the subsystem contract, prototyped without a scheduler | **Written** · 5 lessons |
-| [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — workers that outlive their server, resources that stay, one controller<br>4 · The cluster's own directory | **Written** · 5 lessons · rewritten to *2c* with `clustervms/` on М10's `vmsnode/`, 29 tests |
+| [**М10** — ServerVMS](./М10_ServerVMS) | The platform's shape on one server: `driverpacksrc`, `archivesink`, a controller and a worker — the subsystem contract, prototyped without a scheduler | **Written** · 5 lessons |
+| [**М11** — ClusterVMS](./М11_ClusterVMS) | 2 · Nomad + Podman — workers that outlive their server, resources that stay, one controller<br>4 · The cluster's own directory | **Written** · 5 lessons · rewritten to *2c* with `clustervms/` on М10's `vmsserver/`, 29 tests |
 | [**М12** — DomainVMS](./М12_DomainVMS) | 4 · Several clusters, one directory of directories<br>5 · The domain as its own root: enrollment, lifetimes, identity<br>7 · Its own update server, and clusters it rents for itself | **Written** · 8 lessons |
 | [**М13** — Observability](./М13_Observability) | 6 · Prometheus + logs — collecting what М9–М12 emit, from the domain cluster | **Designed** · 4 lessons |
 | [**М14** — VendorVMS](./М14_VendorVMS) | *Not a layer.* MASA, the licence system, publishing, the hosting business — and what the vendor must never be able to do | **Designed** · 5 lessons |
@@ -117,13 +117,13 @@ Its organising rule is that **desired state is persisted and actual state is der
 - [`nodevms/`](./М9_EdgeVMS/nodevms/README.md) — the module's code, whole: migrations, reconciler, GStreamer actuator, retention, console, tests, Quadlet units
 - [`nodevms-go/`](./М9_EdgeVMS/nodevms-go/README.md) — the reconciler ported to Go with the same tests, and the controller baseline measured in both languages
 
-## М10 — NodeVMS
+## М10 — ServerVMS
 
 The Node rebuilt on the shape М11 arrived at — **workers, resources, one controller** — and prototyped on a single box first, without a scheduler, without KVS and without a database. From the GStreamer end: `driverpacksrc`, a source that plays files whose names stand in for RTSP addresses; `archivesink`, a local archive on the spool's discipline with the epoch in the path; then `vmscontroller`, the only writer of configuration in the cluster, and `vmsworker`, DriverPack itself as the worker. The result is the **subsystem contract** — a controller, a worker, a config prefix and a heartbeat — that detectors and the gateway will implement the same way, and that the platform knows without knowing what a camera is.
 
-- [Lesson index](./М10_NodeVMS/README.md) — start here
-- [Module design](./М10_NodeVMS/module-design.md) — the three elements, the two processes, where configuration lives, and the contract every subsystem gives the platform
-- [`vmsnode/`](./М10_NodeVMS/vmsnode/README.md) — the module's code, whole: the platform's two stores with CAS, the epoch issuer and the lease, `driverpacksrc` and `archivesink`, `vmsworker`, `vmscontroller`, the console, the systemd units, identity by claim, events beside the segment, the resource as a platform job, and a second subsystem that counts seconds; 42 tests
+- [Lesson index](./М10_ServerVMS/README.md) — start here
+- [Module design](./М10_ServerVMS/module-design.md) — the three elements, the two processes, where configuration lives, and the contract every subsystem gives the platform
+- [`vmsserver/`](./М10_ServerVMS/vmsserver/README.md) — the module's code, whole: the platform's two stores with CAS, the epoch issuer and the lease, `driverpacksrc` and `archivesink`, `vmsworker`, `vmscontroller`, the console, the systemd units, identity by claim, events beside the segment, the resource as a platform job, and a second subsystem that counts seconds; 42 tests
 
 ## М11 — ClusterVMS
 
@@ -139,7 +139,7 @@ The answer is that fencing belongs at the archive rather than at a coordinator: 
 
 - [Lesson index](./М11_ClusterVMS/README.md) — start here
 - [Module design](./М11_ClusterVMS/module-design.md) — the cluster, what must outlive a server, the zombie writer, and fencing at the archive
-- [`clustervms/`](./М11_ClusterVMS/clustervms/README.md) — the module's code, whole, built on М10's `vmsnode/`: Nomad Variables and MinIO as the platform's stores, the worker as an allocation claiming its slot from `NOMAD_ALLOC_INDEX`, the controller placing under label constraints, the archive resource as a system job with its manifests served, a timeline across servers, the event index that is a cache over every subsystem's buckets, the resource and the event index as platform jobs, the events mirror as a copy to the next resource; four jobs with the `scaling` policy and the Autoscaler, two ACL policies, the bench check and the failover drill; 29 tests
+- [`clustervms/`](./М11_ClusterVMS/clustervms/README.md) — the module's code, whole, built on М10's `vmsserver/`: Nomad Variables and MinIO as the platform's stores, the worker as an allocation claiming its slot from `NOMAD_ALLOC_INDEX`, the controller placing under label constraints, the archive resource as a system job with its manifests served, a timeline across servers, the event index that is a cache over every subsystem's buckets, the resource and the event index as platform jobs, the events mirror as a copy to the next resource; four jobs with the `scaling` policy and the Autoscaler, two ACL policies, the bench check and the failover drill; 29 tests
 - [`reference/`](./М11_ClusterVMS/reference/README.md) — the first design's scripts, kept: the zombie with two real processes, the CAS issuer, the lease arithmetic
 - [`clustervms-go/`](./М11_ClusterVMS/clustervms-go/README.md) — the first design ported to Go with its 29 tests and measured against Python; its port to *2c* follows
 - [Kubernetes vs Nomad](./М11_ClusterVMS/kubernetes-vs-nomad.md) — why the orchestrator is Nomad, what it cost, and why neither belongs on one box

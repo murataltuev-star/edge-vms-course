@@ -1,6 +1,6 @@
 # Lesson 1 — The Subsystem Contract
 
-**Module:** NodeVMS — the platform's shape on one Node (Module 10)
+**Module:** ServerVMS — the platform's shape on one server (Module 10)
 **You will build:** the platform on one box — a config store with check-and-set, an object store, an epoch issuer and a lease — and the contract every subsystem gives it: a controller and its workers.
 **Time:** ~120 minutes.
 
@@ -26,7 +26,7 @@ This lesson builds that platform, on one box, and writes down the contract. The 
 4. Write the subsystem contract as a table a second team could implement from.
 5. Explain why the ACL is *one writer per prefix* and what breaks without it.
 6. Give `count = N` interchangeable processes stable names without a controller handing them out — identity by claim — and say who decides N.
-7. Say what a Node is now.
+7. Say what a server holds now, and why the word *Node* is retired.
 
 ---
 
@@ -127,9 +127,9 @@ d.claim_slot(prefer="w-7")                          -> "w-7"      the scheduler'
 
 The last column of the row is what tells **scale-in from a crash**. A process stopped by the scheduler — SIGTERM, an orderly `run()` exit — writes `released: true`; a crash writes nothing, and the slot merely lapses. `released_slots()` lists the first kind only, and that list is what a subsystem's controller redistributes (Lesson 5's one unasked move). A lapsed slot is left alone: the scheduler brings the process back, and it claims the same name. `retire(slot)` exists for the operator who knows a process will not return — and it is the operator's word, never the controller's inference from a silence.
 
-## Step 6 — What a Node is now
+## Step 6 — What a server is now
 
-Server, Node, Cluster, Domain, Site still mean what they meant. What changes is that *Node* stops naming a process — the recorder with its database — and names **a box running the platform's stores plus one or more subsystems**, each a controller and its workers. On one box that is: two directories under `/data/platform`, one `vmscontroller`, one `vmsworker`, one archive resource. In М11 the directories become Nomad Variables and MinIO, the `systemd` units become jobs, and the subsystems do not change.
+Four words now, not five: Server, Cluster, Domain, Site. *Node* is retired. М9 needed it because the recorder was a process with its own database and its own disk — a thing distinct from the box it ran on, that could in principle move. Under this module's shape there is no such thing: what is on a physical server is the platform's stores (a replica of the cluster's, or the files on one box), a **resource** on its disks, and whichever **workers** the scheduler placed there. None of those is a Node, and naming their sum would only reintroduce the process М10 dissolved. So the word for the box is the box's: **server**. On one server that is: two directories under `/data/platform`, one `vmscontroller`, one `vmsworker`, one resource with the archive on it. In М11 the directories become Nomad Variables, the `systemd` units become jobs, and the subsystems do not change.
 
 **Deliverable:** the platform package with its tests green; a config store on disk that survives a restart and refuses a stale CAS; four threads through the epoch issuer with no number issued twice; and the contract table above, written as a document a second team could implement `detectorcontroller` and `detectorworker` from without reading `vms/`.
 
@@ -153,7 +153,7 @@ Server, Node, Cluster, Domain, Site still mean what they meant. What changes is 
 - The contract is a table and a pair of base classes with no import from `vms/`.
 - One writer per prefix: the controller writes `<name>/*`, a worker writes only its epochs and its slot.
 - Identity by claim: a name is a slot taken by CAS; a replacement inherits a lapsed slot and its assignment; `released` tells scale-in from a crash. The scheduler decides `N`, the autoscaler moves it from headroom, and the controller never asks for a worker.
-- A Node is a box running the platform's stores plus subsystems.
+- *Node* is retired: a server holds the platform's stores, a resource, and the workers placed on it — and none of that needs a fifth word.
 
 ## Exercises
 

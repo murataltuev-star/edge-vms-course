@@ -106,14 +106,14 @@ The cloud VMS spec forbade a database outright. The appliance needs one, and und
 - The reconcile loop, built against a fake actuator first: desired persisted, actual derived, `observed_revision >= revision` as the only test of applied
 - Fifty GStreamer pipelines in one Python process — the GIL boundary demonstrated, `watchdog` for stall detection, and where Python stops being the right answer
 
-### М10 — NodeVMS: the platform's shape on one Node · 5 lessons · [written](./М10_NodeVMS/README.md) · [design](./М10_NodeVMS/module-design.md) · [code](./М10_NodeVMS/vmsnode/README.md)
+### М10 — ServerVMS: the platform's shape on one server · 5 lessons · [written](./М10_ServerVMS/README.md) · [design](./М10_ServerVMS/module-design.md) · [code](./М10_ServerVMS/vmsserver/README.md)
 
-The module that rebuilds the Node on the decision М11 arrived at last — **workers, resources, one controller** — and does it on a single box first, so the shape can be prototyped without a scheduler, without KVS and without a database. Three things are built from the GStreamer end: `driverpacksrc`, a source element that plays files whose names stand in for RTSP addresses; `archivesink`, a local archive on the spool's discipline; and the two processes every subsystem will give the platform — a **controller** that is the only writer of configuration in the cluster and a **worker** that runs pipelines and nothing else.
+The module that rebuilds М9's Node on the decision М11 arrived at last — and retires the word, because what is on a server needs none — — **workers, resources, one controller** — and does it on a single box first, so the shape can be prototyped without a scheduler, without KVS and without a database. Three things are built from the GStreamer end: `driverpacksrc`, a source element that plays files whose names stand in for RTSP addresses; `archivesink`, a local archive on the spool's discipline; and the two processes every subsystem will give the platform — a **controller** that is the only writer of configuration in the cluster and a **worker** that runs pipelines and nothing else.
 
 - **`vmscontroller`** — the sole writer of the camera list and of camera-to-worker assignment; stateless, correct by CAS against the platform's config store; never on the recovery path
 - **`vmsworker`** — DriverPack as the worker: one process, N pipelines, its own reconcile loop over its assignment; Nomad (М11) runs as many as the workload needs
 - **The subsystem contract** — controller + worker + a config prefix + a heartbeat object, the same for the VMS, for detectors, and for the gateway; the platform knows the shape and nothing about video
-- **No sharding on one Node**, and the open question of where configuration lives answered: the controller writes it, the platform stores it, the worker reads its share
+- **No sharding on one server**, and the open question of where configuration lives answered: the controller writes it, the platform stores it, the worker reads its share
 - **KVS retired; the archive is ours**: segments on the spool, closed segments promoted to the archive resource, the epoch in the path, a manifest instead of an index
 
 ### М11 — ClusterVMS: workers that outlive their server · 5 lessons · [written](./М11_ClusterVMS/README.md) · [design](./М11_ClusterVMS/module-design.md) · [code](./М11_ClusterVMS/clustervms/README.md)
@@ -124,7 +124,7 @@ The only module where getting it wrong corrupts customer data rather than merely
 - **Nomad decides how many workers and where.** The worker job carries a `scaling` policy on the workers' own load; the Nomad Autoscaler (MPL-2.0) moves `count`; the controller has no Nomad client. Scale-in releases a slot and the controller redistributes; a crash releases nothing and the controller waits
 - **Leases, epochs and the zombie writer.** Dead, partitioned and paused are indistinguishable, and the design must be correct without resolving that. Fencing happens **at the resource, not the controller** — the epoch per camera is in every path — and one layer earlier at the slot, which is what makes Nomad's duplicate-index bug harmless
 - **The cluster directory is the assignment.** One scan of `vms/workers/*` answers *where is camera 7*, in one raft, strongly consistent. Placement under label constraints by the workers' own capacity, the stability rule, the server in the reason, and why consistent hashing is the reflexive wrong answer
-- **`clustervms/` is built on М10's `vmsnode/`**, importing the contract, the controller, the worker and the archive unchanged; `clustervms-go/` remains the first design's Go port and measurement
+- **`clustervms/` is built on М10's `vmsserver/`**, importing the contract, the controller, the worker and the archive unchanged; `clustervms-go/` remains the first design's Go port and measurement
 
 ### М12 — DomainVMS: several clusters, and the top of the product · 8 lessons · [written](./М12_DomainVMS/README.md) · [design](./М12_DomainVMS/module-design.md) · [code](./М12_DomainVMS/domainvms/README.md)
 
@@ -193,7 +193,7 @@ The order is dependency-driven, not layer-numbered:
 |---|---|---|
 | М8 — Cloud VMS | 8 | 1–8 |
 | М9 — EdgeVMS | 9 | 1–9 |
-| М10 — NodeVMS | 5 | 1–5 |
+| М10 — ServerVMS | 5 | 1–5 |
 | М11 — ClusterVMS | 5 | 1–5 |
 | М12 — DomainVMS | 8 | 1–8 |
 | М13 — Observability | 4 | 1–4 |

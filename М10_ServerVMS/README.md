@@ -1,10 +1,10 @@
-# Module 10 — NodeVMS: The Platform's Shape on One Node
+# Module 10 — ServerVMS: The Platform's Shape on One Server
 
 [Module 9](../М9_EdgeVMS/README.md) ends with a box that owns its OS and its truth: an A/B root under RAUC, and a Node whose Postgres holds what it should be while an AppHost makes it so. This module takes that Node apart and rebuilds it on the shape the course arrived at last — **a controller, workers, and resources** — on one box, so that every piece can be seen running before [М11](../М11_ClusterVMS/README.md) spreads it across servers.
 
 Five lessons, each building one artifact: a GStreamer source that plays files as if they were cameras; an archive that is a resource, on the spool's discipline, with a manifest instead of an index; the worker — DriverPack itself — running М9's loop over an assignment; the controller that is the only writer of configuration; and a second, trivial subsystem that proves the platform knows nothing about video. No scheduler, no KVS, no database.
 
-The design brief is [`module-design.md`](module-design.md); the first NodeVMS design it supersedes is [`node-design.md`](../М9_EdgeVMS/node-design.md), whose tests this module keeps.
+The design brief is [`module-design.md`](module-design.md); М9's Node design it supersedes is [`node-design.md`](../М9_EdgeVMS/node-design.md), whose tests this module keeps.
 
 ## The thesis
 
@@ -17,7 +17,7 @@ The design brief is [`module-design.md`](module-design.md); the first NodeVMS de
 
 > **The controller writes, the platform stores, the worker reads its share.** The platform — a config store with check-and-set, an object store, an epoch issuer, a lease, and slots that give `count = N` processes stable names by claim — knows the shape of a subsystem and nothing about a camera. `vmsplatform/` has no import from `vms/`, and a test greps it for the word.
 
-**What changed since М9's Node**, and what did not. KVS is gone — the archive is ours. The per-Node Postgres is gone — configuration lives in the platform's store and has one writer. The AppHost is gone — the thing that holds the pipeline supervises itself. What is kept, and enforced by the same tests: desired persisted and actual derived, `>=` on the revision, backoff with jitter, positions apart from reasons, the epoch in the path, commit-then-publish, the heartbeat carrying its status.
+**What changed since М9's Node**, and what did not. KVS is gone — the archive is ours. The per-box Postgres is gone — configuration lives in the platform's store and has one writer. The AppHost is gone — the thing that holds the pipeline supervises itself. What is kept, and enforced by the same tests: desired persisted and actual derived, `>=` on the revision, backoff with jitter, positions apart from reasons, the epoch in the path, commit-then-publish, the heartbeat carrying its status.
 
 ## Lessons
 
@@ -43,6 +43,6 @@ Then the zombie on one box: `kill -STOP` the worker, start a second `vmsworker@w
 
 ## What you can verify without hardware
 
-Nearly all of it. [`vmsnode/`](vmsnode/README.md) is the five lessons as one runnable package, and its 42 tests need no GStreamer: the config store's persistence and CAS with four threads racing; the epoch issuer and the lease on a fake clock; the ACL; slots claimed, lapsed, inherited and released; the resource as a platform job mirroring any subsystem's buckets to a peer and restoring them; the promotion order on real files, the kill-at-minute-seven accounting, the manifest rebuilt from the archive alone, the fenced epoch on a timeline, retention per kind, event buckets recording or not; М9 Lesson 6's seven tests against the worker's loop, the epoch per camera, the restart with the controller object deleted, the zombie and the reassignment that is not one; the controller's refusals, stored placement by the workers' own capacity, two controllers racing to place forty cameras, scale-in redistributed and a crash left alone, the failure arithmetic with the clock, the console over real HTTP; and the counter subsystem. Every number in the lessons came out of those tests.
+Nearly all of it. [`vmsserver/`](vmsserver/README.md) is the five lessons as one runnable package, and its 42 tests need no GStreamer: the config store's persistence and CAS with four threads racing; the epoch issuer and the lease on a fake clock; the ACL; slots claimed, lapsed, inherited and released; the resource as a platform job mirroring any subsystem's buckets to a peer and restoring them; the promotion order on real files, the kill-at-minute-seven accounting, the manifest rebuilt from the archive alone, the fenced epoch on a timeline, retention per kind, event buckets recording or not; М9 Lesson 6's seven tests against the worker's loop, the epoch per camera, the restart with the controller object deleted, the zombie and the reassignment that is not one; the controller's refusals, stored placement by the workers' own capacity, two controllers racing to place forty cameras, scale-in redistributed and a crash left alone, the failure arithmetic with the clock, the console over real HTTP; and the counter subsystem. Every number in the lessons came out of those tests.
 
 **Needs a box with GStreamer** — `python3-gi`, `gst-plugins-good` and `-bad`, М9's bench: the two elements and the actuator (`gstvms/`), the hour-long PTS run, `kill -9` mid-segment on real files, and the zombie with two real worker processes. `deploy/` has the `systemd` units: `vmscontroller.service`, `vmsworker@.service`, and the archive resource's policy on a timer.

@@ -1,6 +1,6 @@
 # Lesson 5 — `vmscontroller`, and the Second Subsystem
 
-**Module:** NodeVMS — the platform's shape on one Node (Module 10)
+**Module:** ServerVMS — the platform's shape on one server (Module 10)
 **You will build:** the controller — the only writer of `vms/*`, camera CRUD and placement by CAS, stored with a reason, safe at two, never needed to recover, never deciding how many workers there are — the console over it, the failure arithmetic measured process by process, and a second subsystem through the same platform code.
 **Time:** ~150 minutes.
 

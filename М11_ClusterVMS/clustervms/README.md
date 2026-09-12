@@ -1,6 +1,6 @@
 # ClusterVMS — the М11 project, whole
 
-М10's shape across several servers, built **on** М10's `vmsnode/` rather than beside it: the same `vmsplatform` contract, the same `vms/` controller, worker and archive resource, imported unchanged. What this package adds is exactly what a cluster adds — Nomad's stores, what an allocation knows about itself, placement under constraints, a resource that has to say it exists, and a timeline that spans servers.
+М10's shape across several servers, built **on** М10's `vmsserver/` rather than beside it: the same `vmsplatform` contract, the same `vms/` controller, worker and archive resource, imported unchanged. What this package adds is exactly what a cluster adds — Nomad's stores, what an allocation knows about itself, placement under constraints, a resource that has to say it exists, and a timeline that spans servers.
 
 ```
 clustervms/
@@ -25,7 +25,7 @@ clustervms/
     vmsworker-policy.hcl, vmscontroller-policy.hcl, resource-policy.hcl   L2  one writer per key: vms/* for the controller; vms/epoch/*, vms/slots/* and its heartbeat for a worker; platform/resources/* for a resource
     verify-bench.sh            the six checks that need a real cluster, PASS/FAIL — including the ACL from inside an allocation and a scale drill
     failover-drill.sh          L4  the power pull, measured: three runs, worst case kept, the old instance's conflicts counted
-    Containerfile              the image: vmsnode + cluster, three entrypoints
+    Containerfile              the image: vmsserver + cluster, three entrypoints
   tests/                       29 tests, no Nomad, no GStreamer, milliseconds: python3 tests/run.py
 ```
 
@@ -42,7 +42,7 @@ clustervms/
 | A timeline | one manifest | merged across the resources that hold the camera; a silent one is named as unreachable | `timeline.py` |
 | What leaves the cluster | nothing | one snapshot object for М12's read model — a copy with an age | `controller.py` |
 | Events | buckets per unit on the resource, written by the worker holding the epoch, any subsystem | the same, on each server's resource; indexed across the cluster by the platform's `eventindex`, a cache; mirrored to the next resource with `platform/mirror` on | `vmsplatform/eventindex.py`, `vmsplatform/resource.py` |
-| The contract, the controller's logic, the worker's loop, the epoch, the lease, the manifest | | **unchanged**: imported from `vmsnode/` | |
+| The contract, the controller's logic, the worker's loop, the epoch, the lease, the manifest | | **unchanged**: imported from `vmsserver/` | |
 
 ## The three lines the tests hold
 
